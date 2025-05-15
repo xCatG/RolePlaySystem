@@ -1,0 +1,81 @@
+{
+  "name": "Python & Node.js Dev Environment",
+  "image": "mcr.microsoft.com/devcontainers/python:3.12-bookworm",
+
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "lts"
+    },
+    "ghcr.io/devcontainers/features/nvidia-cuda:1":{ } 
+  },
+
+  "customizations": {
+    // VS Code specific customizations (PyCharm will ignore this)
+    "vscode": {
+      "settings": {
+        "python.defaultInterpreterPath": "/usr/local/bin/python",
+        "python.linting.pylintEnabled": true,
+        "python.linting.enabled": true,
+        "editor.formatOnSave": true,
+        "[python]": {
+          "editor.defaultFormatter": "ms-python.black-formatter"
+        },
+        "[typescript]": {
+          "editor.defaultFormatter": "esbenp.prettier-vscode"
+        },
+        "[vue]": {
+          "editor.defaultFormatter": "esbenp.prettier-vscode"
+        },
+        "[json]": { // Good to have for package.json, tsconfig.json etc.
+          "editor.defaultFormatter": "esbenp.prettier-vscode"
+        },
+        "[markdown]": {
+           "editor.defaultFormatter": "esbenp.prettier-vscode" // If you want Prettier for Markdown
+        }
+      },
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "ms-python.pylint",
+        "ms-python.black-formatter",
+        "Vue.volar",
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+        "GitHub.copilot",
+        "eamodio.gitlens"
+      ]
+    },
+    // JetBrains (PyCharm) specific customizations
+    "jetbrains": {
+      "plugins": [
+        // Add PyCharm plugin IDs here.
+        // You can find plugin IDs on the JetBrains Marketplace.
+        // For example, the Python plugin is usually bundled, but if you needed others:
+        // "PythonCore", // This is typically bundled
+        "izhangzhihao.rainbow.brackets", // Example: Rainbow Brackets
+        "com.chrisrm.idea.materiaitheme" // Example: Material Theme UI Lite
+        // For Vue.js, PyCharm Professional has built-in support.
+        // If you need specific linters or formatters as plugins, find their IDs.
+      ],
+      "settings": {
+        // You can attempt to set some PyCharm settings here.
+        // The exact format and available settings can be specific.
+        // It's often easier to configure these within PyCharm once the container is running
+        // and then use "File | Manage IDE Settings | Export Settings" if you want to persist them
+        // or use settings sync.
+        // Example (syntax might vary or not be fully supported for all settings via devcontainer.json):
+        // "com.intellij:피app:EditorSettings.USE_SOFT_WRAPS": "CONSOLE",
+        // "com.intellij:project:Pythonid.REMOTE_SDK_HOME_PATH": "/usr/local/bin/python"
+      }
+      // "backend": "PyCharm" // You can specify the backend IDE, often auto-detected.
+    }
+  },
+
+  "forwardPorts": [5000, 5120, 5173],
+  "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}",
+  "postCreateCommand": "sudo apt-get update && sudo apt-get install -y ffmpeg libsm6 libxext6",
+  "postAttachCommand": {
+    "python-deps": "pip install --upgrade pip && pip install -r src/python/requirements.txt"
+  },
+  "remoteUser": "vscode"
+}
