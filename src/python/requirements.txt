@@ -1,2 +1,6 @@
 google-adk
 openai
+pydantic
+langchain
+anthropic
+mcp
