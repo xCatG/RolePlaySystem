@@ -4,3 +4,7 @@ pydantic
 langchain
 anthropic
 mcp
+python-dotenv
+fastapi
+uvicorn[standard]
+httpx
