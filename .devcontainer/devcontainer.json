@@ -55,6 +55,9 @@
         // "com.chrisrm.idea.materiaitheme" // Example: Material Theme UI Lite
         // For Vue.js, PyCharm Professional has built-in support.
         // If you need specific linters or formatters as plugins, find their IDs.
+        "org.jetbrains.junie",
+        //"com.intellij.mcpServer",
+        //"com.intellij.ml.llm"
       ],
       "settings": {
         // You can attempt to set some PyCharm settings here.
