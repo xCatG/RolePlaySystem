@@ -71,6 +71,9 @@ class AuthManager:
             return token_data
         except TokenExpiredError:
             raise  # Re-raise TokenExpiredError as-is
+        except jwt.ExpiredSignatureError:
+            # re-raise as token expired error
+            raise TokenExpiredError("Token has expired")
         except jwt.InvalidTokenError:
             raise InvalidTokenError("Invalid token")
         except Exception as e:
@@ -105,7 +108,7 @@ class AuthManager:
                 id=str(uuid.uuid4()),
                 user_id=user_id,
                 provider=AuthProvider.LOCAL,
-                provider_user_id=email,  # Use email for login
+                provider_user_id=email or username,  # Use email if available, else username
                 credentials={"password_hash": hashed_password},
                 created_at=datetime.now(),
             )
@@ -209,10 +212,19 @@ class AuthManager:
         if not user:
             raise UserNotFoundError("User not found")
 
-        # Get local auth method
-        auth_method = await self.storage.get_user_auth_method(
-            AuthProvider.LOCAL, user.username
-        )
+        # Get local auth method - look it up using email or username
+        # First try with email if available
+        auth_method = None
+        if user.email:
+            auth_method = await self.storage.get_user_auth_method(
+                AuthProvider.LOCAL, user.email
+            )
+        
+        # If not found with email, try username
+        if not auth_method:
+            auth_method = await self.storage.get_user_auth_method(
+                AuthProvider.LOCAL, user.username
+            )
         if not auth_method:
             raise AuthenticationError("Local authentication not configured")
 

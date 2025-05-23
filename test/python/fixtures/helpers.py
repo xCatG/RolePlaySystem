@@ -61,6 +61,12 @@ class MockStorageBackend(StorageBackend):
                 return user
         return None
     
+    async def get_user_by_email(self, email: str):
+        for user in self.users.values():
+            if user.email == email:
+                return user
+        return None
+    
     async def create_user(self, user):
         self.users[user.id] = user
         return user

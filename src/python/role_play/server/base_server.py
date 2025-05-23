@@ -44,7 +44,7 @@ class BaseServer:
         """Setup CORS middleware for frontend development."""
         self.app.add_middleware(
             CORSMiddleware,
-            allow_origins=["http://localhost:3000", "http://localhost:5173"],  # Vue.js dev servers
+            allow_origins=["http://localhost:3000", "http://localhost:3001", "http://localhost:5173"],  # Vue.js dev servers
             allow_credentials=True,
             allow_methods=["*"],
             allow_headers=["*"],

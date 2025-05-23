@@ -57,7 +57,7 @@ class TestAuthManagerUserRegistration:
             auth_methods = await storage.get_user_auth_methods(user.id)
             assert len(auth_methods) == 1
             assert auth_methods[0].provider == AuthProvider.LOCAL
-            assert auth_methods[0].provider_user_id == "integration_user"
+            assert auth_methods[0].provider_user_id == "integration@example.com"  # Email is used as provider_user_id
             assert "password_hash" in auth_methods[0].credentials
             
             # Verify token is valid
@@ -130,7 +130,7 @@ class TestAuthManagerAuthentication:
             
             # Authenticate user
             auth_user, auth_token = await auth_manager.authenticate_user(
-                username="auth_test_user",
+                email="auth@example.com",
                 password="my_secure_password"
             )
             
@@ -155,13 +155,14 @@ class TestAuthManagerAuthentication:
             # Register user
             await auth_manager.register_user(
                 username="wrong_pass_user",
+                email="wrong@example.com",
                 password="correct_password"
             )
             
             # Try to authenticate with wrong password
             with pytest.raises(AuthenticationError) as exc_info:
                 await auth_manager.authenticate_user(
-                    username="wrong_pass_user",
+                    email="wrong@example.com",
                     password="wrong_password"
                 )
             
@@ -177,7 +178,7 @@ class TestAuthManagerAuthentication:
             # Try to authenticate non-existent user
             with pytest.raises(UserNotFoundError) as exc_info:
                 await auth_manager.authenticate_user(
-                    username="nonexistent_user",
+                    email="nonexistent@example.com",
                     password="any_password"
                 )
             
@@ -193,6 +194,7 @@ class TestAuthManagerAuthentication:
             # Register and then deactivate user
             user, _ = await auth_manager.register_user(
                 username="inactive_user",
+                email="inactive@example.com",
                 password="password"
             )
             
@@ -203,7 +205,7 @@ class TestAuthManagerAuthentication:
             # Try to authenticate
             with pytest.raises(UserNotFoundError) as exc_info:
                 await auth_manager.authenticate_user(
-                    username="inactive_user",
+                    email="inactive@example.com",
                     password="password"
                 )
             
@@ -225,7 +227,7 @@ class TestAuthManagerAuthentication:
             # Try to authenticate with password
             with pytest.raises(AuthenticationError) as exc_info:
                 await auth_manager.authenticate_user(
-                    username="oauth_only_user",
+                    email="oauth@example.com",
                     password="any_password"
                 )
             
@@ -246,6 +248,7 @@ class TestAuthManagerTokenOperations:
             # Register user
             original_user, token = await auth_manager.register_user(
                 username="token_user",
+                email="token@example.com",
                 password="password"
             )
             
@@ -277,6 +280,7 @@ class TestAuthManagerTokenOperations:
             # Create token with first auth manager
             user, token = await auth_manager1.register_user(
                 username="token_test",
+                email="tokentest@example.com",
                 password="password"
             )
             
@@ -299,6 +303,7 @@ class TestAuthManagerTokenOperations:
             # Register user (this will create an expired token)
             user, token = await auth_manager.register_user(
                 username="expired_user",
+                email="expired@example.com",
                 password="password"
             )
             
@@ -316,6 +321,7 @@ class TestAuthManagerTokenOperations:
             # Register user
             user, token = await auth_manager.register_user(
                 username="inactive_token_user",
+                email="inactivetoken@example.com",
                 password="password"
             )
             
@@ -422,6 +428,7 @@ class TestAuthManagerOAuthIntegration:
             # Create regular user first
             await auth_manager.register_user(
                 username="collision_user",
+                email="collision@example.com",
                 password="password"
             )
             
@@ -456,6 +463,7 @@ class TestAuthManagerPasswordManagement:
             # Register user
             user, _ = await auth_manager.register_user(
                 username="password_change_user",
+                email="passchange@example.com",
                 password="old_password"
             )
             
@@ -469,13 +477,13 @@ class TestAuthManagerPasswordManagement:
             # Verify old password no longer works
             with pytest.raises(AuthenticationError):
                 await auth_manager.authenticate_user(
-                    username="password_change_user",
+                    email="passchange@example.com",
                     password="old_password"
                 )
             
             # Verify new password works
             auth_user, token = await auth_manager.authenticate_user(
-                username="password_change_user",
+                email="passchange@example.com",
                 password="new_password"
             )
             assert auth_user.id == user.id
@@ -489,6 +497,7 @@ class TestAuthManagerPasswordManagement:
             
             user, _ = await auth_manager.register_user(
                 username="wrong_old_pass",
+                email="wrongold@example.com",
                 password="correct_password"
             )
             
@@ -556,6 +565,7 @@ class TestAuthManagerCompleteScenarios:
             # User 1: Local auth only
             user1, token1 = await auth_manager.register_user(
                 username="local_user",
+                email="local@example.com",
                 password="local_password"
             )
             
@@ -569,6 +579,7 @@ class TestAuthManagerCompleteScenarios:
             # User 3: Both local and OAuth (register then add OAuth)
             user3, token3 = await auth_manager.register_user(
                 username="hybrid_user",
+                email="hybrid@example.com",
                 password="hybrid_password"
             )
             
@@ -576,7 +587,7 @@ class TestAuthManagerCompleteScenarios:
             # This simulates linking accounts (would need additional business logic)
             
             # Verify all users can authenticate with their respective methods
-            local_auth = await auth_manager.authenticate_user("local_user", "local_password")
+            local_auth = await auth_manager.authenticate_user("local@example.com", "local_password")
             assert local_auth[0].id == user1.id
             
             oauth_auth = await auth_manager.authenticate_oauth_user(
@@ -586,7 +597,7 @@ class TestAuthManagerCompleteScenarios:
             )
             assert oauth_auth[0].id == user2.id
             
-            hybrid_auth = await auth_manager.authenticate_user("hybrid_user", "hybrid_password")
+            hybrid_auth = await auth_manager.authenticate_user("hybrid@example.com", "hybrid_password")
             assert hybrid_auth[0].id == user3.id
             
             # Verify tokens work for all users
