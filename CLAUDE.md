@@ -87,7 +87,7 @@
 ### Server Core
 - [x] Create `role_play/server/base_handler.py` - BaseHandler abstract class
 - [x] Create `role_play/server/base_server.py` - BaseServer with auto-registration
-- [ ] Create `role_play/server/auth_decorators.py` - @auth_required, @admin_only
+- [x] Create `role_play/server/auth_decorators.py` - @auth_required, @admin_only, role hierarchy support
 - [x] Create `role_play/server/dependencies.py` - Dependency injection factories
 - [ ] Create `role_play/server/websocket.py` - WebSocket connection manager
 - [x] Refactor `role_play/server/config.py` - Add HandlerConfig, AuthConfig, OAuthConfig
@@ -137,7 +137,7 @@
 - [x] Create `test/python/conftest.py` - Pytest configuration and shared fixtures
 - [x] Create `test/python/fixtures/` - Test data factories and helper functions
 - [x] Create `test/python/unit/common/` - Unit tests for models, storage, auth, exceptions
-- [ ] Create `test/python/unit/server/` - Unit tests for base handlers, decorators, dependencies
+- [x] Create `test/python/unit/server/` - Unit tests for base handlers, decorators, dependencies
 - [x] Create `test/python/integration/storage/` - Storage backend integration tests
 - [x] Create `test/python/integration/auth/` - OAuth flow and auth integration tests
 - [ ] Create `test/python/integration/handlers/` - Handler registration and dependency injection tests
@@ -210,10 +210,10 @@
 - **Cleanup**: Removed legacy server files (role_play_server.py, config.py, models.py) to prepare for clean BaseServer implementation
 
 ### Testing Infrastructure (COMPLETED)
-- **Comprehensive Test Suite**: 98 tests with 92.53% code coverage
+- **Comprehensive Test Suite**: 125 tests with 92.41% code coverage  
 - **Multi-Language Structure**: `/test/python/` ready for future `/test/ts/`, `/test/android/`
-- **Test Categories**: Unit tests (67), Integration tests (31) with proper separation
-- **Coverage Breakdown**: AuthManager (97%), FileStorage (88%), Models/Exceptions (100%)
+- **Test Categories**: Unit tests (99), Integration tests (26) with proper separation
+- **Coverage Breakdown**: AuthManager (96%), FileStorage (88%), Models/Exceptions (100%), Auth Decorators (100%)
 - **Real Validation**: All FileStorage CRUD operations and AuthManager workflows tested
 - **Performance Tests**: Including large dataset scenarios marked with `@pytest.mark.slow`
 - **Test Documentation**: Complete testing guide in `/test/README.md`
@@ -230,6 +230,14 @@
 - **Storage Configuration**: Environment variable support (STORAGE_PATH) with fail-fast validation
 - **Deployment-Friendly**: Requires pre-existing storage directories, no silent directory creation
 
+### Authentication System (COMPLETED)
+- **Role-Based Authorization**: Complete decorator system with @auth_required, @admin_only, @scripter_only, @public
+- **Role Hierarchy**: ADMIN > SCRIPTER > USER > GUEST with proper permission inheritance
+- **Decorator Features**: Flexible role requirements (single role, multiple roles, any authenticated user)
+- **HTTP Status Codes**: Proper 401 (Unauthorized) and 403 (Forbidden) responses
+- **Example Usage**: Complete documentation in `role_play/server/example_role_usage.py`
+- **Full Test Coverage**: 100% test coverage for all auth decorator functionality
+
 ### Frontend Architecture (COMPLETED)
 - **Multi-Language Structure**: `/src/ts/role_play/` for TypeScript frontend components
 - **UI Module**: Vue.js 3 authentication interface at `/src/ts/role_play/ui/`
@@ -238,6 +246,7 @@
 - **API Integration**: Full integration with Python backend auth endpoints
 - **Token Management**: Automatic JWT storage and validation
 - **Development Ready**: Vite build system, hot reload, CORS configured
+- **Container Support**: Automatic host binding (0.0.0.0) for devcontainer compatibility
 
 # important-instruction-reminders
 Do what has been asked; nothing more, nothing less.
