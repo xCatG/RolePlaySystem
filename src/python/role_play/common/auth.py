@@ -69,6 +69,8 @@ class AuthManager:
                 raise TokenExpiredError("Token has expired")
             
             return token_data
+        except TokenExpiredError:
+            raise  # Re-raise TokenExpiredError as-is
         except jwt.InvalidTokenError:
             raise InvalidTokenError("Invalid token")
         except Exception as e:
