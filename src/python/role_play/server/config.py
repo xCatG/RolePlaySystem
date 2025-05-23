@@ -35,7 +35,10 @@ class ServerConfig(BaseModel):
     
     # Storage settings
     storage_type: str = Field(default="file", description="Storage backend type (file, s3)")
-    storage_path: str = Field(default="./data", description="Storage path for file backend")
+    storage_path: str = Field(
+        default_factory=lambda: os.getenv("STORAGE_PATH", "./data"),
+        description="Storage path for file backend (must exist)"
+    )
     
     # Handler configuration
     enabled_handlers: List[str] = Field(

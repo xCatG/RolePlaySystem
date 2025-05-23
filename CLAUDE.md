@@ -227,6 +227,8 @@
 - **CORS Support**: Enabled for frontend development
 - **Error Handling**: Proper HTTP status codes and error messages
 - **Production Ready**: Configurable via environment variables
+- **Storage Configuration**: Environment variable support (STORAGE_PATH) with fail-fast validation
+- **Deployment-Friendly**: Requires pre-existing storage directories, no silent directory creation
 
 ### Frontend Architecture (COMPLETED)
 - **Multi-Language Structure**: `/src/ts/role_play/` for TypeScript frontend components

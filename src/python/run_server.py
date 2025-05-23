@@ -5,6 +5,7 @@ Server runner for the Role Play System.
 
 import uvicorn
 import asyncio
+import os
 from role_play.server.base_server import BaseServer
 from role_play.server.user_account_handler import UserAccountHandler
 from role_play.server.config import get_config
@@ -18,7 +19,26 @@ async def create_server() -> BaseServer:
     config = get_config()
     
     # Initialize storage backend
-    storage = FileStorage(config.storage_path)
+    if config.storage_type == "file":
+        # Validate storage path exists
+        if not os.path.exists(config.storage_path):
+            raise FileNotFoundError(
+                f"Storage path '{config.storage_path}' does not exist. "
+                "Please create the directory before starting the server."
+            )
+        if not os.path.isdir(config.storage_path):
+            raise NotADirectoryError(
+                f"Storage path '{config.storage_path}' is not a directory."
+            )
+        if not os.access(config.storage_path, os.R_OK | os.W_OK):
+            raise PermissionError(
+                f"Storage path '{config.storage_path}' is not readable/writable."
+            )
+            
+        storage = FileStorage(config.storage_path)
+    else:
+        raise ValueError(f"Unsupported storage type: {config.storage_type}")
+    
     set_storage_backend(storage)
     
     # Initialize auth manager
