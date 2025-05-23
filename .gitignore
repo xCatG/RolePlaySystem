@@ -180,3 +180,64 @@ misc.xml
 deploymentTargetDropDown.xml
 render.experimental.xml
 
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+*.env
+*.env.*
+
+# VSCode
+.vscode/
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# TypeScript
+*.tsbuildinfo
+
+# Vue.js
+/dist/
+/*.local
+/.output
+/.nuxt
+/.cache
+/.vitepress
+/.vercel
+/.firebase
+/.netlify
+/.idea
+
+# Build output
+build/
+dist/
+out/
+coverage/
+*.log
+
+# Misc
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*.bak
+*.tmp
+*.orig
+*.rej

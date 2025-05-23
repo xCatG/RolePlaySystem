@@ -1,6 +1,6 @@
 google-adk
 openai
-pydantic
+pydantic[email]
 langchain
 anthropic
 mcp
@@ -8,3 +8,5 @@ python-dotenv
 fastapi
 uvicorn[standard]
 httpx
+pyjwt
+passlib
