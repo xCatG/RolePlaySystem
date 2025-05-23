@@ -25,6 +25,11 @@ class StorageBackend(ABC):
         pass
 
     @abstractmethod
+    async def get_user_by_email(self, email: str) -> Optional[User]:
+        """Get user by email."""
+        pass
+
+    @abstractmethod
     async def create_user(self, user: User) -> User:
         """Create a new user."""
         pass
@@ -148,6 +153,14 @@ class FileStorage(StorageBackend):
         for user_file in self.users_dir.glob("*.json"):
             user_data = self._read_json_file(user_file)
             if user_data and user_data.get("username") == username:
+                return User(**user_data)
+        return None
+
+    async def get_user_by_email(self, email: str) -> Optional[User]:
+        """Get user by email."""
+        for user_file in self.users_dir.glob("*.json"):
+            user_data = self._read_json_file(user_file)
+            if user_data and user_data.get("email") == email:
                 return User(**user_data)
         return None
 

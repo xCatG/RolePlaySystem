@@ -105,7 +105,7 @@ class AuthManager:
                 id=str(uuid.uuid4()),
                 user_id=user_id,
                 provider=AuthProvider.LOCAL,
-                provider_user_id=username,
+                provider_user_id=email,  # Use email for login
                 credentials={"password_hash": hashed_password},
                 created_at=datetime.now(),
             )
@@ -115,16 +115,16 @@ class AuthManager:
         access_token = self._create_access_token(user)
         return user, access_token
 
-    async def authenticate_user(self, username: str, password: str) -> tuple[User, str]:
-        """Authenticate user with username and password."""
-        # Get user
-        user = await self.storage.get_user_by_username(username)
+    async def authenticate_user(self, email: str, password: str) -> tuple[User, str]:
+        """Authenticate user with email and password."""
+        # Get user by email
+        user = await self.storage.get_user_by_email(email)
         if not user or not user.is_active:
             raise UserNotFoundError("User not found or inactive")
 
-        # Get local auth method
+        # Get local auth method (stored with email as provider_user_id)
         auth_method = await self.storage.get_user_auth_method(
-            AuthProvider.LOCAL, username
+            AuthProvider.LOCAL, email
         )
         if not auth_method or not auth_method.is_active:
             raise AuthenticationError("Local authentication not configured")
