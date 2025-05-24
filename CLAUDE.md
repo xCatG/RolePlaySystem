@@ -117,7 +117,7 @@
 - [ ] Create `role_play/auth/models.py` - LoginRequest, RegisterRequest, OAuth response models
 - [ ] Create `role_play/auth/oauth_client.py` - OAuth client wrapper for multiple providers
 
-### Chat Module (ADK Integration)
+### Chat Module (ADK Integration) - POC Approach
 - [ ] Create `role_play/dev_agents/roleplay_agent/` - Development agent for `adk web` testing
   - [ ] `role_play/dev_agents/roleplay_agent/__init__.py` - Package initialization
   - [ ] `role_play/dev_agents/roleplay_agent/agent.py` - Simple `root_agent` for ADK web UI
@@ -128,9 +128,14 @@
 - [ ] Create `role_play/chat/handler.py` - ChatHandler extending BaseHandler with session creation endpoints
 - [ ] Create `role_play/chat/models.py` - Chat request/response models with session metadata
 - [ ] Add ADK dependencies to requirements: `pip install google-adk`
+- [ ] **POC Simplifications**:
+  - [ ] Create `role_play/chat/content_loader.py` - Load scenarios/characters from static JSON file
+  - [ ] Create `data/scenarios.json` - Fixed scenario and character definitions
+  - [ ] Implement HTTP-based chat (no WebSocket needed for POC)
+  - [ ] Create simple text export endpoint: GET /chat/session/{id}/export-text
+  - [ ] Basic session listing: GET /chat/sessions (no complex filtering)
 - [ ] Create operator session creation workflow: POST /chat/session with scenario + character + participant
 - [ ] Implement real-time JSONL logging for evaluation (append on each message exchange)
-- [ ] Create development sync utilities between dev agent and production configuration
 
 ### Scripter Module
 - [ ] Create `role_play/scripter/__init__.py`
@@ -138,11 +143,16 @@
 - [ ] Create `role_play/scripter/models.py` - Script models
 - [ ] Create `role_play/scripter/storage.py` - Script persistence
 
-### Evaluator Module
-- [ ] Create `role_play/evaluator/__init__.py`
-- [ ] Create `role_play/evaluator/handler.py` - EvaluatorHandler
-- [ ] Create `role_play/evaluator/models.py` - Evaluation models
-- [ ] Create `role_play/evaluator/engine.py` - Evaluation logic
+### Evaluation Module (POC - Simple Export)
+- [ ] Create `role_play/evaluation/__init__.py`
+- [ ] Create `role_play/evaluation/handler.py` - Simple evaluation handler with text export
+- [ ] Create `role_play/evaluation/export.py` - Text export utilities
+- [ ] **POC Simplifications**:
+  - [ ] Simple text export: Convert JSONL to readable conversation format
+  - [ ] Basic session import from chat: Copy session IDs to evaluation queue
+  - [ ] Download endpoint: GET /evaluation/session/{id}/download - Returns text file
+  - [ ] Session list: GET /evaluation/sessions - Simple list for selection
+  - [ ] No complex analytics, scoring, or batch operations for POC
 
 ### Frontend (TypeScript/Vue.js) - Modular Monolith
 - [x] Create `src/ts/role_play/ui/` - Vue.js authentication interface with login/register
@@ -300,13 +310,13 @@
 - **No Global State**: Eliminated global variables in dependencies, pure factory functions
 - **Production Ready**: JWT secret validation, proper error handling, concurrency warnings
 
-### Chat System Architecture (PLANNED)
-- **Dual Development Approach**: Clean ADK agent for `adk web` testing + Full FastAPI production integration
-- **ADK Integration Strategy**: Use Google's Agent Development Kit for sophisticated conversational AI with Gemini models
-- **Custom Session Management**: Extend ADK's base SessionService to save conversations in JSONL format for evaluation
-- **Operator-Driven Workflow**: Support roleplay scenario creation with real-time conversation logging
-- **Evaluation-Ready Storage**: Immediate JSONL file creation (`user_id_participant_scenario_id_datetime.jsonl`) for analysis
-- **Development Tools**: `adk web` for agent testing, FastAPI for production API, sync utilities for configuration management
+### Chat System Architecture (POC APPROACH)
+- **Simplified POC Strategy**: Focus on core chat functionality with minimal complexity
+- **Static Content**: Scenarios and characters loaded from JSON file (no CRUD needed)
+- **HTTP-Based Chat**: Simple request/response chat (no WebSocket for POC)
+- **JSONL + Text Export**: Maintain JSONL for structure, export as readable text for evaluation
+- **Fixed Data**: `data/scenarios.json` with predefined roleplay scenarios and characters
+- **Core Workflow**: Operator selects from dropdown → creates session → text-based chat → export for evaluation
 
 # important-instruction-reminders
 Do what has been asked; nothing more, nothing less.
