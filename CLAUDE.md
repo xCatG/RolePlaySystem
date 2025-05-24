@@ -52,7 +52,24 @@
 ### 9. **Data Model Location**
 - **Data Class Placement**: Data class for each functionality should stay in each feature package, don't add to common unless actually shared among all classes or multiple classes/features
 
-### 10. **Testing Strategy**
+### 10. **Chat System ADK Integration**
+- **Dual Setup Approach**: Development agent for `adk web` testing + Production FastAPI integration
+- **Hybrid ADK Usage**: Leverage ADK for agent execution, custom SessionService for roleplay-specific storage
+- **Custom SessionService**: Extends base ADK SessionService (not DatabaseSessionService) for JSONL evaluation format
+- **Operator Workflow**: Operator creates sessions with scenario + character + participant → real-time JSONL logging
+- **Storage Format**: `user_id_participant_scenario_id_datetime.jsonl` files for immediate evaluation access
+- **Session Management**: ADK Session objects with roleplay metadata in state, custom event handling
+
+### 11. **Frontend Architecture - Modular Monolith**
+- **Start Simple Philosophy**: Begin with single module to minimize learning curve and development complexity
+- **Built-in Seams**: Structure code with domain boundaries (auth/, chat/, evaluation/) from day one
+- **Clear Evolution Path**: Each domain organized as future module with index.ts exports for clean APIs
+- **Domain-Based Organization**: Components, stores, services, views grouped by domain within single module
+- **Mechanical Migration**: When splitting needed, move files maintaining exact structure with only import path changes
+- **Future-Proof Boundaries**: Service layer contracts, store interfaces, and component exports designed for modularity
+- **Progressive Complexity**: Split modules only when file count, team conflicts, or build time demands it
+
+### 12. **Testing Strategy**
 - **Multi-Language Structure**: Tests organized by language to support future TypeScript web frontend, Android client, etc.
 - **Test Location**: `/test/python/` for Python backend tests (separate from source code)
 - **Test Types & Organization**:
@@ -100,11 +117,20 @@
 - [ ] Create `role_play/auth/models.py` - LoginRequest, RegisterRequest, OAuth response models
 - [ ] Create `role_play/auth/oauth_client.py` - OAuth client wrapper for multiple providers
 
-### Chat Module
-- [ ] Refactor `role_play/chat/handler.py` - ChatHandler extending BaseHandler
-- [ ] Create `role_play/chat/models.py` - Chat-specific request/response models
-- [ ] Create `role_play/chat/audio_processor.py` - Audio format conversion, buffering
-- [ ] Create `role_play/chat/gemini_client.py` - Gemini Live API integration
+### Chat Module (ADK Integration)
+- [ ] Create `role_play/dev_agents/roleplay_agent/` - Development agent for `adk web` testing
+  - [ ] `role_play/dev_agents/roleplay_agent/__init__.py` - Package initialization
+  - [ ] `role_play/dev_agents/roleplay_agent/agent.py` - Simple `root_agent` for ADK web UI
+  - [ ] `role_play/dev_agents/roleplay_agent/.env` - Development environment config
+- [ ] Create `role_play/chat/session_service.py` - Custom SessionService extending ADK base with JSONL storage
+- [ ] Create `role_play/chat/adk_client.py` - ADK Agent and Runner management with roleplay context
+- [ ] Create `role_play/chat/agent_config.py` - ADK agent configuration and setup
+- [ ] Create `role_play/chat/handler.py` - ChatHandler extending BaseHandler with session creation endpoints
+- [ ] Create `role_play/chat/models.py` - Chat request/response models with session metadata
+- [ ] Add ADK dependencies to requirements: `pip install google-adk`
+- [ ] Create operator session creation workflow: POST /chat/session with scenario + character + participant
+- [ ] Implement real-time JSONL logging for evaluation (append on each message exchange)
+- [ ] Create development sync utilities between dev agent and production configuration
 
 ### Scripter Module
 - [ ] Create `role_play/scripter/__init__.py`
@@ -118,12 +144,21 @@
 - [ ] Create `role_play/evaluator/models.py` - Evaluation models
 - [ ] Create `role_play/evaluator/engine.py` - Evaluation logic
 
-### Frontend (TypeScript/Vue.js)
+### Frontend (TypeScript/Vue.js) - Modular Monolith
 - [x] Create `src/ts/role_play/ui/` - Vue.js authentication interface with login/register
 - [x] Create `src/ts/role_play/chat/` - Directory structure for future chat UI components
-- [ ] Implement chat interface with WebSocket support
-- [ ] Implement scripter admin interface
-- [ ] Implement evaluator interface
+- [ ] Restructure as modular monolith with domain-based organization:
+  - [ ] `src/ts/role_play/types/` - Domain-separated types (auth.ts, chat.ts, evaluation.ts, shared.ts)
+  - [ ] `src/ts/role_play/services/` - API clients by domain (auth-api.ts, chat-api.ts, evaluation-api.ts)
+  - [ ] `src/ts/role_play/stores/` - Domain-specific stores (auth.ts, chat.ts, evaluation.ts)
+  - [ ] `src/ts/role_play/components/` - Components grouped by domain (shared/, auth/, chat/, evaluation/)
+  - [ ] `src/ts/role_play/views/` - Views organized by domain (auth/, chat/, evaluation/)
+- [ ] Implement domain boundaries with clean index.ts exports for future modularity
+- [ ] Create chat interface with WebSocket support and session management
+- [ ] Implement evaluation interface with session import from chat
+- [ ] Add domain-based routing with clear module boundaries
+- [ ] Create cross-domain integration patterns (chat sessions → evaluation queue)
+- [ ] Document migration strategy for future module splitting
 
 ### Configuration & Environment
 - [x] Create `role_play/server/config_loader.py` - Environment-aware config loading with template substitution
@@ -238,15 +273,23 @@
 - **Example Usage**: Complete documentation in `role_play/server/example_role_usage.py`
 - **Full Test Coverage**: 100% test coverage for all auth decorator functionality
 
-### Frontend Architecture (COMPLETED)
+### Frontend Architecture (PARTIAL)
 - **Multi-Language Structure**: `/src/ts/role_play/` for TypeScript frontend components
 - **UI Module**: Vue.js 3 authentication interface at `/src/ts/role_play/ui/`
-- **Chat Module Structure**: Planned architecture at `/src/ts/role_play/chat/`
+- **Chat Module Structure**: Basic directory structure at `/src/ts/role_play/chat/`
 - **Responsive Design**: Clean, modern styling with form validation
 - **API Integration**: Full integration with Python backend auth endpoints
 - **Token Management**: Automatic JWT storage and validation
 - **Development Ready**: Vite build system, hot reload, CORS configured
 - **Container Support**: Automatic host binding (0.0.0.0) for devcontainer compatibility
+
+### Frontend Modular Monolith Architecture (PLANNED)
+- **Single Module Start**: All frontend code in one module with domain-based organization
+- **Built-in Seams**: Components, stores, services, and views organized by domain (auth/, chat/, evaluation/)
+- **Clear APIs**: Each domain exports through index.ts files for clean interfaces
+- **Evolution Ready**: Structure allows mechanical migration to separate modules when needed
+- **Domain Boundaries**: Cross-domain communication through well-defined store interfaces
+- **Progressive Splitting**: Start monolithic, split modules only when complexity demands it
 
 ### Configuration System (COMPLETED)
 - **Unified Config Loader**: Environment-aware YAML + .env loading with template substitution
@@ -256,6 +299,14 @@
 - **Fail-Fast Validation**: Storage path and configuration validation at server startup
 - **No Global State**: Eliminated global variables in dependencies, pure factory functions
 - **Production Ready**: JWT secret validation, proper error handling, concurrency warnings
+
+### Chat System Architecture (PLANNED)
+- **Dual Development Approach**: Clean ADK agent for `adk web` testing + Full FastAPI production integration
+- **ADK Integration Strategy**: Use Google's Agent Development Kit for sophisticated conversational AI with Gemini models
+- **Custom Session Management**: Extend ADK's base SessionService to save conversations in JSONL format for evaluation
+- **Operator-Driven Workflow**: Support roleplay scenario creation with real-time conversation logging
+- **Evaluation-Ready Storage**: Immediate JSONL file creation (`user_id_participant_scenario_id_datetime.jsonl`) for analysis
+- **Development Tools**: `adk web` for agent testing, FastAPI for production API, sync utilities for configuration management
 
 # important-instruction-reminders
 Do what has been asked; nothing more, nothing less.
