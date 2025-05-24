@@ -12,7 +12,13 @@ from .models import User, UserAuthMethod, SessionData
 
 
 class StorageBackend(ABC):
-    """Abstract base class for storage backends."""
+    """
+    Abstract base class for storage backends.
+    
+    WARNING: Implementations should be thread-safe for production use.
+    FileStorage is suitable for development/testing but not for high-concurrency
+    environments. Consider S3Storage or database backends for production scaling.
+    """
 
     @abstractmethod
     async def get_user(self, user_id: str) -> Optional[User]:
@@ -108,7 +114,14 @@ class StorageBackend(ABC):
 
 
 class FileStorage(StorageBackend):
-    """File-based storage backend for development and testing."""
+    """
+    File-based storage backend for development and testing.
+    
+    WARNING: This implementation is NOT thread-safe and should only be used
+    for development, testing, or single-user scenarios. For production use
+    with multiple concurrent users, implement proper file locking or use
+    a database/S3 backend instead.
+    """
 
     def __init__(self, storage_dir: str = "data"):
         self.storage_dir = Path(storage_dir)

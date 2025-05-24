@@ -90,12 +90,19 @@ class UserAccountHandler(BaseHandler):
                         )
                     raise HTTPException(
                         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                        detail="Registration failed"
+                        detail="Registration failed due to storage error"
                     )
-                except Exception as e:
+                except AuthenticationError as e:
+                    # This covers weak passwords or other auth validation issues
                     raise HTTPException(
-                        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                        detail="Registration failed"
+                        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                        detail=str(e)
+                    )
+                except ValueError as e:
+                    # This covers validation errors like invalid email format
+                    raise HTTPException(
+                        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                        detail=str(e)
                     )
             
             @self._router.post("/login", response_model=AuthResponse)
@@ -132,10 +139,16 @@ class UserAccountHandler(BaseHandler):
                         status_code=status.HTTP_401_UNAUTHORIZED,
                         detail="Invalid email or password"
                     )
-                except Exception as e:
+                except StorageError as e:
                     raise HTTPException(
                         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                        detail="Login failed"
+                        detail="Login failed due to storage error"
+                    )
+                except ValueError as e:
+                    # This covers validation errors like invalid email format
+                    raise HTTPException(
+                        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                        detail=str(e)
                     )
             
             @self._router.get("/me", response_model=UserResponse)

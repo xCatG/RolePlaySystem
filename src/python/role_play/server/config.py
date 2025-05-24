@@ -47,8 +47,9 @@ class ServerConfig(BaseModel):
     )
 
     # Handler configuration
-    enabled_handlers: List[str] = Field(
-        default=["user_account"], description="List of enabled handler names"
+    enabled_handlers: Dict[str, str] = Field(
+        default={"user_account": "role_play.server.user_account_handler.UserAccountHandler"},
+        description="Map of handler names to their import paths"
     )
 
 

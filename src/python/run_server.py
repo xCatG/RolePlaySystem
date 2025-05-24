@@ -7,7 +7,6 @@ import uvicorn
 import asyncio
 
 from role_play.server.base_server import BaseServer
-from role_play.server.user_account_handler import UserAccountHandler
 from role_play.server.config_loader import get_config
 
 
@@ -26,11 +25,41 @@ async def create_server() -> BaseServer:
         enable_cors=config.enable_cors,
     )
 
-    # Register handlers
-    if "user_account" in config.enabled_handlers:
-        server.register_handler(UserAccountHandler)
+    # Dynamically register handlers based on configuration
+    _register_handlers(server, config)
 
     return server
+
+
+def _register_handlers(server: BaseServer, config) -> None:
+    """
+    Dynamically register handlers based on configuration.
+    
+    Args:
+        server: BaseServer instance to register handlers on
+        config: Server configuration with enabled_handlers mapping
+    """
+    import importlib
+    
+    for handler_name, handler_path in config.enabled_handlers.items():
+        try:
+            # Parse module and class name
+            module_path, class_name = handler_path.rsplit('.', 1)
+            
+            # Import module and get class
+            module = importlib.import_module(module_path)
+            handler_class = getattr(module, class_name)
+            
+            # Register handler
+            server.register_handler(handler_class)
+            print(f"Registered handler: {handler_name} ({handler_path})")
+            
+        except ImportError as e:
+            raise ImportError(f"Failed to import handler '{handler_name}' from '{handler_path}': {e}")
+        except AttributeError as e:
+            raise AttributeError(f"Handler class '{class_name}' not found in module '{module_path}': {e}")
+        except Exception as e:
+            raise RuntimeError(f"Failed to register handler '{handler_name}': {e}")
 
 
 def _validate_configuration(config) -> None:

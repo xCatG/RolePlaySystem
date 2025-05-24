@@ -126,11 +126,11 @@
 - [ ] Implement evaluator interface
 
 ### Configuration & Environment
+- [x] Create `role_play/server/config_loader.py` - Environment-aware config loading with template substitution
 - [ ] Create `config/dev.yaml` - Development configuration
 - [ ] Create `config/beta.yaml` - Beta/staging configuration
 - [ ] Create `config/prod.yaml` - Production configuration
 - [ ] Update `.env.example` with required variables (JWT_SECRET_KEY, GOOGLE_CLIENT_ID, etc.)
-- [ ] Create `role_play/server/config_loader.py` - Environment-aware config loading with template substitution
 
 ### Testing Infrastructure
 - [x] Create `test/python/` directory structure (unit/integration/e2e/fixtures)
@@ -247,6 +247,15 @@
 - **Token Management**: Automatic JWT storage and validation
 - **Development Ready**: Vite build system, hot reload, CORS configured
 - **Container Support**: Automatic host binding (0.0.0.0) for devcontainer compatibility
+
+### Configuration System (COMPLETED)
+- **Unified Config Loader**: Environment-aware YAML + .env loading with template substitution
+- **Environment Validation**: Enum-based environment support (DEV/BETA/PROD) with fail-fast validation
+- **Dynamic Handler Registration**: Importlib-based handler loading from configuration
+- **Fallback Warnings**: Clear feedback when YAML configs are missing or using defaults
+- **Fail-Fast Validation**: Storage path and configuration validation at server startup
+- **No Global State**: Eliminated global variables in dependencies, pure factory functions
+- **Production Ready**: JWT secret validation, proper error handling, concurrency warnings
 
 # important-instruction-reminders
 Do what has been asked; nothing more, nothing less.

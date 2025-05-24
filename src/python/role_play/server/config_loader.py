@@ -41,6 +41,15 @@ class ConfigLoader:
             config_dir = project_root / "config"
         
         self.config_dir = Path(config_dir)
+        # Create config directory if it doesn't exist (for development)
+        if not self.config_dir.exists():
+            import warnings
+            warnings.warn(
+                f"Config directory '{self.config_dir}' does not exist. "
+                "Configuration will fall back to code defaults.",
+                UserWarning,
+                stacklevel=2
+            )
         self._loaded_config: Optional[ServerConfig] = None
     
     def load_environment_variables(self) -> None:
@@ -68,12 +77,17 @@ class ConfigLoader:
                     var_name = value[2:-1]
                     if ":" in var_name:
                         var_name, default = var_name.split(":", 1)
-                        return os.getenv(var_name, default)
+                        env_value = os.getenv(var_name, default)
                     else:
                         env_value = os.getenv(var_name)
                         if env_value is None:
                             raise ValueError(f"Required environment variable '{var_name}' not found")
-                        return env_value
+                    
+                    # Expand tilde (~) to home directory only for path variables
+                    if env_value and env_value.startswith("~") and var_name.endswith("_PATH"):
+                        env_value = os.path.expanduser(env_value)
+                    
+                    return env_value
                 # String interpolation for embedded variables
                 elif "${" in value:
                     result = value
@@ -87,12 +101,19 @@ class ConfigLoader:
                             env_value = os.getenv(var_expr)
                             if env_value is None:
                                 raise ValueError(f"Required environment variable '{var_expr}' not found")
+                        
+                        # Expand tilde (~) to home directory only for path variables
+                        if env_value and env_value.startswith("~") and var_name.endswith("_PATH"):
+                            env_value = os.path.expanduser(env_value)
+                        
                         result = result.replace(match.group(0), env_value)
                     return result
             elif isinstance(value, dict):
                 return {k: substitute_value(v) for k, v in value.items()}
             elif isinstance(value, list):
-                return [substitute_value(item) for item in value]
+                # Filter out empty strings after substitution
+                substituted_list = [substitute_value(item) for item in value]
+                return [item for item in substituted_list if item != ""]
             
             return value
         
@@ -113,13 +134,32 @@ class ConfigLoader:
             yaml.YAMLError: If YAML is invalid
         """
         config_file = self.config_dir / f"{environment.value}.yaml"
+        used_fallback = False
         
         if not config_file.exists():
             # Fall back to default config if environment-specific config doesn't exist
             config_file = self.config_dir / "default.yaml"
+            used_fallback = True
+            
             if not config_file.exists():
-                # If no YAML config exists, return empty dict to use code defaults
+                # If no YAML config exists, warn and use code defaults
+                import warnings
+                warnings.warn(
+                    f"No YAML configuration found for environment '{environment.value}' "
+                    f"or default.yaml in {self.config_dir}. Using Pydantic defaults.",
+                    UserWarning,
+                    stacklevel=3
+                )
                 return {}
+        
+        if used_fallback:
+            import warnings
+            warnings.warn(
+                f"Environment-specific config '{environment.value}.yaml' not found. "
+                f"Using default.yaml fallback.",
+                UserWarning,
+                stacklevel=3
+            )
         
         try:
             with open(config_file, 'r', encoding='utf-8') as f:
