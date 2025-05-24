@@ -1,151 +1,93 @@
-"""
-Configuration module for the FastAPI server
-"""
+"""Configuration system for the Role Play System server."""
+
+from pydantic import BaseModel, Field
+from typing import Optional, List, Dict, Any
 import os
-from pathlib import Path
-from dotenv import load_dotenv, find_dotenv
-from typing import Dict, Any
 
-class ServerConfig:
+
+class ServerConfig(BaseModel):
+    """Server configuration settings."""
+
+    # Server settings
+    host: str = Field(default="0.0.0.0", description="Server host address")
+    port: int = Field(default=8000, description="Server port")
+    debug: bool = Field(default=False, description="Enable debug mode")
+
+    # API settings
+    title: str = Field(default="Role Play System", description="API title")
+    description: str = Field(
+        default="Role Play System API", description="API description"
+    )
+    version: str = Field(default="1.0.0", description="API version")
+
+    # CORS settings
+    enable_cors: bool = Field(default=True, description="Enable CORS middleware")
+    cors_origins: List[str] = Field(
+        default=["http://localhost:3000", "http://localhost:5173"],
+        description="Allowed CORS origins",
+    )
+
+    # Authentication settings
+    jwt_secret_key: str = Field(
+        default_factory=lambda: os.getenv("JWT_SECRET_KEY", "development-secret-key"),
+        description="JWT secret key for token signing",
+    )
+    jwt_algorithm: str = Field(default="HS256", description="JWT algorithm")
+    jwt_expire_hours: int = Field(
+        default=24, description="JWT token expiration in hours"
+    )
+
+    # Storage settings
+    storage_type: str = Field(
+        default="file", description="Storage backend type (file, s3)"
+    )
+    storage_path: str = Field(
+        default_factory=lambda: os.path.expanduser(os.getenv("STORAGE_PATH", "./data")),
+        description="Storage path for file backend (must exist)",
+    )
+
+    # Handler configuration
+    enabled_handlers: Dict[str, str] = Field(
+        default={"user_account": "role_play.server.user_account_handler.UserAccountHandler"},
+        description="Map of handler names to their import paths"
+    )
+
+
+class DevelopmentConfig(ServerConfig):
+    """Development configuration with debug enabled."""
+
+    debug: bool = True
+    jwt_secret_key: str = "development-secret-key-not-for-production"
+
+
+class ProductionConfig(ServerConfig):
+    """Production configuration with secure defaults."""
+
+    debug: bool = False
+    enable_cors: bool = False  # Should be configured properly for production
+    cors_origins: List[str] = []
+
+    def __init__(self, **data):
+        super().__init__(**data)
+        # Ensure JWT secret is set in production
+        if self.jwt_secret_key == "development-secret-key":
+            raise ValueError("JWT_SECRET_KEY must be set in production environment")
+
+
+def get_config(environment: Optional[str] = None) -> ServerConfig:
     """
-    Server configuration class that handles loading environment variables
-    and providing configuration values for the FastAPI server
+    Get configuration based on environment.
+
+    Args:
+        environment: Environment name (development, production) or None for auto-detection
+
+    Returns:
+        ServerConfig: Configuration instance
     """
-    def __init__(self):
-        self.env_vars = self._load_env_variables()
-        self.debug = self.env_vars.get('debug', False)
-        self.environment = self.env_vars.get('environment', 'development')
-        self.project_root = Path(self.env_vars.get('project_root', ''))
-        
-        # API keys
-        self.openai_api_key = self.env_vars.get('openai_api_key')
-        self.anthropic_api_key = self.env_vars.get('anthropic_api_key')
-        self.google_api_key = self.env_vars.get('google_api_key')
-        
-        # Server settings
-        self.host = self.env_vars.get('HOST', '0.0.0.0')
-        self.port = int(self.env_vars.get('PORT', 8000))
-        
-        # Add version info
-        self.version = '0.1.0'
-        
-    def _find_project_root(self) -> Path:
-        """Find the project root directory"""
-        # Start from the directory containing this file and move up
-        current_path = Path(__file__).resolve()
-        
-        # Common project markers
-        markers = ['.git', '.env', 'pyproject.toml', 'setup.py']
-        
-        for directory in [current_path, *current_path.parents]:
-            if any((directory / marker).exists() for marker in markers):
-                return directory
-        
-        # Use python-dotenv's built-in function as backup
-        dotenv_path = find_dotenv(usecwd=True)
-        if dotenv_path:
-            return Path(dotenv_path).parent
-            
-        # Default to current working directory
-        return Path.cwd()
-        
-    def _load_env_variables(self) -> Dict[str, Any]:
-        """Load environment variables from .env file"""
-        # Find project root
-        project_root = self._find_project_root()
-        env_path = project_root / '.env'
-        
-        # Try loading from project root
-        loaded = load_dotenv(dotenv_path=env_path, override=True)
-        
-        # Fallback to find_dotenv
-        if not loaded:
-            loaded = load_dotenv(find_dotenv(usecwd=True), override=True)
-        
-        # Create dictionary of environment variables
-        env_vars = {
-            'openai_api_key': os.getenv('OPENAI_API_KEY'),
-            'anthropic_api_key': os.getenv('ANTHROPIC_API_KEY'),
-            'google_api_key': os.getenv('GOOGLE_API_KEY'),
-            'debug': os.getenv('DEBUG', 'False').lower() == 'true',
-            'environment': os.getenv('ENVIRONMENT', 'development'),
-            'project_root': str(project_root),
-            'HOST': os.getenv('HOST', '0.0.0.0'),
-            'PORT': os.getenv('PORT', '8000')
-        }
-        
-        return env_vars
-    
-    def validate_config(self) -> bool:
-        """
-        Validate essential configuration settings
-        
-        Returns:
-            bool: True if configuration is valid, False otherwise
-        """
-        required_keys = []
-        
-        # Check if we're in dev mode - then we need these keys
-        if self.environment == 'development':
-            # In development, we need at least one LLM API key
-            if not (self.openai_api_key or self.anthropic_api_key):
-                print("⚠️ Warning: No LLM API keys found. At least one of OPENAI_API_KEY or ANTHROPIC_API_KEY is recommended.")
-        
-        # Check for required keys in all environments
-        missing_keys = [key for key in required_keys if not getattr(self, key.lower(), None)]
-        
-        if missing_keys:
-            print(f"❌ Missing required configuration: {', '.join(missing_keys)}")
-            return False
-            
-        return True
-    
-    def get_api_info(self) -> Dict[str, bool]:
-        """
-        Get information about which APIs are configured
-        
-        Returns:
-            Dict[str, bool]: Dictionary with API availability
-        """
-        return {
-            'openai_available': bool(self.openai_api_key),
-            'anthropic_available': bool(self.anthropic_api_key),
-            'google_available': bool(self.google_api_key)
-        }
-    
-    def __str__(self) -> str:
-        """String representation of the configuration"""
-        # Safely mask API keys
-        masked_config = {}
-        for key, value in self.env_vars.items():
-            if key.endswith('_api_key') and value:
-                masked_config[key] = f"{value[:4]}{'*' * (len(value) - 4)}"
-            else:
-                masked_config[key] = value
-                
-        # Format the output in a readable way
-        lines = [
-            f"Environment: {self.environment}",
-            f"Debug mode: {self.debug}",
-            f"Project root: {self.project_root}",
-            f"Server: {self.host}:{self.port}",
-            "API Keys:",
-        ]
-        
-        for key in ['openai_api_key', 'anthropic_api_key', 'google_api_key']:
-            display_key = key.replace('_', ' ').title()
-            value = masked_config.get(key, 'Not set')
-            lines.append(f"  - {display_key}: {value}")
-            
-        return "\n".join(lines)
+    if environment is None:
+        environment = os.getenv("ENVIRONMENT", "development")
 
-# Create a singleton instance
-config = ServerConfig()
-
-if __name__ == "__main__":
-    # Test the configuration
-    print(config)
-    if config.validate_config():
-        print("✅ Configuration is valid")
+    if environment == "production":
+        return ProductionConfig()
     else:
-        print("❌ Configuration is invalid")
+        return DevelopmentConfig()

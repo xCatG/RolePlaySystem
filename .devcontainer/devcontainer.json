@@ -56,6 +56,7 @@
         // For Vue.js, PyCharm Professional has built-in support.
         // If you need specific linters or formatters as plugins, find their IDs.
         "org.jetbrains.junie",
+        "com.anthropic.code.plugin"
         //"com.intellij.mcpServer",
         //"com.intellij.ml.llm"
       ],
@@ -69,11 +70,15 @@
     }
   },
 
-  "forwardPorts": [5000, 5120, 5173],
+  "forwardPorts": [3000, 8000],
   "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}",
+  "mounts": [
+      "source=/home/yenchi/data/rps_dev,target=/home/vscode/data/rps_dev,type=bind"
+  ],
   "postCreateCommand": "sudo apt-get update && sudo apt-get install -y ffmpeg libsm6 libxext6",
   "postAttachCommand": {
-    "python-deps": "pip install --upgrade pip && pip install -r src/python/requirements.txt"
+    "python-deps": "pip install --upgrade pip && pip install -r src/python/requirements-all.txt",
+    "node-deps": "cd src/ts/role_play/ui && npm install"
   },
   "remoteUser": "vscode"
 }

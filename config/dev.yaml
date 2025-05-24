@@ -1,0 +1,37 @@
+# Development Configuration
+# Environment variables can override any setting using ${VAR_NAME:default_value} syntax
+
+# Server settings
+host: "${HOST:0.0.0.0}"
+port: "${PORT:8000}"
+debug: true
+
+# API settings
+title: "Role Play System - Development"
+description: "Role Play System API - Development Environment"
+version: "1.0.0-dev"
+
+# CORS settings
+enable_cors: true
+cors_origins:
+  - "http://localhost:3000"
+  - "http://localhost:5173"
+  - "http://localhost:8080"
+  - "${CORS_ORIGIN:}"  # Optional additional CORS origin via env var
+
+# Authentication settings
+jwt_secret_key: "${JWT_SECRET_KEY:development-secret-key}"
+jwt_algorithm: "HS256"
+jwt_expire_hours: "${JWT_EXPIRE_HOURS:24}"
+
+# Storage settings
+storage_type: "file"
+storage_path: "${STORAGE_PATH:./data}"
+
+# Handler configuration - map handler names to their import paths
+enabled_handlers:
+  user_account: "role_play.server.user_account_handler.UserAccountHandler"
+  # Add more handlers as they're implemented:
+  # chat: "role_play.chat.handler.ChatHandler"
+  # scripter: "role_play.scripter.handler.ScripterHandler"
+  # evaluator: "role_play.evaluator.handler.EvaluatorHandler"
