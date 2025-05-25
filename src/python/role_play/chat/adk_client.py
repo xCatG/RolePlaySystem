@@ -1,126 +1,144 @@
-"""ADK client for managing roleplay agents and conversations."""
+"""
+ADK client for managing roleplay agents and conversations in PRODUCTION.
+It fetches configuration from the dev_agents module but runs the LLM directly.
+"""
 import os
 import asyncio
 from typing import Dict, Optional, Any
-from google import adk
-from .agent_config import AgentConfig
 import logging
+
+# Use google.generativeai directly for production calls
+try:
+    import google.genai as genai
+    GENAI_AVAILABLE = True
+except ImportError:
+    GENAI_AVAILABLE = False
+
+# Import the config-exporting function from our new dev agent setup
+try:
+    from role_play.dev_agents.roleplay_agent.agent import get_production_config
+    CONFIG_EXPORT_AVAILABLE = True
+except ImportError:
+    CONFIG_EXPORT_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
 
+# --- ADKClient ---
 class ADKClient:
-    """Client for interacting with ADK agents."""
-    
+    """Client for running roleplay LLM calls based on dev config."""
+
     def __init__(self):
         """Initialize the ADK client."""
         self._initialized = False
-        self._current_agent = None
-        self._model = AgentConfig.get_model()
-        self._generation_config = AgentConfig.get_generation_config()
-    
+        self._current_config: Optional[Dict] = None
+        self._genai_model = None
+
     def initialize(self) -> None:
-        """Initialize ADK if not already initialized."""
-        if not self._initialized:
+        """Initialize Google GenAI if not already initialized."""
+        if not self._initialized and GENAI_AVAILABLE:
+            api_key = os.getenv("GOOGLE_AI_API_KEY")
+            if not api_key:
+                logger.error("GOOGLE_AI_API_KEY not set. Cannot initialize GenAI.")
+                raise ValueError("GOOGLE_AI_API_KEY environment variable not set")
+
             try:
-                AgentConfig.initialize_adk()
+                genai.configure(api_key=api_key)
                 self._initialized = True
-                logger.info("ADK initialized successfully")
+                logger.info("Google GenAI initialized successfully")
             except Exception as e:
-                logger.error(f"Failed to initialize ADK: {e}")
+                logger.error(f"Failed to initialize Google GenAI: {e}")
                 raise
-    
-    async def create_roleplay_agent(
-        self, 
-        character_data: Dict, 
-        scenario_data: Dict
-    ) -> Any:
-        """Create a new roleplay agent with the given character and scenario.
-        
-        Args:
-            character_data: Character information including system_prompt
-            scenario_data: Scenario information for context
-            
-        Returns:
-            Configured agent instance
+        elif not GENAI_AVAILABLE:
+             logger.warning("google.generativeai not installed. Using placeholder responses.")
+
+
+    def create_roleplay_session(self, character_id: str, scenario_id: str) -> bool:
+        """
+        Loads the configuration for a given character and scenario.
+        Returns True if successful, False otherwise.
         """
         self.initialize()
-        
-        # Create the system prompt
-        system_prompt = AgentConfig.create_agent_prompt(character_data, scenario_data)
-        
-        # Create agent with configuration
-        # Note: In production ADK, this would create a proper agent instance
-        # For now, we'll store the configuration for use in generate_response
-        self._current_agent = {
-            "system_prompt": system_prompt,
-            "character_name": character_data.get("name", "Character"),
-            "scenario_name": scenario_data.get("name", "Scenario")
-        }
-        
-        logger.info(f"Created roleplay agent for {self._current_agent['character_name']}")
-        return self._current_agent
-    
+
+        if not CONFIG_EXPORT_AVAILABLE:
+            logger.error("Cannot load production config, dev_agent module not found.")
+            self._current_config = None
+            return False
+
+        config = get_production_config(character_id, scenario_id)
+
+        if not config:
+            logger.error(f"Could not find config for char {character_id}, scenario {scenario_id}")
+            self._current_config = None
+            return False
+
+        self._current_config = config
+        logger.info(f"Loaded production config for: {config.get('character_name')}")
+
+        # Prepare the genai model if available
+        if GENAI_AVAILABLE and self._initialized:
+            try:
+                self._genai_model = genai.GenerativeModel(
+                    self._current_config['model'],
+                    system_instruction=self._current_config['system_prompt']
+                    )
+            except Exception as e:
+                logger.error(f"Failed to create GenerativeModel: {e}")
+                self._genai_model = None
+
+        return True
+
+
     async def generate_response(
-        self, 
+        self,
         user_message: str,
         session_context: Optional[Dict] = None
     ) -> str:
-        """Generate a response from the current agent.
-        
-        Args:
-            user_message: The user's message
-            session_context: Optional session context (previous messages, etc.)
-            
-        Returns:
-            The agent's response
         """
-        if not self._current_agent:
-            raise ValueError("No agent created. Call create_roleplay_agent first.")
-        
-        try:
-            # In a real ADK implementation, this would use the ADK's generate method
-            # For POC, we'll simulate with a placeholder that shows the flow
-            logger.info(f"Generating response for: {user_message[:50]}...")
-            
-            # TODO: Replace with actual ADK generation call
-            # response = await adk.generate(
-            #     prompt=user_message,
-            #     system_prompt=self._current_agent["system_prompt"],
-            #     **self._generation_config
-            # )
-            
-            # POC placeholder response
-            character_name = self._current_agent["character_name"].split(" - ")[0]
-            response = f"[{character_name} responds in character to: {user_message}]"
-            
-            return response
-            
-        except Exception as e:
-            logger.error(f"Failed to generate response: {e}")
-            raise
-    
-    def get_current_agent_info(self) -> Optional[Dict]:
-        """Get information about the current agent.
-        
-        Returns:
-            Agent information or None if no agent is active
+        Generate a response using the loaded production config.
         """
-        return self._current_agent
-    
+        if not self._current_config:
+            raise ValueError("No session created. Call create_roleplay_session first.")
+
+        # --- Use Google GenAI if available ---
+        if self._genai_model:
+            try:
+                # Build conversation history (simple format for genai)
+                history = []
+                if session_context and "messages" in session_context:
+                    for msg in session_context["messages"][-10:]: # Last 10
+                        if msg.get("type") == "message":
+                            role = "user" if msg["role"] == "participant" else "model"
+                            history.append({"role": role, "parts": [{"text": msg["content"]}]})
+
+                # Create a chat session with history
+                chat_session = self._genai_model.start_chat(history=history)
+
+                # Send message and get response
+                response = await chat_session.send_message_async(user_message)
+                logger.info(f"Generated GenAI response for: {user_message[:50]}...")
+                return response.text
+
+            except Exception as e:
+                logger.error(f"GenAI generation failed: {e}. Falling back to placeholder.")
+
+
+        # --- Fallback Placeholder Response ---
+        character_name = self._current_config.get("character_name", "Character")
+        logger.warning(f"Using placeholder response for: {user_message[:50]}...")
+        return f"[{character_name.split(' - ')[0]} responds in character to: {user_message}]"
+
+
     def reset(self) -> None:
-        """Reset the client, clearing any current agent."""
-        self._current_agent = None
+        """Reset the client, clearing any current config."""
+        self._current_config = None
+        self._genai_model = None
         logger.info("ADK client reset")
 
-# Global client instance (created per handler in production)
+# --- Global Client Instance ---
 _adk_client = None
 
 def get_adk_client() -> ADKClient:
-    """Get or create the ADK client instance.
-    
-    Returns:
-        ADK client instance
-    """
+    """Get or create the ADK client instance."""
     global _adk_client
     if _adk_client is None:
         _adk_client = ADKClient()
