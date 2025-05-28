@@ -321,6 +321,14 @@
   - `GET /chat/session/{id}/export-text` - Export session as text
   - `GET /evaluation/sessions` - List sessions for evaluation
   - `GET /evaluation/session/{id}/download` - Download session transcript
+- **Data Configuration** (Updated 2025-05-28):
+  - Created `data/scenarios.json` with 2 scenarios and 4 characters
+  - ContentLoader successfully loads static content from project root
+  - Note: In production, this would be environment-specific data in a database
+- **Testing** (Updated 2025-05-28):
+  - Added comprehensive unit tests for ContentLoader (16 test cases, 100% coverage)
+  - Tests use mocking to avoid file system dependencies
+  - Test location: `test/python/unit/chat/test_content_loader.py`
 - **Next Steps**:
   - Replace ADK placeholder with actual Google ADK integration
   - Add WebSocket support for real-time chat (Phase 4)
