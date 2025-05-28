@@ -8,7 +8,7 @@ class AgentConfig:
     
     DEFAULT_MODEL = "gemini-2.0-flash"
     DEFAULT_TEMPERATURE = 0.7
-    DEFAULT_MAX_TOKENS = 1000
+    DEFAULT_MAX_TOKENS = 2000
     
     @classmethod
     def get_model(cls) -> str:

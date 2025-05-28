@@ -38,15 +38,15 @@ class ChatHandler(BaseHandler):
         if self._router is None:
             self._router = APIRouter()
 
-        self._router.get("/content/scenarios",                 tags=["Content"], response_model=ScenarioListResponse)(self.get_scenarios)
-        self._router.get("/content/scenarios/{scenario_id}/characters",                tags=["Content"], response_model=CharacterListResponse)(
-            self.get_scenario_characters)
+        self._router.get("/content/scenarios", tags=["Content"], response_model=ScenarioListResponse)(self.get_scenarios)
+        self._router.get("/content/scenarios/{scenario_id}/characters", tags=["Content"],
+                         response_model=CharacterListResponse)(self.get_scenario_characters)
 
         # Session endpoints
-        self._router.post("/session",tags=["Session"], response_model=CreateSessionResponse)(self.create_session)
-        self._router.get("/sessions",tags=["Session"], response_model=SessionListResponse)(self.get_sessions)
-        self._router.post("/session/{session_id}/message",tags=["Session"], response_model=ChatMessageResponse)(self.send_message)
-        self._router.get("/session/{session_id}/export-text",tags=["Session"])(self.export_session_text)
+        self._router.post("/session", tags=["Session"], response_model=CreateSessionResponse)(self.create_session)
+        self._router.get("/sessions", tags=["Session"], response_model=SessionListResponse)(self.get_sessions)
+        self._router.post("/session/{session_id}/message", tags=["Session"], response_model=ChatMessageResponse)(self.send_message)
+        self._router.get("/session/{session_id}/export-text", tags=["Session"])(self.export_session_text)
 
         return self._router
 
