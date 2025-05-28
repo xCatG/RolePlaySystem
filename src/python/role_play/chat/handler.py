@@ -1,8 +1,9 @@
 """Chat handler for roleplay conversations."""
 from typing import List, Annotated
 from fastapi import HTTPException, Depends, APIRouter
+from fastapi.responses import PlainTextResponse
 from ..server.base_handler import BaseHandler
-from ..server.dependencies import get_current_user
+from ..server.dependencies import require_user_or_higher
 from ..common.models import User
 from .models import (
     CreateSessionRequest,
@@ -54,7 +55,7 @@ class ChatHandler(BaseHandler):
     def prefix(self) -> str:
         return "/chat"
 
-    async def get_scenarios(self, current_user: Annotated[User, Depends(get_current_user)]) -> ScenarioListResponse:
+    async def get_scenarios(self, current_user: Annotated[User, Depends(require_user_or_higher)]) -> ScenarioListResponse:
         """Get all available scenarios.
         
         Args:
@@ -87,7 +88,7 @@ class ChatHandler(BaseHandler):
     async def get_scenario_characters(
         self, 
         scenario_id: str,
-        current_user: Annotated[User, Depends(get_current_user)]
+        current_user: Annotated[User, Depends(require_user_or_higher)]
     ) -> CharacterListResponse:
         """Get characters compatible with a scenario.
         
@@ -128,7 +129,7 @@ class ChatHandler(BaseHandler):
     async def create_session(
         self,
         request: CreateSessionRequest,
-        current_user: Annotated[User, Depends(get_current_user)]
+        current_user: Annotated[User, Depends(require_user_or_higher)]
     ) -> CreateSessionResponse:
         """Create a new chat session.
         
@@ -167,7 +168,15 @@ class ChatHandler(BaseHandler):
             )
             
             # Initialize ADK agent for the session
-            await self.adk_client.create_roleplay_agent(character, scenario)
+            success = self.adk_client.create_roleplay_session(
+                request.character_id, 
+                request.scenario_id
+            )
+            if not success:
+                raise HTTPException(
+                    status_code=500, 
+                    detail="Failed to initialize roleplay agent"
+                )
             
             return CreateSessionResponse(
                 success=True,
@@ -183,7 +192,7 @@ class ChatHandler(BaseHandler):
             logger.error(f"Failed to create session: {e}")
             raise HTTPException(status_code=500, detail="Failed to create session")
     
-    async def get_sessions(self, current_user: Annotated[User, Depends(get_current_user)]) -> SessionListResponse:
+    async def get_sessions(self, current_user: Annotated[User, Depends(require_user_or_higher)]) -> SessionListResponse:
         """Get all sessions for the current user.
         
         Args:
@@ -221,7 +230,7 @@ class ChatHandler(BaseHandler):
         self,
         session_id: str,
         request: ChatMessageRequest,
-        current_user: Annotated[User, Depends(get_current_user)]
+        current_user: Annotated[User, Depends(require_user_or_higher)]
     ) -> ChatMessageResponse:
         """Send a message in a chat session.
         
@@ -279,8 +288,8 @@ class ChatHandler(BaseHandler):
     async def export_session_text(
         self,
         session_id: str,
-        current_user: Annotated[User, Depends(get_current_user)]
-    ) -> str:
+        current_user: Annotated[User, Depends(require_user_or_higher)]
+    ) -> PlainTextResponse:
         """Export session as text file.
         
         Args:
@@ -303,16 +312,14 @@ class ChatHandler(BaseHandler):
             # Export as text
             text_content = self.session_service.export_session_text(session_id)
             
-            # Return as plain text response
-            # from fastapi.responses import PlainTextResponse
-            # return PlainTextResponse(
-            #     content=text_content,
-            #     media_type="text/plain",
-            #     headers={
-            #         "Content-Disposition": f"attachment; filename=session_{session_id}.txt"
-            #     }
-            # )
-            return text_content
+            # Return as plain text response with download headers
+            return PlainTextResponse(
+                content=text_content,
+                media_type="text/plain",
+                headers={
+                    "Content-Disposition": f"attachment; filename=session_{session_id}.txt"
+                }
+            )
 
         except HTTPException:
             raise

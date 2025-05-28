@@ -64,7 +64,7 @@
 import { defineComponent, ref, computed, onMounted } from 'vue';
 import { chatApi } from '../services/chatApi';
 import ChatWindow from './ChatWindow.vue';
-import type { Scenario, Character, Session } from '../types/chat';
+import type { ScenarioInfo, CharacterInfo, SessionInfo, CreateSessionResponse } from '../types/chat';
 
 export default defineComponent({
   name: 'Chat',
@@ -72,13 +72,13 @@ export default defineComponent({
     ChatWindow
   },
   setup() {
-    const scenarios = ref<Scenario[]>([]);
-    const characters = ref<Character[]>([]);
-    const sessions = ref<Session[]>([]);
+    const scenarios = ref<ScenarioInfo[]>([]);
+    const characters = ref<CharacterInfo[]>([]);
+    const sessions = ref<SessionInfo[]>([]);
     const selectedScenarioId = ref('');
     const selectedCharacterId = ref('');
     const participantName = ref('');
-    const activeSession = ref<Session | null>(null);
+    const activeSession = ref<SessionInfo | null>(null);
     const loading = ref(false);
     const error = ref('');
 
@@ -126,12 +126,24 @@ export default defineComponent({
     const startSession = async () => {
       try {
         loading.value = true;
-        const session = await chatApi.createSession({
+        const createResponse = await chatApi.createSession({
           scenario_id: selectedScenarioId.value,
           character_id: selectedCharacterId.value,
           participant_name: participantName.value
         });
-        activeSession.value = session;
+        
+        // Convert CreateSessionResponse to SessionInfo for consistent UI handling
+        const sessionInfo: SessionInfo = {
+          session_id: createResponse.session_id,
+          scenario_name: createResponse.scenario_name,
+          character_name: createResponse.character_name,
+          participant_name: participantName.value,
+          created_at: new Date().toISOString(),
+          message_count: 0,
+          jsonl_filename: createResponse.jsonl_filename
+        };
+        
+        activeSession.value = sessionInfo;
       } catch (err) {
         error.value = 'Failed to create session';
         console.error(err);
@@ -140,7 +152,7 @@ export default defineComponent({
       }
     };
 
-    const loadSession = (session: Session) => {
+    const loadSession = (session: SessionInfo) => {
       activeSession.value = session;
     };
 
@@ -149,7 +161,7 @@ export default defineComponent({
       loadInitialData(); // Refresh sessions list
     };
 
-    const getSessionLabel = (session: Session) => {
+    const getSessionLabel = (session: SessionInfo) => {
       return `${session.participant_name} - ${session.scenario_name} (${new Date(session.created_at).toLocaleDateString()})`;
     };
 

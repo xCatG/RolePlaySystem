@@ -1,5 +1,13 @@
-"""Authentication and authorization decorators for handlers."""
+"""Authentication and authorization decorators for handlers.
 
+DEPRECATED: This file is deprecated and should be removed.
+Use the RoleChecker dependency pattern in dependencies.py instead.
+
+TODO: Remove this file and related tests after confirming no handlers use these decorators.
+The new FastAPI-native approach using Depends(require_user_or_higher) is preferred.
+"""
+
+import warnings
 from functools import wraps
 from typing import Callable, Optional, Set, Union
 
@@ -30,6 +38,13 @@ class AuthRequired:
     
     def __call__(self, func: Callable) -> Callable:
         """Mark the function as requiring authentication."""
+        warnings.warn(
+            f"@auth_required decorator on {func.__name__} is deprecated. "
+            "Use RoleChecker dependencies instead: Depends(require_user_or_higher)",
+            DeprecationWarning,
+            stacklevel=2
+        )
+        
         @wraps(func)
         def wrapper(*args, **kwargs):
             return func(*args, **kwargs)
@@ -42,11 +57,12 @@ class AuthRequired:
         return wrapper
 
 
-# Convenience decorators
-auth_required = AuthRequired()  # Any authenticated user
-admin_only = AuthRequired(UserRole.ADMIN)  # Admin only
-scripter_only = AuthRequired(UserRole.SCRIPTER)  # Scripter only
-scripter_or_admin = AuthRequired([UserRole.ADMIN, UserRole.SCRIPTER])  # Scripter or Admin
+# Convenience decorators - DEPRECATED
+# These will show warnings when used as decorators
+auth_required = AuthRequired()  # Any authenticated user - DEPRECATED: Use Depends(require_user_or_higher)
+admin_only = AuthRequired(UserRole.ADMIN)  # Admin only - DEPRECATED: Use Depends(require_admin)
+scripter_only = AuthRequired(UserRole.SCRIPTER)  # Scripter only - DEPRECATED: Use Depends(require_scripter_or_admin)
+scripter_or_admin = AuthRequired([UserRole.ADMIN, UserRole.SCRIPTER])  # Scripter or Admin - DEPRECATED: Use Depends(require_scripter_or_admin)
 
 
 def public(func: Callable) -> Callable:
@@ -54,6 +70,13 @@ def public(func: Callable) -> Callable:
     
     This is explicit documentation that the endpoint is intentionally public.
     """
+    warnings.warn(
+        f"@public decorator on {func.__name__} is deprecated. "
+        "Public endpoints don't need decorators in FastAPI - just omit auth dependencies",
+        DeprecationWarning,
+        stacklevel=2
+    )
+    
     @wraps(func)
     def wrapper(*args, **kwargs):
         return func(*args, **kwargs)

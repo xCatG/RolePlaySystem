@@ -52,13 +52,13 @@
 <script lang="ts">
 import { defineComponent, ref, nextTick, PropType } from 'vue';
 import { chatApi } from '../services/chatApi';
-import type { Session, Message } from '../types/chat';
+import type { SessionInfo, Message } from '../types/chat';
 
 export default defineComponent({
   name: 'ChatWindow',
   props: {
     session: {
-      type: Object as PropType<Session>,
+      type: Object as PropType<SessionInfo>,
       required: true
     }
   },
