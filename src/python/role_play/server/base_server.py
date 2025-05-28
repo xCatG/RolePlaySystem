@@ -3,7 +3,11 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Type, List
+from contextlib import asynccontextmanager
 from .base_handler import BaseHandler
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class BaseServer:
@@ -29,16 +33,31 @@ class BaseServer:
             version: API version
             enable_cors: Whether to enable CORS middleware
         """
+        self._handlers: List[BaseHandler] = []
+        
+        @asynccontextmanager
+        async def lifespan(app: FastAPI):
+            # Startup
+            logger.info("Server starting up...")
+            yield
+            # Shutdown - cleanup handlers
+            logger.info("Server shutting down...")
+            for handler in self._handlers:
+                try:
+                    await handler.cleanup()
+                    logger.info(f"Cleaned up {handler.__class__.__name__}")
+                except Exception as e:
+                    logger.error(f"Error cleaning up handler {handler.__class__.__name__}: {e}")
+        
         self.app = FastAPI(
             title=title,
             description=description,
             version=version,
+            lifespan=lifespan
         )
         
         if enable_cors:
             self._setup_cors()
-        
-        self._handlers: List[BaseHandler] = []
     
     def _setup_cors(self):
         """Setup CORS middleware for frontend development."""
