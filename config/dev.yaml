@@ -31,7 +31,7 @@ storage_path: "${STORAGE_PATH:./data}"
 # Handler configuration - map handler names to their import paths
 enabled_handlers:
   user_account: "role_play.server.user_account_handler.UserAccountHandler"
+  chat: "role_play.chat.handler.ChatHandler"
+  evaluation: "role_play.evaluation.handler.EvaluationHandler"
   # Add more handlers as they're implemented:
-  # chat: "role_play.chat.handler.ChatHandler"
   # scripter: "role_play.scripter.handler.ScripterHandler"
-  # evaluator: "role_play.evaluator.handler.EvaluatorHandler"

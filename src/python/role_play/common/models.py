@@ -107,3 +107,8 @@ class SessionData(BaseModel):
     created_at: datetime
     last_activity: datetime
     metadata: Dict[str, Any] = Field(default_factory=dict)
+
+class BaseResponse(BaseModel):
+    """Base fields for all API responses."""
+    success: bool = True
+    message: Optional[str] = None  # Human-readable message (useful for clients)
