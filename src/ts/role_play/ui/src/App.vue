@@ -3,12 +3,18 @@
     <h1>Role Play System</h1>
     
     <!-- Logged in view -->
-    <div v-if="user" class="user-info">
-      <h2>Welcome, {{ user.username }}!</h2>
-      <p><strong>Email:</strong> {{ user.email }}</p>
-      <p><strong>Role:</strong> {{ user.role }}</p>
-      <p><strong>User ID:</strong> {{ user.id }}</p>
-      <button @click="logout" class="logout-btn">Logout</button>
+    <div v-if="user">
+      <div class="user-header">
+        <div class="user-info">
+          <h2>Welcome, {{ user.username }}!</h2>
+          <p><strong>Email:</strong> {{ user.email }}</p>
+          <p><strong>Role:</strong> {{ user.role }}</p>
+        </div>
+        <button @click="logout" class="logout-btn">Logout</button>
+      </div>
+      
+      <!-- Chat Component -->
+      <Chat />
     </div>
     
     <!-- Login/Register view -->
@@ -104,9 +110,13 @@
 
 <script>
 import axios from 'axios'
+import Chat from './components/Chat.vue'
 
 export default {
   name: 'App',
+  components: {
+    Chat
+  },
   data() {
     return {
       activeTab: 'login',
@@ -114,7 +124,7 @@ export default {
       error: '',
       success: '',
       user: null,
-      token: localStorage.getItem('auth_token'),
+      token: localStorage.getItem('token'),
       loginForm: {
         email: '',
         password: ''
@@ -148,7 +158,7 @@ export default {
         
         this.token = response.data.access_token
         this.user = response.data.user
-        localStorage.setItem('auth_token', this.token)
+        localStorage.setItem('token', this.token)
         
         this.success = 'Login successful!'
         this.loginForm = { email: '', password: '' }
@@ -174,7 +184,7 @@ export default {
         
         this.token = response.data.access_token
         this.user = response.data.user
-        localStorage.setItem('auth_token', this.token)
+        localStorage.setItem('token', this.token)
         
         this.success = 'Registration successful!'
         this.registerForm = { username: '', email: '', password: '' }
@@ -203,7 +213,7 @@ export default {
     logout() {
       this.user = null
       this.token = null
-      localStorage.removeItem('auth_token')
+      localStorage.removeItem('token')
       this.success = 'Logged out successfully'
       this.error = ''
     }
@@ -212,6 +222,24 @@ export default {
 </script>
 
 <style>
+.user-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 30px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid #e9ecef;
+}
+
+.user-info h2 {
+  margin: 0 0 10px 0;
+}
+
+.user-info p {
+  margin: 5px 0;
+  color: #6c757d;
+}
+
 .logout-btn {
   background-color: #dc3545;
 }

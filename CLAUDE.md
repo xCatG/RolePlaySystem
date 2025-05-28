@@ -116,6 +116,9 @@
 - [ ] Create `role_play/auth/handler.py` - AuthHandler with login/register/OAuth endpoints
 - [ ] Create `role_play/auth/models.py` - LoginRequest, RegisterRequest, OAuth response models
 - [ ] Create `role_play/auth/oauth_client.py` - OAuth client wrapper for multiple providers
+- [ ] Revisit role auth decorator compatibility with FastAPI
+- [ ] Figure out how to use FastAPI `Depends()` correctly
+- [ ] Sync data types between backend and frontend
 
 ### Chat Module (ADK Integration) - POC Approach
 - [x] Create `role_play/dev_agents/roleplay_agent/` - Development agent for `adk web` testing
@@ -358,3 +361,4 @@ NEVER create files unless they're absolutely necessary for achieving your goal.
 ALWAYS prefer editing an existing file to creating a new one.
 NEVER proactively create documentation files (*.md) or README files. Only create documentation files if explicitly requested by the User.
 Please clean up any files that you've created for testing or debugging purposes after they're no longer needed.
+ALWAYS sync the data type for Frontend (ts) with backend (python pydantic) with making changes to keep them in sync

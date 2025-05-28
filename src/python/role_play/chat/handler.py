@@ -1,9 +1,9 @@
 """Chat handler for roleplay conversations."""
-from typing import List, Optional
+from typing import List, Annotated
 from fastapi import HTTPException, Depends, APIRouter
 from ..server.base_handler import BaseHandler
-from ..server.auth_decorators import auth_required
-from ..common.auth import TokenData
+from ..server.dependencies import get_current_user
+from ..common.models import User
 from .models import (
     CreateSessionRequest,
     CreateSessionResponse,
@@ -52,10 +52,9 @@ class ChatHandler(BaseHandler):
 
     @property
     def prefix(self) -> str:
-        return ""
+        return "/chat"
 
-    @auth_required
-    async def get_scenarios(self, token_data: TokenData = Depends()) -> ScenarioListResponse:
+    async def get_scenarios(self, current_user: Annotated[User, Depends(get_current_user)]) -> ScenarioListResponse:
         """Get all available scenarios.
         
         Args:
@@ -85,11 +84,10 @@ class ChatHandler(BaseHandler):
             logger.error(f"Failed to get scenarios: {e}")
             raise HTTPException(status_code=500, detail="Failed to load scenarios")
     
-    @auth_required
     async def get_scenario_characters(
         self, 
         scenario_id: str,
-        token_data: TokenData = Depends()
+        current_user: Annotated[User, Depends(get_current_user)]
     ) -> CharacterListResponse:
         """Get characters compatible with a scenario.
         
@@ -127,11 +125,10 @@ class ChatHandler(BaseHandler):
             logger.error(f"Failed to get scenario characters: {e}")
             raise HTTPException(status_code=500, detail="Failed to load characters")
     
-    @auth_required
     async def create_session(
         self,
         request: CreateSessionRequest,
-        token_data: TokenData = Depends()
+        current_user: Annotated[User, Depends(get_current_user)]
     ) -> CreateSessionResponse:
         """Create a new chat session.
         
@@ -161,7 +158,7 @@ class ChatHandler(BaseHandler):
             
             # Create session
             session_data = self.session_service.create_session(
-                user_id=token_data.user_id,
+                user_id=current_user.id,
                 participant_name=request.participant_name,
                 scenario_id=request.scenario_id,
                 scenario_name=scenario["name"],
@@ -186,8 +183,7 @@ class ChatHandler(BaseHandler):
             logger.error(f"Failed to create session: {e}")
             raise HTTPException(status_code=500, detail="Failed to create session")
     
-    @auth_required
-    async def get_sessions(self, token_data: TokenData = Depends()) -> SessionListResponse:
+    async def get_sessions(self, current_user: Annotated[User, Depends(get_current_user)]) -> SessionListResponse:
         """Get all sessions for the current user.
         
         Args:
@@ -197,7 +193,7 @@ class ChatHandler(BaseHandler):
             List of user's sessions
         """
         try:
-            sessions = self.session_service.get_user_sessions(token_data.user_id)
+            sessions = self.session_service.get_user_sessions(current_user.id)
             
             session_infos = [
                 SessionInfo(
@@ -221,12 +217,11 @@ class ChatHandler(BaseHandler):
             logger.error(f"Failed to get sessions: {e}")
             raise HTTPException(status_code=500, detail="Failed to get sessions")
     
-    @auth_required
     async def send_message(
         self,
         session_id: str,
         request: ChatMessageRequest,
-        token_data: TokenData = Depends()
+        current_user: Annotated[User, Depends(get_current_user)]
     ) -> ChatMessageResponse:
         """Send a message in a chat session.
         
@@ -245,7 +240,7 @@ class ChatHandler(BaseHandler):
                 raise HTTPException(status_code=404, detail="Session not found")
             
             # Verify user owns the session
-            if session["user_id"] != token_data.user_id:
+            if session["user_id"] != current_user.id:
                 raise HTTPException(status_code=403, detail="Access denied")
             
             # Add participant message
@@ -281,11 +276,10 @@ class ChatHandler(BaseHandler):
             logger.error(f"Failed to send message: {e}")
             raise HTTPException(status_code=500, detail="Failed to send message")
     
-    @auth_required
     async def export_session_text(
         self,
         session_id: str,
-        token_data: TokenData = Depends()
+        current_user: Annotated[User, Depends(get_current_user)]
     ) -> str:
         """Export session as text file.
         
@@ -303,7 +297,7 @@ class ChatHandler(BaseHandler):
                 raise HTTPException(status_code=404, detail="Session not found")
             
             # Verify user owns the session
-            if session["user_id"] != token_data.user_id:
+            if session["user_id"] != current_user.id:
                 raise HTTPException(status_code=403, detail="Access denied")
             
             # Export as text

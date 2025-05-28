@@ -5,7 +5,7 @@ from typing import Callable, Optional, Set, Union
 
 from fastapi import HTTPException, status
 
-from role_play.common.models import UserRole
+from ..common.models import UserRole
 
 
 class AuthRequired:

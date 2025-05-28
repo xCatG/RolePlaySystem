@@ -260,5 +260,9 @@ def get_session_service() -> SessionService:
     """
     global _session_service
     if _session_service is None:
-        _session_service = SessionService()
+        from ..server.config_loader import get_config
+        config = get_config()
+        # Use sessions subdirectory under the configured storage path
+        storage_path = Path(config.storage_path).expanduser() / "sessions"
+        _session_service = SessionService(str(storage_path))
     return _session_service
