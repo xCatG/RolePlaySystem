@@ -3,11 +3,11 @@
 import os
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from typing import Annotated
+from typing import Annotated, Set
 
 from ..common.auth import AuthManager
 from ..common.storage import StorageBackend, FileStorage
-from ..common.models import User
+from ..common.models import User, UserRole
 from ..common.exceptions import AuthenticationError, TokenExpiredError
 from .config_loader import get_config
 
@@ -106,4 +106,39 @@ async def get_current_user(
             detail="Invalid token",
             headers={"WWW-Authenticate": "Bearer"},
         )
+
+
+class RoleChecker:
+    """Dependency factory for checking user roles."""
+
+    def __init__(self, required_roles: Set[UserRole]):
+        self.required_roles = required_roles
+
+    async def __call__(self, user: Annotated[User, Depends(get_current_user)]) -> User:
+        """
+        Checks if the current user has the required role(s).
+        
+        Args:
+            user: Current authenticated user
+            
+        Returns:
+            User: The user if they have required permissions
+            
+        Raises:
+            HTTPException: 403 if roles are insufficient
+        """
+        has_permission = any(user.role.has_permission(req_role) for req_role in self.required_roles)
+        
+        if not has_permission:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Insufficient permissions. Requires one of: {[r.value for r in self.required_roles]}"
+            )
+        return user
+
+
+# Create specific dependency instances for common role checks
+require_admin = RoleChecker({UserRole.ADMIN})
+require_scripter_or_admin = RoleChecker({UserRole.SCRIPTER, UserRole.ADMIN})
+require_user_or_higher = RoleChecker({UserRole.USER, UserRole.SCRIPTER, UserRole.ADMIN})
 

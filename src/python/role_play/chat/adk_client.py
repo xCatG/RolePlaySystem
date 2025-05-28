@@ -36,10 +36,10 @@ class ADKClient:
     def initialize(self) -> None:
         """Initialize Google GenAI if not already initialized."""
         if not self._initialized and GENAI_AVAILABLE:
-            api_key = os.getenv("GOOGLE_AI_API_KEY")
+            api_key = os.getenv("GOOGLE_API_KEY")
             if not api_key:
-                logger.error("GOOGLE_AI_API_KEY not set. Cannot initialize GenAI.")
-                raise ValueError("GOOGLE_AI_API_KEY environment variable not set")
+                logger.error("GOOGLE_API_KEY not set. Cannot initialize GenAI.")
+                raise ValueError("GOOGLE_API_KEY environment variable not set")
 
             try:
                 genai.configure(api_key=api_key)
@@ -57,7 +57,9 @@ class ADKClient:
         Loads the configuration for a given character and scenario.
         Returns True if successful, False otherwise.
         """
-        self.initialize()
+        # Initialize only if not already done (idempotent)
+        if not self._initialized:
+            self.initialize()
 
         if not CONFIG_EXPORT_AVAILABLE:
             logger.error("Cannot load production config, dev_agent module not found.")
@@ -138,8 +140,20 @@ class ADKClient:
 _adk_client = None
 
 def get_adk_client() -> ADKClient:
-    """Get or create the ADK client instance."""
+    """Get or create the ADK client instance.
+    
+    Initializes the client on first access for better startup performance.
+    
+    TODO: For production, consider moving this to FastAPI lifespan events
+    to initialize during server startup and handle graceful shutdown.
+    """
     global _adk_client
     if _adk_client is None:
         _adk_client = ADKClient()
+        # Initialize GenAI immediately to catch configuration errors early
+        try:
+            _adk_client.initialize()
+        except Exception as e:
+            logger.warning(f"Failed to initialize ADK client at startup: {e}")
+            # Continue with uninitialized client - it will use placeholder responses
     return _adk_client

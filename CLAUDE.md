@@ -116,6 +116,9 @@
 - [ ] Create `role_play/auth/handler.py` - AuthHandler with login/register/OAuth endpoints
 - [ ] Create `role_play/auth/models.py` - LoginRequest, RegisterRequest, OAuth response models
 - [ ] Create `role_play/auth/oauth_client.py` - OAuth client wrapper for multiple providers
+- [x] ~~Revisit role auth decorator compatibility with FastAPI~~ - **COMPLETED**: Replaced with RoleChecker dependency pattern
+- [x] ~~Figure out how to use FastAPI `Depends()` correctly~~ - **COMPLETED**: Implemented RoleChecker with proper Depends() usage
+- [x] ~~Sync data types between backend and frontend~~ - **COMPLETED**: TypeScript types now exactly match Python Pydantic models
 
 ### Chat Module (ADK Integration) - POC Approach
 - [x] Create `role_play/dev_agents/roleplay_agent/` - Development agent for `adk web` testing
@@ -189,6 +192,16 @@
 - [ ] Create `test/python/e2e/api/` - End-to-end API workflow tests
 - [x] Set up pytest configuration with coverage reporting and async support
 - [x] Create `test/README.md` - Comprehensive testing guide and documentation
+
+### Code Cleanup (Technical Debt)
+- [ ] **Remove deprecated auth_decorators.py** - Now deprecated in favor of RoleChecker dependency pattern
+  - [ ] Remove `role_play/server/auth_decorators.py` file
+  - [ ] Remove `test/python/unit/server/test_auth_decorators.py` tests
+  - [ ] Update remaining imports in:
+    - [ ] `role_play/server/user_account_handler.py` - Remove unused import
+    - [ ] `role_play/evaluation/handler.py` - Replace with RoleChecker dependencies
+    - [ ] `role_play/server/example_role_usage.py` - Update examples to use new pattern
+- [ ] **Validate no usage of deprecated decorators** - Ensure no @auth_required, @admin_only, @scripter_only remain in codebase
 
 ### Documentation
 - [ ] Update README.md with architecture overview
@@ -358,3 +371,4 @@ NEVER create files unless they're absolutely necessary for achieving your goal.
 ALWAYS prefer editing an existing file to creating a new one.
 NEVER proactively create documentation files (*.md) or README files. Only create documentation files if explicitly requested by the User.
 Please clean up any files that you've created for testing or debugging purposes after they're no longer needed.
+ALWAYS sync the data type for Frontend (ts) with backend (python pydantic) with making changes to keep them in sync
