@@ -5,6 +5,7 @@ from fastapi.responses import PlainTextResponse
 from google.adk.runners import Runner
 from google.adk.agents import Agent
 from google.adk.sessions import InMemorySessionService
+from google.genai.types import Content, Part
 from datetime import datetime
 import logging
 import os
@@ -84,9 +85,7 @@ class ChatHandler(BaseHandler):
             name=f"roleplay_{character['id']}_{scenario['id']}",
             model=DEFAULT_MODEL,
             description=f"Roleplay agent for {character['name']} in {scenario['name']}",
-            instruction=system_prompt,
-            temperature=0.75,
-            max_output_tokens=2000
+            instruction=system_prompt
         )
         return agent
 
@@ -265,8 +264,10 @@ class ChatHandler(BaseHandler):
 
             response_text = ""
             try:
+                # Create Content object with the user's message
+                content = Content(role="user", parts=[Part(text=request.message)])
                 async for event in runner.run_async(
-                    new_message=request.message, session_id=session_id, user_id=current_user.id
+                    new_message=content, session_id=session_id, user_id=current_user.id
                 ):
                     if event.content and event.content.parts:
                         for part in event.content.parts:
