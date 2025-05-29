@@ -10,4 +10,4 @@ uvicorn[standard]
 httpx
 pyjwt
 passlib
-python-dotenv
+filelock>=3.13.0

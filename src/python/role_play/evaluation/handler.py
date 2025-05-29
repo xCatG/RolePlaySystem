@@ -1,12 +1,11 @@
 """Evaluation handler for session analysis and export."""
-from typing import List
+from typing import List, Annotated
 from pathlib import Path
 from fastapi import HTTPException, Depends, APIRouter
 from fastapi.responses import PlainTextResponse, FileResponse
 from ..server.base_handler import BaseHandler
-from ..server.auth_decorators import auth_required
-from ..common.auth import TokenData
-from ..common.models import BaseResponse
+from ..server.dependencies import require_user_or_higher
+from ..common.models import BaseResponse, User
 from .export import ExportUtility
 import logging
 
@@ -50,15 +49,14 @@ class EvaluationHandler(BaseHandler):
         self.sessions_path.mkdir(parents=True, exist_ok=True)
         self.export_util = ExportUtility()
     
-    @auth_required
     async def get_evaluation_sessions(
         self, 
-        token_data: TokenData = Depends()
+        current_user: Annotated[User, Depends(require_user_or_higher)]
     ) -> SessionListResponse:
         """Get all sessions available for evaluation.
         
         Args:
-            token_data: Authenticated user token data
+            current_user: Authenticated user
             
         Returns:
             List of sessions ready for evaluation
@@ -67,7 +65,7 @@ class EvaluationHandler(BaseHandler):
             sessions = []
             
             # Find all JSONL files for this user
-            pattern = f"{token_data.user_id}_*.jsonl"
+            pattern = f"{current_user.id}_*.jsonl"
             for jsonl_file in self.sessions_path.glob(pattern):
                 try:
                     # Get summary from JSONL
@@ -100,17 +98,16 @@ class EvaluationHandler(BaseHandler):
             logger.error(f"Failed to get evaluation sessions: {e}")
             raise HTTPException(status_code=500, detail="Failed to get sessions")
     
-    @auth_required
     async def download_session(
         self,
         session_id: str,
-        token_data: TokenData = Depends()
+        current_user: Annotated[User, Depends(require_user_or_higher)]
     ):
         """Download session transcript as text file.
         
         Args:
             session_id: ID of the session to download
-            token_data: Authenticated user token data
+            current_user: Authenticated user
             
         Returns:
             Text file download response
@@ -118,7 +115,7 @@ class EvaluationHandler(BaseHandler):
         try:
             # Find the JSONL file for this session
             jsonl_file = None
-            pattern = f"{token_data.user_id}_*.jsonl"
+            pattern = f"{current_user.id}_*.jsonl"
             
             for file_path in self.sessions_path.glob(pattern):
                 try:

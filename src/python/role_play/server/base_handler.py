@@ -38,3 +38,12 @@ class BaseHandler(ABC):
     def tags(self) -> list[str]:
         """Return OpenAPI tags for this handler's routes. Override if needed."""
         return [self.__class__.__name__.replace("Handler", "").lower()]
+    
+    async def cleanup(self) -> None:
+        """Cleanup resources when the server shuts down.
+        
+        Override this method in subclasses that need to cleanup resources
+        like database connections, file handles, or in-memory state.
+        The default implementation does nothing.
+        """
+        pass

@@ -2,8 +2,12 @@
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from typing import Type, List
+from typing import Type
+from contextlib import asynccontextmanager
 from .base_handler import BaseHandler
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class BaseServer:
@@ -29,16 +33,25 @@ class BaseServer:
             version: API version
             enable_cors: Whether to enable CORS middleware
         """
+        @asynccontextmanager
+        async def lifespan(app: FastAPI):
+            # Startup
+            logger.info("Server starting up...")
+            yield
+            # Shutdown
+            logger.info("Server shutting down...")
+            # Note: With stateless handlers, there's no per-handler cleanup needed.
+            # Singleton services are cleaned up automatically by Python's garbage collector.
+        
         self.app = FastAPI(
             title=title,
             description=description,
             version=version,
+            lifespan=lifespan
         )
         
         if enable_cors:
             self._setup_cors()
-        
-        self._handlers: List[BaseHandler] = []
     
     def _setup_cors(self):
         """Setup CORS middleware for frontend development."""
@@ -58,7 +71,8 @@ class BaseServer:
             handler_class: Handler class to register
             **handler_kwargs: Keyword arguments to pass to handler constructor
         """
-        # Create handler instance (will be recreated per request via dependency injection)
+        # Create a temporary handler instance just to get router configuration
+        # The actual handler instances will be created per-request by FastAPI
         handler = handler_class(**handler_kwargs)
         
         # Include the handler's router
@@ -68,7 +82,7 @@ class BaseServer:
             tags=handler.tags,
         )
         
-        self._handlers.append(handler)
+        logger.info(f"Registered {handler_class.__name__} at {handler.prefix}")
     
     def get_app(self) -> FastAPI:
         """Return the FastAPI application instance."""
