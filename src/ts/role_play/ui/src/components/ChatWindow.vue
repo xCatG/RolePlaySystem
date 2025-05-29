@@ -150,11 +150,13 @@ export default defineComponent({
 .chat-window {
   display: flex;
   flex-direction: column;
-  height: 600px;
+  height: calc(100vh - 140px);
+  min-height: 400px;
   background: white;
   border-radius: 8px;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
   overflow: hidden;
+  max-width: 100%;
 }
 
 .chat-header {
@@ -193,7 +195,7 @@ export default defineComponent({
 .messages-container {
   flex: 1;
   overflow-y: auto;
-  padding: 20px;
+  padding: 12px;
   background: #fafafa;
 }
 
@@ -206,9 +208,9 @@ export default defineComponent({
 
 .message {
   margin-bottom: 15px;
-  padding: 10px 15px;
+  padding: 10px 12px;
   border-radius: 8px;
-  max-width: 70%;
+  max-width: 85%;
 }
 
 .message.user {
@@ -258,32 +260,40 @@ export default defineComponent({
 
 .input-container form {
   display: flex;
-  gap: 10px;
+  gap: 12px;
+  align-items: stretch;
 }
 
 .message-input {
   flex: 1;
-  padding: 10px 15px;
+  min-width: 0;
+  padding: 12px 16px;
   border: 1px solid #ced4da;
-  border-radius: 20px;
+  border-radius: 8px;
   font-size: 16px;
   outline: none;
-  transition: border-color 0.2s;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  background: white;
 }
 
 .message-input:focus {
   border-color: #007bff;
+  box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
 }
 
 .send-button {
   background: #007bff;
   color: white;
   border: none;
-  padding: 10px 20px;
-  border-radius: 20px;
+  padding: 12px 16px;
+  border-radius: 8px;
   cursor: pointer;
-  font-size: 16px;
+  font-size: 14px;
+  font-weight: 500;
   transition: background 0.2s;
+  white-space: nowrap;
+  flex-shrink: 0;
+  width: 70px;
 }
 
 .send-button:hover:not(:disabled) {
@@ -293,5 +303,82 @@ export default defineComponent({
 .send-button:disabled {
   background: #ccc;
   cursor: not-allowed;
+}
+
+/* Mobile-first: Full width on very small screens */
+@media (max-width: 480px) {
+  .chat-window {
+    border-radius: 0;
+    box-shadow: none;
+    margin: 0;
+    height: calc(100vh - 100px);
+    max-height: calc(100vh - 100px);
+    min-height: calc(100vh - 100px);
+  }
+  
+  .messages-container {
+    padding: 8px;
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+  }
+  
+  .input-container {
+    padding: 12px;
+    flex-shrink: 0;
+    background: white;
+    border-top: 1px solid #e9ecef;
+  }
+  
+  .message {
+    max-width: 90%;
+    padding: 8px 10px;
+  }
+}
+
+/* Responsive Styles */
+@media (min-width: 768px) {
+  .chat-window {
+    height: 600px;
+  }
+  
+  .message {
+    max-width: 60%;
+  }
+  
+  .input-container {
+    padding: 20px;
+  }
+  
+  .input-container form {
+    gap: 16px;
+  }
+  
+  .message-input {
+    padding: 14px 18px;
+  }
+  
+  .send-button {
+    padding: 14px 20px;
+    width: 80px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .chat-window {
+    height: 700px;
+  }
+  
+  .message {
+    max-width: 75%;
+  }
+  
+  .messages-container {
+    padding: 30px;
+  }
+  
+  .input-container {
+    padding: 24px;
+  }
 }
 </style>
