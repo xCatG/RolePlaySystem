@@ -1,25 +1,38 @@
 """Dependency injection factories for the Role Play System server."""
 
 import os
+from pathlib import Path
+from functools import lru_cache
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from typing import Annotated, Set
+from google.adk.sessions import InMemorySessionService
 
 from ..common.auth import AuthManager
 from ..common.storage import StorageBackend, FileStorage
 from ..common.models import User, UserRole
 from ..common.exceptions import AuthenticationError, TokenExpiredError
-from .config_loader import get_config
+from .config_loader import get_config, ServerConfig
+from ..chat.content_loader import ContentLoader
+from ..chat.chat_logger import ChatLogger
+
+import logging
+logger = logging.getLogger(__name__)
 
 
+@lru_cache(maxsize=None)
+def get_server_config() -> ServerConfig:
+    """Provides the global server configuration."""
+    return get_config()
+
+
+@lru_cache(maxsize=None)
 def get_storage_backend() -> StorageBackend:
     """
     Factory function to get the storage backend instance.
-    
-    Returns:
-        StorageBackend: Configured storage backend based on config
+    This is a singleton, created once.
     """
-    config = get_config()
+    config = get_server_config()
     
     if config.storage_type == "file":
         # Validate storage path exists
@@ -142,3 +155,34 @@ require_admin = RoleChecker({UserRole.ADMIN})
 require_scripter_or_admin = RoleChecker({UserRole.SCRIPTER, UserRole.ADMIN})
 require_user_or_higher = RoleChecker({UserRole.USER, UserRole.SCRIPTER, UserRole.ADMIN})
 
+
+# --- Singleton Service Providers ---
+# These use @lru_cache(maxsize=None) to ensure only one instance
+# of each service is created and shared across requests.
+
+@lru_cache(maxsize=None)
+def get_content_loader() -> ContentLoader:
+    """
+    Provides a singleton instance of ContentLoader.
+    """
+    return ContentLoader()
+
+
+@lru_cache(maxsize=None)
+def get_chat_logger() -> ChatLogger:
+    """
+    Provides a singleton instance of ChatLogger.
+    The storage path for chat logs is derived from the main server config.
+    """
+    config = get_server_config()
+    # Store chat logs in a 'chat_logs' subdirectory of the main storage path
+    chat_logs_path = Path(config.storage_path) / "chat_logs"
+    return ChatLogger(storage_path_str=str(chat_logs_path))
+
+
+@lru_cache(maxsize=None)
+def get_adk_session_service() -> InMemorySessionService:
+    """
+    Provides a singleton instance of ADK's InMemorySessionService.
+    """
+    return InMemorySessionService()

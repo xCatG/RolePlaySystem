@@ -52,13 +52,15 @@
 ### 9. **Data Model Location**
 - **Data Class Placement**: Data class for each functionality should stay in each feature package, don't add to common unless actually shared among all classes or multiple classes/features
 
-### 10. **Chat System ADK Integration**
-- **Dual Setup Approach**: Development agent for `adk web` testing + Production FastAPI integration
-- **Hybrid ADK Usage**: Leverage ADK for agent execution, custom SessionService for roleplay-specific storage
-- **Custom SessionService**: Extends base ADK SessionService (not DatabaseSessionService) for JSONL evaluation format
-- **Operator Workflow**: Operator creates sessions with scenario + character + participant → real-time JSONL logging
-- **Storage Format**: `user_id_participant_scenario_id_datetime.jsonl` files for immediate evaluation access
-- **Session Management**: ADK Session objects with roleplay metadata in state, custom event handling
+### 10. **Chat System ADK Integration - Separated Concerns Architecture**
+- **Clear Separation**: ADK's InMemorySessionService for runtime state, ChatLogger for persistent JSONL logs
+- **Stateless Handlers**: ChatHandler created per-request via FastAPI dependency injection
+- **Singleton Services**: ContentLoader, ChatLogger, and InMemorySessionService shared across requests
+- **File Locking**: ChatLogger implements FileLock for safe concurrent JSONL writes
+- **Storage Format**: `user_id_session_id.jsonl` files with structured events (session_start, message, session_end)
+- **Session State**: ADK session stores metadata (character_id, scenario_id, message_count) + reference to JSONL file
+- **On-Demand Runners**: ADK Agent and Runner created per message, not stored between requests
+- **Export Ready**: ChatLogger provides text export and session listing without touching ADK state
 
 ### 11. **Frontend Architecture - Modular Monolith**
 - **Start Simple Philosophy**: Begin with single module to minimize learning curve and development complexity
@@ -120,23 +122,30 @@
 - [x] ~~Figure out how to use FastAPI `Depends()` correctly~~ - **COMPLETED**: Implemented RoleChecker with proper Depends() usage
 - [x] ~~Sync data types between backend and frontend~~ - **COMPLETED**: TypeScript types now exactly match Python Pydantic models
 
-### Chat Module (ADK Integration) - POC Approach
+### Chat Module (ADK Integration) - Separated Concerns Architecture
 - [x] Create `role_play/dev_agents/roleplay_agent/` - Development agent for `adk web` testing
   - [x] `role_play/dev_agents/roleplay_agent/__init__.py` - Package initialization
   - [x] `role_play/dev_agents/roleplay_agent/agent.py` - Simple `root_agent` for ADK web UI
   - [x] `role_play/dev_agents/roleplay_agent/.env` - Development environment config
-- [x] Create `role_play/chat/session_service.py` - Custom SessionService extending ADK base with JSONL storage
-- [x] Create `role_play/chat/adk_client.py` - ADK Agent and Runner management with roleplay context
-- [x] Create `role_play/chat/agent_config.py` - ADK agent configuration and setup
-- [x] Create `role_play/chat/handler.py` - ChatHandler extending BaseHandler with session creation endpoints
+- [x] ~~Create `role_play/chat/session_service.py`~~ - **REMOVED**: Replaced with separated ChatLogger + InMemorySessionService
+- [x] Create `role_play/chat/chat_logger.py` - Handles all JSONL file operations with file locking
+- [x] Create `role_play/chat/handler.py` - Stateless ChatHandler with dependency injection
 - [x] Create `role_play/chat/models.py` - Chat request/response models with session metadata
 - [x] Add ADK dependencies to requirements: `pip install google-adk`
-- [x] **POC Simplifications**:
+- [x] Add filelock to requirements: `pip install filelock>=3.13.0`
+- [x] **Architecture Improvements**:
+  - [x] Singleton services via `@lru_cache` in dependencies.py
+  - [x] Stateless handlers - no instance variables storing state
+  - [x] On-demand ADK Runner creation per message
+  - [x] File locking for concurrent JSONL access
+  - [x] Clear separation between runtime state (ADK) and persistence (ChatLogger)
+- [x] **POC Features**:
   - [x] Create `role_play/chat/content_loader.py` - Load scenarios/characters from static JSON file
   - [x] Create `data/scenarios.json` - Fixed scenario and character definitions
   - [x] Implement HTTP-based chat (no WebSocket needed for POC)
   - [x] Create simple text export endpoint: GET /chat/session/{id}/export-text
   - [x] Basic session listing: GET /chat/sessions (no complex filtering)
+  - [x] Session end endpoint: POST /chat/session/{id}/end
 - [x] Create operator session creation workflow: POST /chat/session with scenario + character + participant
 - [x] Implement real-time JSONL logging for evaluation (append on each message exchange)
 
@@ -357,13 +366,23 @@
 - **No Global State**: Eliminated global variables in dependencies, pure factory functions
 - **Production Ready**: JWT secret validation, proper error handling, concurrency warnings
 
-### Chat System Architecture (POC APPROACH)
-- **Simplified POC Strategy**: Focus on core chat functionality with minimal complexity
-- **Static Content**: Scenarios and characters loaded from JSON file (no CRUD needed)
-- **HTTP-Based Chat**: Simple request/response chat (no WebSocket for POC)
-- **JSONL + Text Export**: Maintain JSONL for structure, export as readable text for evaluation
-- **Fixed Data**: `data/scenarios.json` with predefined roleplay scenarios and characters
-- **Core Workflow**: Operator selects from dropdown → creates session → text-based chat → export for evaluation
+### Chat System Architecture (COMPLETED - Separated Concerns)
+- **Clean Architecture**: Separated ADK runtime state from JSONL persistence layer
+- **Stateless Handlers**: ChatHandler instances created per-request, no stored state
+- **Singleton Services**:
+  - `ContentLoader`: Loads static scenarios/characters from JSON
+  - `ChatLogger`: Manages all JSONL file operations with file locking
+  - `InMemorySessionService`: ADK's built-in service for runtime session state
+- **Dependency Injection**: All services injected via FastAPI's `Depends()` pattern
+- **File Locking**: Concurrent JSONL writes protected by FileLock (5-second timeout)
+- **Session Lifecycle**:
+  1. Create session: ChatLogger creates JSONL file, ADK stores metadata in memory
+  2. Send message: Log to JSONL, create Runner on-demand, process with ADK, log response
+  3. End session: Log session_end event, remove from ADK memory
+  4. Export: ChatLogger reads JSONL directly, formats as human-readable text
+- **Storage Format**: Clean JSONL with typed events (session_start, message, session_end)
+- **No Persistent Runners**: ADK Runners created per-message and immediately discarded
+- **POC Features**: Static content, HTTP-only chat, text export for evaluation
 
 # important-instruction-reminders
 Do what has been asked; nothing more, nothing less.

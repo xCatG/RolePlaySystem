@@ -1,11 +1,22 @@
-"""Chat handler for roleplay conversations."""
+"""Chat handler for roleplay conversations - Simplified & Stateless."""
 from typing import List, Annotated, Dict, Optional
 from fastapi import HTTPException, Depends, APIRouter
 from fastapi.responses import PlainTextResponse
 from google.adk.runners import Runner
 from google.adk.agents import Agent
+from google.adk.sessions import InMemorySessionService
+from datetime import datetime
+import logging
+import os
+from pathlib import Path
+
 from ..server.base_handler import BaseHandler
-from ..server.dependencies import require_user_or_higher
+from ..server.dependencies import (
+    require_user_or_higher,
+    get_chat_logger,
+    get_adk_session_service,
+    get_content_loader,
+)
 from ..common.models import User
 from .models import (
     CreateSessionRequest,
@@ -20,9 +31,7 @@ from .models import (
     CharacterInfo
 )
 from .content_loader import ContentLoader
-from .session_service import get_session_service
-import logging
-import os
+from .chat_logger import ChatLogger
 
 logger = logging.getLogger(__name__)
 
@@ -30,29 +39,28 @@ logger = logging.getLogger(__name__)
 DEFAULT_MODEL = os.getenv("ADK_MODEL", "gemini-2.0-flash-lite-001")
 
 class ChatHandler(BaseHandler):
-    """Handler for chat-related endpoints with direct ADK integration."""
+    """Handler for chat-related endpoints - Simplified & Stateless."""
 
     def __init__(self):
-        """Initialize chat handler."""
+        """Initialize chat handler (now stateless)."""
         super().__init__()
-        self.content_loader = ContentLoader()
-        self.session_service = get_session_service()
-        self._adk_runners: Dict[str, Runner] = {}  # session_id -> Runner mapping
+        # All dependencies (ContentLoader, ChatLogger, InMemorySessionService)
+        # will be injected via FastAPI's Depends in the route methods.
 
     @property
     def router(self) -> APIRouter:
         if self._router is None:
             self._router = APIRouter()
 
-        self._router.get("/content/scenarios", tags=["Content"], response_model=ScenarioListResponse)(self.get_scenarios)
-        self._router.get("/content/scenarios/{scenario_id}/characters", tags=["Content"],
-                         response_model=CharacterListResponse)(self.get_scenario_characters)
+            self._router.get("/content/scenarios", tags=["Content"], response_model=ScenarioListResponse)(self.get_scenarios)
+            self._router.get("/content/scenarios/{scenario_id}/characters", tags=["Content"],
+                             response_model=CharacterListResponse)(self.get_scenario_characters)
 
-        # Session endpoints
-        self._router.post("/session", tags=["Session"], response_model=CreateSessionResponse)(self.create_session)
-        self._router.get("/sessions", tags=["Session"], response_model=SessionListResponse)(self.get_sessions)
-        self._router.post("/session/{session_id}/message", tags=["Session"], response_model=ChatMessageResponse)(self.send_message)
-        self._router.get("/session/{session_id}/export-text", tags=["Session"])(self.export_session_text)
+            self._router.post("/session", tags=["Session"], response_model=CreateSessionResponse)(self.create_session)
+            self._router.get("/sessions", tags=["Session"], response_model=SessionListResponse)(self.get_sessions)
+            self._router.post("/session/{session_id}/message", tags=["Session"], response_model=ChatMessageResponse)(self.send_message)
+            self._router.get("/session/{session_id}/export-text", tags=["Session"])(self.export_session_text)
+            self._router.post("/session/{session_id}/end", tags=["Session"], status_code=204)(self.end_session)
 
         return self._router
 
@@ -61,16 +69,7 @@ class ChatHandler(BaseHandler):
         return "/chat"
 
     def _create_roleplay_agent(self, character: Dict, scenario: Dict) -> Agent:
-        """Create an ADK agent configured for a specific character and scenario.
-        
-        Args:
-            character: Character configuration dict
-            scenario: Scenario configuration dict
-            
-        Returns:
-            Configured ADK Agent
-        """
-        # Combine character and scenario into a production-ready prompt
+        """Helper to create an ADK agent configured for a specific character and scenario."""
         system_prompt = f"""{character.get("system_prompt", "You are a helpful assistant.")}
 
 **Current Scenario:**
@@ -81,8 +80,6 @@ class ChatHandler(BaseHandler):
 -   Respond naturally based on your character's personality and the scenario.
 -   Engage with the user's messages within the roleplay context.
 """
-        
-        # Create agent with the roleplay configuration
         agent = Agent(
             name=f"roleplay_{character['id']}_{scenario['id']}",
             model=DEFAULT_MODEL,
@@ -91,113 +88,76 @@ class ChatHandler(BaseHandler):
             temperature=0.75,
             max_output_tokens=2000
         )
-        
         return agent
 
-    async def get_scenarios(self, current_user: Annotated[User, Depends(require_user_or_higher)]) -> ScenarioListResponse:
-        """Get all available scenarios.
-        
-        Args:
-            current_user: Authenticated user
-            
-        Returns:
-            List of available scenarios
-        """
+    async def get_scenarios(
+        self,
+        current_user: Annotated[User, Depends(require_user_or_higher)],
+        content_loader: Annotated[ContentLoader, Depends(get_content_loader)],
+    ) -> ScenarioListResponse:
+        """Get all available scenarios."""
         try:
-            scenarios = self.content_loader.get_scenarios()
-            scenario_infos = []
-            
-            for scenario in scenarios:
-                compatible_chars = len(scenario.get("compatible_characters", []))
-                scenario_infos.append(ScenarioInfo(
+            scenarios = content_loader.get_scenarios()
+            scenario_infos = [
+                ScenarioInfo(
                     id=scenario["id"],
                     name=scenario["name"],
                     description=scenario["description"],
-                    compatible_character_count=compatible_chars
-                ))
-            
-            return ScenarioListResponse(
-                success=True,
-                scenarios=scenario_infos
-            )
+                    compatible_character_count=len(scenario.get("compatible_characters", []))
+                ) for scenario in scenarios
+            ]
+            return ScenarioListResponse(success=True, scenarios=scenario_infos)
         except Exception as e:
             logger.error(f"Failed to get scenarios: {e}")
             raise HTTPException(status_code=500, detail="Failed to load scenarios")
-    
+
     async def get_scenario_characters(
-        self, 
+        self,
         scenario_id: str,
-        current_user: Annotated[User, Depends(require_user_or_higher)]
+        current_user: Annotated[User, Depends(require_user_or_higher)],
+        content_loader: Annotated[ContentLoader, Depends(get_content_loader)],
     ) -> CharacterListResponse:
-        """Get characters compatible with a scenario.
-        
-        Args:
-            scenario_id: ID of the scenario
-            current_user: Authenticated user
-            
-        Returns:
-            List of compatible characters
-        """
+        """Get characters compatible with a scenario."""
         try:
-            characters = self.content_loader.get_scenario_characters(scenario_id)
-            
+            characters = content_loader.get_scenario_characters(scenario_id)
             if not characters:
-                scenario = self.content_loader.get_scenario_by_id(scenario_id)
+                scenario = content_loader.get_scenario_by_id(scenario_id)
                 if not scenario:
-                    raise HTTPException(status_code=404, detail="Scenario not found")
+                    raise HTTPException(status_code=404, detail=f"Scenario with ID '{scenario_id}' not found.")
             
             character_infos = [
-                CharacterInfo(
-                    id=char["id"],
-                    name=char["name"],
-                    description=char["description"]
-                )
+                CharacterInfo(id=char["id"], name=char["name"], description=char["description"])
                 for char in characters
             ]
-            
-            return CharacterListResponse(
-                success=True,
-                characters=character_infos
-            )
+            return CharacterListResponse(success=True, characters=character_infos)
         except HTTPException:
             raise
         except Exception as e:
-            logger.error(f"Failed to get scenario characters: {e}")
+            logger.error(f"Failed to get scenario characters for '{scenario_id}': {e}")
             raise HTTPException(status_code=500, detail="Failed to load characters")
-    
+
     async def create_session(
         self,
         request: CreateSessionRequest,
-        current_user: Annotated[User, Depends(require_user_or_higher)]
+        current_user: Annotated[User, Depends(require_user_or_higher)],
+        chat_logger: Annotated[ChatLogger, Depends(get_chat_logger)],
+        adk_session_service: Annotated[InMemorySessionService, Depends(get_adk_session_service)],
+        content_loader: Annotated[ContentLoader, Depends(get_content_loader)],
     ) -> CreateSessionResponse:
-        """Create a new chat session.
-        
-        Args:
-            request: Session creation request
-            current_user: Authenticated user
-            
-        Returns:
-            Created session information
-        """
+        """Create a new chat session (ADK session in memory, log via ChatLogger)."""
         try:
-            # Validate scenario and character
-            scenario = self.content_loader.get_scenario_by_id(request.scenario_id)
+            scenario = content_loader.get_scenario_by_id(request.scenario_id)
             if not scenario:
-                raise HTTPException(status_code=400, detail="Invalid scenario ID")
-            
-            character = self.content_loader.get_character_by_id(request.character_id)
+                raise HTTPException(status_code=400, detail=f"Invalid scenario ID: {request.scenario_id}")
+
+            character = content_loader.get_character_by_id(request.character_id)
             if not character:
-                raise HTTPException(status_code=400, detail="Invalid character ID")
-            
-            # Check if character is compatible with scenario
+                raise HTTPException(status_code=400, detail=f"Invalid character ID: {request.character_id}")
+
             if request.character_id not in scenario.get("compatible_characters", []):
-                raise HTTPException(
-                    status_code=400, 
-                    detail="Character not compatible with scenario"
-                )
-            
-            # Create session using the ADK-based session service
-            session = await self.session_service.create_roleplay_session(
+                raise HTTPException(status_code=400, detail="Character not compatible with scenario")
+
+            app_session_id, jsonl_path = chat_logger.start_session(
                 user_id=current_user.id,
                 participant_name=request.participant_name,
                 scenario_id=request.scenario_id,
@@ -205,212 +165,213 @@ class ChatHandler(BaseHandler):
                 character_id=request.character_id,
                 character_name=character["name"]
             )
-            
-            # Create ADK agent and runner for this session
-            agent = self._create_roleplay_agent(character, scenario)
-            runner = Runner(
+
+            initial_adk_state = {
+                "app_session_id": app_session_id,
+                "jsonl_path_str": str(jsonl_path.name),
+                "user_id": current_user.id,
+                "participant_name": request.participant_name,
+                "scenario_id": request.scenario_id,
+                "scenario_name": scenario["name"],
+                "character_id": request.character_id,
+                "character_name": character["name"],
+                "message_count": 0,
+                "session_creation_time_iso": datetime.utcnow().isoformat()
+            }
+
+            await adk_session_service.create_session(
                 app_name="roleplay_chat",
-                agent=agent,
-                session_service=self.session_service
+                user_id=current_user.id,
+                session_id=app_session_id,
+                state=initial_adk_state
             )
-            
-            # Store runner for later use
-            self._adk_runners[session.session_id] = runner
-            
-            logger.info(f"Created ADK runner for session {session.session_id}")
-            
+            logger.info(f"Created ADK session {app_session_id} (Runner will be created on demand)")
+
             return CreateSessionResponse(
                 success=True,
-                session_id=session.session_id,
+                session_id=app_session_id,
                 scenario_name=scenario["name"],
                 character_name=character["name"],
-                jsonl_filename=session.state.get("jsonl_filename", "")
+                jsonl_filename=jsonl_path.name
             )
-            
         except HTTPException:
             raise
         except Exception as e:
-            logger.error(f"Failed to create session: {e}")
+            logger.error(f"Failed to create session: {e}", exc_info=True)
             raise HTTPException(status_code=500, detail="Failed to create session")
-    
-    async def get_sessions(self, current_user: Annotated[User, Depends(require_user_or_higher)]) -> SessionListResponse:
-        """Get all sessions for the current user.
-        
-        Args:
-            current_user: Authenticated user
-            
-        Returns:
-            List of user's sessions
-        """
+
+    async def get_sessions(
+        self,
+        current_user: Annotated[User, Depends(require_user_or_higher)],
+        chat_logger: Annotated[ChatLogger, Depends(get_chat_logger)],
+    ) -> SessionListResponse:
+        """Get all sessions for the current user by listing logs from ChatLogger."""
         try:
-            sessions = await self.session_service.get_user_sessions(current_user.id)
-            
+            sessions_data = chat_logger.list_user_sessions(current_user.id)
             session_infos = [
                 SessionInfo(
-                    session_id=session.session_id,
-                    scenario_name=session.state.get("scenario_name", ""),
-                    character_name=session.state.get("character_name", ""),
-                    participant_name=session.state.get("participant_name", ""),
-                    created_at=session.created_at.isoformat() if session.created_at else "",
-                    message_count=session.state.get("message_count", 0),
-                    jsonl_filename=session.state.get("jsonl_filename", "")
-                )
-                for session in sessions
+                    session_id=s_data["session_id"],
+                    scenario_name=s_data.get("scenario_name", "Unknown"),
+                    character_name=s_data.get("character_name", "Unknown"),
+                    participant_name=s_data.get("participant_name", "Unknown"),
+                    created_at=s_data.get("created_at", datetime.min.isoformat()),
+                    message_count=s_data.get("message_count", 0),
+                    jsonl_filename=s_data.get("jsonl_filename", "")
+                ) for s_data in sessions_data
             ]
-            
-            return SessionListResponse(
-                success=True,
-                sessions=session_infos
-            )
-            
+            return SessionListResponse(success=True, sessions=session_infos)
         except Exception as e:
-            logger.error(f"Failed to get sessions: {e}")
+            logger.error(f"Failed to get sessions for user {current_user.id}: {e}", exc_info=True)
             raise HTTPException(status_code=500, detail="Failed to get sessions")
-    
+
     async def send_message(
         self,
         session_id: str,
         request: ChatMessageRequest,
-        current_user: Annotated[User, Depends(require_user_or_higher)]
+        current_user: Annotated[User, Depends(require_user_or_higher)],
+        chat_logger: Annotated[ChatLogger, Depends(get_chat_logger)],
+        adk_session_service: Annotated[InMemorySessionService, Depends(get_adk_session_service)],
+        content_loader: Annotated[ContentLoader, Depends(get_content_loader)],
     ) -> ChatMessageResponse:
-        """Send a message in a chat session.
-        
-        Args:
-            session_id: ID of the session
-            request: Message request
-            current_user: Authenticated user
-            
-        Returns:
-            Chat response
-        """
+        """Send a message, creating the Runner on-demand."""
         try:
-            # Get session
-            session = await self.session_service.get_session(
-                app_name="roleplay",
-                user_id=current_user.id,
-                session_id=session_id
+            adk_session = await adk_session_service.get_session(
+                app_name="roleplay_chat", user_id=current_user.id, session_id=session_id
             )
-            if not session:
-                raise HTTPException(status_code=404, detail="Session not found")
-            
-            # Add participant message
-            await self.session_service.add_message(
-                session_id=session_id,
-                role="participant",
-                content=request.message
+            if not adk_session:
+                raise HTTPException(status_code=404, detail="Active session not found or access denied.")
+
+            jsonl_filename_str = adk_session.state.get("jsonl_path_str")
+            if not jsonl_filename_str:
+                raise HTTPException(status_code=500, detail="Session state missing log filename.")
+            jsonl_path = chat_logger.storage_path / jsonl_filename_str
+
+            adk_session.state["message_count"] += 1
+            participant_msg_num = adk_session.state["message_count"]
+            chat_logger.log_message(
+                jsonl_path=jsonl_path, session_id=session_id, role="participant",
+                content=request.message, message_number=participant_msg_num
             )
-            
-            # Get or recreate ADK runner for this session
-            runner = self._adk_runners.get(session_id)
-            if not runner:
-                # Recreate runner if not in memory (e.g., after server restart)
-                character = self.content_loader.get_character_by_id(session.state.get("character_id"))
-                scenario = self.content_loader.get_scenario_by_id(session.state.get("scenario_id"))
-                
-                if not character or not scenario:
-                    raise HTTPException(status_code=500, detail="Failed to load session configuration")
-                
-                agent = self._create_roleplay_agent(character, scenario)
-                runner = Runner(
-                    app_name="roleplay",
-                    agent=agent,
-                    session_service=self.session_service
-                )
-                self._adk_runners[session_id] = runner
-                logger.info(f"Recreated ADK runner for session {session_id}")
-            
-            # Generate response using ADK
+
+            character_dict = content_loader.get_character_by_id(adk_session.state.get("character_id"))
+            scenario_dict = content_loader.get_scenario_by_id(adk_session.state.get("scenario_id"))
+            if not character_dict or not scenario_dict:
+                raise HTTPException(status_code=500, detail="Failed to load session character/scenario configuration.")
+
+            agent = self._create_roleplay_agent(character_dict, scenario_dict)
+            runner = Runner(
+                app_name="roleplay_chat", agent=agent, session_service=adk_session_service
+            )
+
             response_text = ""
             try:
                 async for event in runner.run_async(
-                    new_message=request.message,
-                    session_id=session_id
+                    new_message=request.message, session_id=session_id, user_id=current_user.id
                 ):
                     if event.content and event.content.parts:
                         for part in event.content.parts:
                             if part.text:
                                 response_text += part.text
-                
                 if not response_text:
-                    # Fallback if no response generated
-                    character_name = session.state.get("character_name", "Character")
-                    response_text = f"[{character_name.split(' - ')[0]} responds thoughtfully to your message]"
-                    logger.warning(f"ADK generated empty response for session {session_id}, using fallback")
-                
+                    response_text = f"[{adk_session.state.get('character_name', 'Character')} is thinking...]"
+                    logger.warning(f"ADK generated empty response for session {session_id}, using fallback.")
             except Exception as e:
-                logger.error(f"ADK runner error: {e}")
-                # Fallback response on error
-                character_name = session.state.get("character_name", "Character")
-                response_text = f"[{character_name.split(' - ')[0]} responds in character]"
-            
-            # Add character response
-            updated_session = await self.session_service.add_message(
-                session_id=session_id,
-                role="character",
-                content=response_text
+                logger.error(f"ADK runner error in session {session_id}: {e}", exc_info=True)
+                response_text = f"[{adk_session.state.get('character_name', 'Character')} seems to be having trouble responding right now.]"
+            finally:
+                if hasattr(runner, 'close') and callable(runner.close):
+                    try:
+                        await runner.close()
+                    except Exception as close_err:
+                        logger.error(f"Error closing runner for session {session_id}: {close_err}")
+
+            adk_session.state["message_count"] += 1
+            character_msg_num = adk_session.state["message_count"]
+            chat_logger.log_message(
+                jsonl_path=jsonl_path, session_id=session_id, role="character",
+                content=response_text, message_number=character_msg_num
             )
-            
+
             return ChatMessageResponse(
-                success=True,
-                response=response_text,
-                session_id=session_id,
-                message_count=updated_session.state.get("message_count", 0)
+                success=True, response=response_text, session_id=session_id,
+                message_count=adk_session.state["message_count"]
             )
-            
         except HTTPException:
             raise
         except Exception as e:
-            logger.error(f"Failed to send message: {e}")
+            logger.error(f"Failed to send message in session {session_id}: {e}", exc_info=True)
             raise HTTPException(status_code=500, detail="Failed to send message")
-    
-    async def export_session_text(
+
+    async def end_session(
         self,
         session_id: str,
-        current_user: Annotated[User, Depends(require_user_or_higher)]
-    ) -> PlainTextResponse:
-        """Export session as text file.
-        
-        Args:
-            session_id: ID of the session
-            current_user: Authenticated user
-            
-        Returns:
-            Text transcript of the session
-        """
+        current_user: Annotated[User, Depends(require_user_or_higher)],
+        chat_logger: Annotated[ChatLogger, Depends(get_chat_logger)],
+        adk_session_service: Annotated[InMemorySessionService, Depends(get_adk_session_service)],
+    ):
+        """Ends a chat session, logging it and removing from ADK InMemory service."""
         try:
-            # Get session to verify ownership
-            session = await self.session_service.get_session(
-                app_name="roleplay",
-                user_id=current_user.id,
-                session_id=session_id
+            adk_session = await adk_session_service.get_session(
+                app_name="roleplay_chat", user_id=current_user.id, session_id=session_id
             )
-            if not session:
-                raise HTTPException(status_code=404, detail="Session not found")
-            
-            # Export as text
-            text_content = await self.session_service.export_session_text(session_id)
-            
-            # Return as plain text response with download headers
-            return PlainTextResponse(
-                content=text_content,
-                media_type="text/plain",
-                headers={
-                    "Content-Disposition": f"attachment; filename=session_{session_id}.txt"
-                }
+            if not adk_session:
+                logger.warning(f"Attempt to end session {session_id} not found in ADK InMemory service.")
+                return
+
+            jsonl_filename_str = adk_session.state.get("jsonl_path_str")
+            if not jsonl_filename_str:
+                logger.error(f"Cannot end session {session_id}: log filename missing from ADK state.")
+                raise HTTPException(status_code=500, detail="Session state corrupted, cannot end session.")
+
+            jsonl_path = chat_logger.storage_path / jsonl_filename_str
+            message_count = adk_session.state.get("message_count", 0)
+            created_iso = adk_session.state.get("session_creation_time_iso")
+            duration_seconds = 0
+            if created_iso:
+                try:
+                    created_dt = datetime.fromisoformat(created_iso)
+                    duration_seconds = (datetime.utcnow() - created_dt).total_seconds()
+                except ValueError:
+                    logger.warning(f"Could not parse creation_time_iso: {created_iso} for session {session_id}")
+
+            chat_logger.end_session(
+                jsonl_path=jsonl_path,
+                session_id=session_id,
+                total_messages=message_count,
+                duration_seconds=duration_seconds,
+                reason="User ended session"
             )
+
+            await adk_session_service.delete_session(
+                app_name="roleplay_chat", user_id=current_user.id, session_id=session_id
+            )
+            logger.info(f"Ended and removed session {session_id} from ADK InMemory service.")
 
         except HTTPException:
             raise
         except Exception as e:
-            logger.error(f"Failed to export session: {e}")
+            logger.error(f"Failed to end session {session_id}: {e}", exc_info=True)
+            raise HTTPException(status_code=500, detail="Failed to end session.")
+
+    async def export_session_text(
+        self,
+        session_id: str,
+        current_user: Annotated[User, Depends(require_user_or_higher)],
+        chat_logger: Annotated[ChatLogger, Depends(get_chat_logger)],
+    ) -> PlainTextResponse:
+        """Export session as text file using ChatLogger."""
+        try:
+            text_content = chat_logger.export_session_text(app_session_id=session_id, user_id=current_user.id)
+            if text_content == "Session log file not found.":
+                raise HTTPException(status_code=404, detail="Session log not found for export.")
+
+            return PlainTextResponse(
+                content=text_content,
+                media_type="text/plain",
+                headers={"Content-Disposition": f"attachment; filename=session_{session_id}.txt"}
+            )
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Failed to export session {session_id}: {e}", exc_info=True)
             raise HTTPException(status_code=500, detail="Failed to export session")
-    
-    async def cleanup(self):
-        """Cleanup ADK runners on shutdown."""
-        for runner in self._adk_runners.values():
-            try:
-                await runner.close()
-            except Exception as e:
-                logger.error(f"Error closing ADK runner: {e}")
-        self._adk_runners.clear()
-        logger.info("Cleaned up all ADK runners")
