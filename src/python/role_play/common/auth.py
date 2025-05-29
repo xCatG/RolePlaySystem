@@ -3,7 +3,7 @@
 import hashlib
 import secrets
 import uuid
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import Optional
 
 import jwt
@@ -17,6 +17,7 @@ from .exceptions import (
 )
 from .models import AuthProvider, TokenData, User, UserAuthMethod, UserRole
 from .storage import StorageBackend
+from .time_utils import utc_now
 
 
 class AuthManager:
@@ -45,7 +46,7 @@ class AuthManager:
 
     def _create_access_token(self, user: User) -> str:
         """Create a JWT access token."""
-        expire = datetime.utcnow() + timedelta(minutes=self.access_token_expire_minutes)
+        expire = utc_now() + timedelta(minutes=self.access_token_expire_minutes)
         token_data = TokenData(
             user_id=user.id,
             username=user.username,
@@ -65,7 +66,7 @@ class AuthManager:
             token_data = TokenData(**payload)
             
             # Check if token is expired
-            if datetime.utcnow().timestamp() > token_data.exp:
+            if utc_now().timestamp() > token_data.exp:
                 raise TokenExpiredError("Token has expired")
             
             return token_data
@@ -95,8 +96,8 @@ class AuthManager:
             username=username,
             email=email,
             role=UserRole.USER,
-            created_at=datetime.now(),
-            updated_at=datetime.now(),
+            created_at=utc_now(),
+            updated_at=utc_now(),
         )
         
         await self.storage.create_user(user)
@@ -110,7 +111,7 @@ class AuthManager:
                 provider=AuthProvider.LOCAL,
                 provider_user_id=email or username,  # Use email if available, else username
                 credentials={"password_hash": hashed_password},
-                created_at=datetime.now(),
+                created_at=utc_now(),
             )
             await self.storage.create_user_auth_method(auth_method)
 
@@ -177,8 +178,8 @@ class AuthManager:
                 username=username,
                 email=email,
                 role=UserRole.USER,
-                created_at=datetime.now(),
-                updated_at=datetime.now(),
+                created_at=utc_now(),
+                updated_at=utc_now(),
             )
             await self.storage.create_user(user)
 
@@ -189,7 +190,7 @@ class AuthManager:
                 provider=provider,
                 provider_user_id=provider_user_id,
                 credentials=user_info,
-                created_at=datetime.now(),
+                created_at=utc_now(),
             )
             await self.storage.create_user_auth_method(auth_method)
 

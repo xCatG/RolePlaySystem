@@ -1,11 +1,12 @@
 """Service for logging chat sessions to JSONL files with file locking."""
 import json
 import uuid
-from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Tuple, Any, Optional
 import logging
 from filelock import FileLock, Timeout
+
+from ..common.time_utils import utc_now_isoformat
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +62,7 @@ class ChatLogger:
 
         session_start_event = {
             "type": "session_start",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": utc_now_isoformat(),
             "app_session_id": app_session_id,
             "user_id": user_id,
             "participant_name": participant_name,
@@ -115,7 +116,7 @@ class ChatLogger:
         lock_path = self._get_lock_path(jsonl_path)
         message_event = {
             "type": "message",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": utc_now_isoformat(),
             "app_session_id": session_id,
             "role": role,
             "content": content,
@@ -148,7 +149,7 @@ class ChatLogger:
         lock_path = self._get_lock_path(jsonl_path)
         session_end_event = {
             "type": "session_end",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": utc_now_isoformat(),
             "app_session_id": session_id,
             "total_messages": total_messages,
             "duration_seconds": round(duration_seconds, 2),

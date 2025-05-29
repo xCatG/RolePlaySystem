@@ -6,7 +6,6 @@ from google.adk.runners import Runner
 from google.adk.agents import Agent
 from google.adk.sessions import InMemorySessionService
 from google.genai.types import Content, Part
-from datetime import datetime
 import logging
 import os
 from pathlib import Path
@@ -19,6 +18,7 @@ from ..server.dependencies import (
     get_content_loader,
 )
 from ..common.models import User
+from ..common.time_utils import utc_now_isoformat, parse_utc_datetime, utc_now
 from .models import (
     CreateSessionRequest,
     CreateSessionResponse,
@@ -175,7 +175,7 @@ class ChatHandler(BaseHandler):
                 "character_id": request.character_id,
                 "character_name": character["name"],
                 "message_count": 0,
-                "session_creation_time_iso": datetime.utcnow().isoformat()
+                "session_creation_time_iso": utc_now_isoformat()
             }
 
             await adk_session_service.create_session(
@@ -213,7 +213,7 @@ class ChatHandler(BaseHandler):
                     scenario_name=s_data.get("scenario_name", "Unknown"),
                     character_name=s_data.get("character_name", "Unknown"),
                     participant_name=s_data.get("participant_name", "Unknown"),
-                    created_at=s_data.get("created_at", datetime.min.isoformat()),
+                    created_at=s_data.get("created_at", ""),
                     message_count=s_data.get("message_count", 0),
                     jsonl_filename=s_data.get("jsonl_filename", "")
                 ) for s_data in sessions_data
@@ -330,8 +330,8 @@ class ChatHandler(BaseHandler):
             duration_seconds = 0
             if created_iso:
                 try:
-                    created_dt = datetime.fromisoformat(created_iso)
-                    duration_seconds = (datetime.utcnow() - created_dt).total_seconds()
+                    created_dt = parse_utc_datetime(created_iso)
+                    duration_seconds = (utc_now() - created_dt).total_seconds()
                 except ValueError:
                     logger.warning(f"Could not parse creation_time_iso: {created_iso} for session {session_id}")
 

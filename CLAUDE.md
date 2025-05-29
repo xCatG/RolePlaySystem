@@ -391,3 +391,10 @@ ALWAYS prefer editing an existing file to creating a new one.
 NEVER proactively create documentation files (*.md) or README files. Only create documentation files if explicitly requested by the User.
 Please clean up any files that you've created for testing or debugging purposes after they're no longer needed.
 ALWAYS sync the data type for Frontend (ts) with backend (python pydantic) with making changes to keep them in sync
+
+## Datetime Handling Guidelines (Python)
+Always use **UTC** for any persisted datetime. Never store user-local or client-generated times.
+**DO NOT mix** timezone-aware and naive datetimes. Use `datetime.now(timezone.utc)`. Persist datetime values as ISO 8601 UTC Strings! 
+However, it is acceptable to use datetime.utcnow().isoformat() ONLY when saving a timestamp as a string immediately (e.g, "created_at" or "update_at")
+All datetime parsing and formatting will ASSUME UTC.
+Client-side code may only convert UTC to local time for display purpose. No timestamp creation or modification should be on client. 
