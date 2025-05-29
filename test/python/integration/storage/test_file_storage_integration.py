@@ -2,12 +2,12 @@
 
 import pytest
 import tempfile
-from datetime import datetime
 from pathlib import Path
 
 from role_play.common.storage import FileStorage
 from role_play.common.models import User, UserAuthMethod, SessionData, UserRole, AuthProvider
 from role_play.common.exceptions import StorageError
+from role_play.common.time_utils import utc_now
 
 import sys
 sys.path.append(str(Path(__file__).parent.parent.parent))
@@ -270,7 +270,7 @@ class TestFileStorageSessionIntegration:
             assert_session_equal(retrieved_session, session)
             
             # Update session
-            retrieved_session.last_activity = datetime.now()
+            retrieved_session.last_activity = utc_now()
             retrieved_session.metadata["page"] = "/dashboard"
             updated_session = await storage.update_session(retrieved_session)
             

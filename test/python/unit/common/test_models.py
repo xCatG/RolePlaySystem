@@ -1,13 +1,13 @@
 """Unit tests for common.models module."""
 
 import pytest
-from datetime import datetime
 from pydantic import ValidationError
 
 from role_play.common.models import (
     User, UserAuthMethod, TokenData, SessionData,
     UserRole, AuthProvider
 )
+from role_play.common.time_utils import utc_now
 import sys
 from pathlib import Path
 sys.path.append(str(Path(__file__).parent.parent.parent))
@@ -50,7 +50,7 @@ class TestUser:
     
     def test_user_creation_with_defaults(self):
         """Test User creation with default values."""
-        now = datetime.now()
+        now = utc_now()
         user = User(
             id="test-123",
             username="testuser",
@@ -68,7 +68,7 @@ class TestUser:
     
     def test_user_creation_with_all_fields(self):
         """Test User creation with all fields specified."""
-        now = datetime.now()
+        now = utc_now()
         user = User(
             id="test-456",
             username="adminuser",
@@ -116,7 +116,7 @@ class TestUserAuthMethod:
     
     def test_auth_method_creation_with_defaults(self):
         """Test UserAuthMethod creation with default values."""
-        now = datetime.now()
+        now = utc_now()
         auth_method = UserAuthMethod(
             id="auth-123",
             user_id="user-123",
@@ -213,7 +213,7 @@ class TestSessionData:
     
     def test_session_data_creation_with_defaults(self):
         """Test SessionData creation with default values."""
-        now = datetime.now()
+        now = utc_now()
         session = SessionData(
             session_id="session-123",
             user_id="user-123",

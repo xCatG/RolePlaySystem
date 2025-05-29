@@ -1,10 +1,10 @@
 """Test data factories for creating test objects."""
 
 import uuid
-from datetime import datetime
 from typing import Dict, Any, Optional
 
 from role_play.common.models import User, UserAuthMethod, SessionData, UserRole, AuthProvider
+from role_play.common.time_utils import utc_now
 
 
 class UserFactory:
@@ -20,7 +20,7 @@ class UserFactory:
         **kwargs
     ) -> User:
         """Create a User instance with sensible defaults."""
-        now = datetime.now()
+        now = utc_now()
         return User(
             id=id or str(uuid.uuid4()),
             username=username or f"user_{uuid.uuid4().hex[:8]}",
@@ -57,7 +57,7 @@ class UserAuthMethodFactory:
             provider=provider,
             provider_user_id=provider_user_id or f"provider_user_{uuid.uuid4().hex[:8]}",
             credentials=credentials or {"password_hash": "hashed_password"},
-            created_at=kwargs.get("created_at", datetime.now()),
+            created_at=kwargs.get("created_at", utc_now()),
             is_active=is_active
         )
     
@@ -99,7 +99,7 @@ class SessionDataFactory:
         **kwargs
     ) -> SessionData:
         """Create a SessionData instance with sensible defaults."""
-        now = datetime.now()
+        now = utc_now()
         return SessionData(
             session_id=session_id or str(uuid.uuid4()),
             user_id=user_id or str(uuid.uuid4()),

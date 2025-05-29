@@ -3,12 +3,12 @@
 import json
 import os
 from abc import ABC, abstractmethod
-from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from .exceptions import StorageError
 from .models import User, UserAuthMethod, SessionData
+from .time_utils import utc_now
 
 
 class StorageBackend(ABC):
@@ -192,7 +192,7 @@ class FileStorage(StorageBackend):
         if not user_file.exists():
             raise StorageError(f"User {user.id} not found")
         
-        user.updated_at = datetime.now()
+        user.updated_at = utc_now()
         self._write_json_file(user_file, user.model_dump())
         return user
 
