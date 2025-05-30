@@ -2,6 +2,9 @@
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+import os
 from typing import Type
 from contextlib import asynccontextmanager
 from .base_handler import BaseHandler
@@ -52,6 +55,8 @@ class BaseServer:
         
         if enable_cors:
             self._setup_cors()
+        
+        self._setup_static_files()
     
     def _setup_cors(self):
         """Setup CORS middleware for frontend development."""
@@ -62,6 +67,45 @@ class BaseServer:
             allow_methods=["*"],
             allow_headers=["*"],
         )
+    
+    def _setup_static_files(self):
+        """Setup serving of static frontend files."""
+        static_frontend_dir = "static_frontend"
+        
+        if not os.path.exists(static_frontend_dir) or not os.path.isdir(static_frontend_dir):
+            logger.warning(
+                f"Static frontend directory '{static_frontend_dir}' not found. "
+                "Frontend will not be served. This is expected if running backend only for development."
+            )
+            return
+
+        # Serve assets directory
+        if os.path.exists(os.path.join(static_frontend_dir, "assets")):
+            self.app.mount(
+                "/assets", 
+                StaticFiles(directory=os.path.join(static_frontend_dir, "assets")), 
+                name="vue-assets"
+            )
+        
+        # Serve static files from root
+        for item in os.listdir(static_frontend_dir):
+            item_path = os.path.join(static_frontend_dir, item)
+            if os.path.isfile(item_path) and item != "index.html":
+                # For each static file, create a specific route
+                @self.app.get(f"/{item}", include_in_schema=False)
+                async def serve_static_file(filename: str = item):
+                    return FileResponse(os.path.join(static_frontend_dir, filename))
+
+        # Catch-all route for Vue app (client-side routing)
+        @self.app.get("/{full_path:path}", include_in_schema=False)
+        async def serve_vue_app(full_path: str):
+            index_html_path = os.path.join(static_frontend_dir, "index.html")
+            if os.path.exists(index_html_path):
+                return FileResponse(index_html_path)
+            else:
+                logger.error(f"index.html not found at {index_html_path}")
+                from fastapi.responses import HTMLResponse
+                return HTMLResponse(content="Frontend not found.", status_code=404)
     
     def register_handler(self, handler_class: Type[BaseHandler], **handler_kwargs):
         """

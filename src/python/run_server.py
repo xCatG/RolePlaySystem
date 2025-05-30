@@ -101,18 +101,6 @@ def _validate_configuration(config) -> None:
             raise ValueError("JWT_SECRET_KEY must be set in production environment")
 
 
-# Create app at module level for uvicorn
-app = None
-
-
-async def init_app():
-    """Initialize the app."""
-    global app
-    server = await create_server()
-    app = server.get_app()
-    return app
-
-
 def main():
     """Main entry point."""
     config = get_config()
@@ -121,14 +109,15 @@ def main():
     print(f"Debug mode: {config.debug}")
     print(f"Enabled handlers: {config.enabled_handlers}")
 
-    # Initialize app synchronously for uvicorn
-    asyncio.run(init_app())
+    # Initialize app synchronously
+    server = asyncio.run(create_server())
+    app = server.get_app()
 
     uvicorn.run(
         app,
         host=config.host,
         port=config.port,
-        reload=False,  # Disable reload for testing
+        reload=False,
     )
 
 
