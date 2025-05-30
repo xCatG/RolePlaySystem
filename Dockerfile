@@ -20,8 +20,8 @@ RUN npm run build
 FROM python:3.12-slim-bookworm AS backend
 
 # Set environment variables for Python
-ENV PYTHONDONTWRITEBYTECODE 1
-ENV PYTHONUNBUFFERED 1
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
 
 # Set working directory for backend
 WORKDIR /app/backend
@@ -35,8 +35,10 @@ RUN pip install --no-cache-dir --upgrade pip && \
 
 # Copy the entire Python application code
 COPY src/python/ ./src/python/
-COPY data/ ./data/
 COPY config/ ./config/
+
+# Copy the scenarios.json file to a location that won't be overridden by volume mount
+COPY data/scenarios.json ./static_data/scenarios.json
 
 # Copy the built frontend assets from the frontend-builder stage
 COPY --from=frontend-builder /app/frontend/dist ./static_frontend

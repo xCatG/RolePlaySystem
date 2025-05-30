@@ -2,11 +2,14 @@
 from typing import List, Dict, Optional
 import json
 from pathlib import Path
+import logging
+
+logger = logging.getLogger(__name__)
 
 class ContentLoader:
     """Load roleplay scenarios and characters from static JSON file."""
     
-    def __init__(self, data_file: str = "data/scenarios.json"):
+    def __init__(self, data_file: str = "static_data/scenarios.json"):
         """Initialize content loader with data file path.
         
         Args:
@@ -14,6 +17,7 @@ class ContentLoader:
         """
         self.data_file = Path(data_file)
         self._data = None
+        logger.info(f"ContentLoader initialized with data file: {self.data_file.absolute()}")
     
     def load_data(self) -> Dict:
         """Load data from JSON file, caching the result.
@@ -26,8 +30,20 @@ class ContentLoader:
             JSONDecodeError: If data file contains invalid JSON
         """
         if self._data is None:
-            with open(self.data_file) as f:
-                self._data = json.load(f)
+            try:
+                logger.info(f"Loading data from: {self.data_file.absolute()}")
+                with open(self.data_file) as f:
+                    self._data = json.load(f)
+                logger.info(f"Successfully loaded {len(self._data.get('scenarios', []))} scenarios and {len(self._data.get('characters', []))} characters")
+            except FileNotFoundError as e:
+                logger.error(f"Data file not found at: {self.data_file.absolute()}")
+                raise
+            except json.JSONDecodeError as e:
+                logger.error(f"Invalid JSON in data file: {e}")
+                raise
+            except Exception as e:
+                logger.error(f"Unexpected error loading data: {e}")
+                raise
         return self._data
     
     def get_scenarios(self) -> List[Dict]:

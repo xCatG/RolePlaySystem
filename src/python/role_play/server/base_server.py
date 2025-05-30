@@ -56,7 +56,8 @@ class BaseServer:
         if enable_cors:
             self._setup_cors()
         
-        self._setup_static_files()
+        # Don't setup static files here - we'll do it after handlers are registered
+        self._static_frontend_dir = "static_frontend"
     
     def _setup_cors(self):
         """Setup CORS middleware for frontend development."""
@@ -70,7 +71,7 @@ class BaseServer:
     
     def _setup_static_files(self):
         """Setup serving of static frontend files."""
-        static_frontend_dir = "static_frontend"
+        static_frontend_dir = self._static_frontend_dir
         
         if not os.path.exists(static_frontend_dir) or not os.path.isdir(static_frontend_dir):
             logger.warning(
@@ -96,6 +97,56 @@ class BaseServer:
                 async def serve_static_file(filename: str = item):
                     return FileResponse(os.path.join(static_frontend_dir, filename))
 
+        # Health check endpoint - add before catch-all route
+        @self.app.get("/health", tags=["Health"])
+        async def health_check():
+            """Health check endpoint that reports system status."""
+            health_status = {
+                "status": "healthy",
+                "version": self.app.version,
+                "checks": {}
+            }
+            
+            # Check scenarios loading
+            try:
+                from ..server.dependencies import get_content_loader
+                loader = get_content_loader()
+                scenarios = loader.get_scenarios()
+                health_status["checks"]["scenarios"] = {
+                    "status": "ok",
+                    "count": len(scenarios),
+                    "data_file": str(loader.data_file.absolute())
+                }
+            except Exception as e:
+                health_status["status"] = "degraded"
+                health_status["checks"]["scenarios"] = {
+                    "status": "error",
+                    "error": str(e)
+                }
+            
+            # Check storage
+            try:
+                storage_path = os.getenv("STORAGE_PATH", "./data")
+                if os.path.exists(storage_path) and os.access(storage_path, os.R_OK | os.W_OK):
+                    health_status["checks"]["storage"] = {
+                        "status": "ok",
+                        "path": os.path.abspath(storage_path)
+                    }
+                else:
+                    health_status["status"] = "degraded"
+                    health_status["checks"]["storage"] = {
+                        "status": "error",
+                        "error": "Storage path not accessible"
+                    }
+            except Exception as e:
+                health_status["status"] = "degraded"
+                health_status["checks"]["storage"] = {
+                    "status": "error",
+                    "error": str(e)
+                }
+            
+            return health_status
+        
         # Catch-all route for Vue app (client-side routing)
         @self.app.get("/{full_path:path}", include_in_schema=False)
         async def serve_vue_app(full_path: str):
@@ -127,6 +178,12 @@ class BaseServer:
         )
         
         logger.info(f"Registered {handler_class.__name__} at {handler.prefix}")
+    
+    def setup_static_files_after_handlers(self):
+        """Setup static file serving after all handlers are registered.
+        This must be called AFTER all handlers are registered to ensure
+        the catch-all route doesn't override API routes."""
+        self._setup_static_files()
     
     def get_app(self) -> FastAPI:
         """Return the FastAPI application instance."""

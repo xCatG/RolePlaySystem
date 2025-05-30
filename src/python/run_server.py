@@ -27,6 +27,9 @@ async def create_server() -> BaseServer:
 
     # Dynamically register handlers based on configuration
     _register_handlers(server, config)
+    
+    # Setup static files AFTER handlers to ensure catch-all route doesn't override APIs
+    server.setup_static_files_after_handlers()
 
     return server
 

@@ -241,3 +241,8 @@ Thumbs.db
 *.tmp
 *.orig
 *.rej
+
+# Role Play System specific
+rps_data_volume/
+.env.prod
+chrome_extension_bug_report.md
