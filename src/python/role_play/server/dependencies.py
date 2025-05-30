@@ -164,26 +164,12 @@ require_user_or_higher = RoleChecker({UserRole.USER, UserRole.SCRIPTER, UserRole
 def get_content_loader() -> ContentLoader:
     """
     Provides a singleton instance of ContentLoader.
-    """
-    # Environment variable takes precedence
-    scenarios_path = os.getenv("SCENARIOS_DATA_PATH")
-    if scenarios_path:
-        logger.info(f"Using SCENARIOS_DATA_PATH from environment: {scenarios_path}")
-        return ContentLoader(scenarios_path)
     
-    # Check if we're in a Docker container (common patterns)
-    if os.path.exists("/app/backend/static_data/scenarios.json"):
-        # Docker environment - use absolute path
-        logger.info("Detected Docker environment, using /app/backend/static_data/scenarios.json")
-        return ContentLoader("/app/backend/static_data/scenarios.json")
-    elif os.path.exists("data/scenarios.json"):
-        # Local development - use project root relative path
-        logger.info("Detected local development environment, using data/scenarios.json")
-        return ContentLoader("data/scenarios.json")
-    else:
-        # Fallback to default relative path
-        logger.warning("Using default relative path static_data/scenarios.json")
-        return ContentLoader()
+    Currently uses a static path for scenarios.json baked into the Docker image.
+    This will be replaced with a proper scenario/character management system
+    as part of the Scripter module implementation.
+    """
+    return ContentLoader(data_file="static_data/scenarios.json")
 
 
 @lru_cache(maxsize=None)
