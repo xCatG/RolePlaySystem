@@ -71,6 +71,15 @@ class ChatHandler(BaseHandler):
 
     def _create_roleplay_agent(self, character: Dict, scenario: Dict) -> Agent:
         """Helper to create an ADK agent configured for a specific character and scenario."""
+        # Get language information
+        character_language = character.get("language", "en")
+        language_names = {
+            "en": "English",
+            "zh-tw": "Traditional Chinese",
+            "ja": "Japanese"
+        }
+        language_name = language_names.get(character_language, "English")
+        
         system_prompt = f"""{character.get("system_prompt", "You are a helpful assistant.")}
 
 **Current Scenario:**
@@ -79,12 +88,13 @@ class ChatHandler(BaseHandler):
 **Roleplay Instructions:**
 -   **Stay fully in character.** Do NOT break character or mention you are an AI.
 -   Respond naturally based on your character's personality and the scenario.
+-   **IMPORTANT: Respond in {language_name} language as specified by your character and scenario.**
 -   Engage with the user's messages within the roleplay context.
 """
         agent = Agent(
-            name=f"roleplay_{character['id']}_{scenario['id']}",
+            name=f"roleplay_{character.get('id', 'unknown')}_{scenario.get('id', 'unknown')}",
             model=DEFAULT_MODEL,
-            description=f"Roleplay agent for {character['name']} in {scenario['name']}",
+            description=f"Roleplay agent for {character.get('name', 'Unknown Character')} in {scenario.get('name', 'Unknown Scenario')}",
             instruction=system_prompt
         )
         return agent

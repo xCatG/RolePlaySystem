@@ -52,6 +52,12 @@ class ServerConfig(BaseModel):
         description="Map of handler names to their import paths"
     )
 
+    # Language configuration
+    supported_languages: List[str] = Field(
+        default=["en", "zh-tw", "ja"],
+        description="List of supported language codes for scenarios and characters"
+    )
+
 
 class DevelopmentConfig(ServerConfig):
     """Development configuration with debug enabled."""

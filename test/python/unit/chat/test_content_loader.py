@@ -177,3 +177,190 @@ class TestContentLoader:
             assert content_loader.get_characters() == []
             assert content_loader.get_scenario_by_id("any") is None
             assert content_loader.get_character_by_id("any") is None
+
+    # Language support tests
+    @pytest.fixture
+    def multilingual_data(self):
+        """Sample data with multiple languages."""
+        return {
+            "scenarios": [
+                {
+                    "id": "medical_en",
+                    "language": "en",
+                    "name": "Medical Interview",
+                    "description": "Practice medical history taking",
+                    "compatible_characters": ["patient_en"]
+                },
+                {
+                    "id": "medical_zh_tw",
+                    "language": "zh-tw", 
+                    "name": "醫療訪談",
+                    "description": "練習醫療病史詢問",
+                    "compatible_characters": ["patient_zh_tw"]
+                },
+                {
+                    "id": "medical_ja",
+                    "language": "ja",
+                    "name": "医療面接",
+                    "description": "医療履歴の聞き取り練習",
+                    "compatible_characters": ["patient_ja"]
+                }
+            ],
+            "characters": [
+                {
+                    "id": "patient_en",
+                    "language": "en",
+                    "name": "Sarah - Patient",
+                    "description": "English speaking patient"
+                },
+                {
+                    "id": "patient_zh_tw",
+                    "language": "zh-tw",
+                    "name": "李小姐 - 患者",
+                    "description": "繁體中文患者"
+                },
+                {
+                    "id": "patient_ja",
+                    "language": "ja",
+                    "name": "田中さん - 患者",
+                    "description": "日本語を話す患者"
+                }
+            ]
+        }
+
+    def test_language_support_initialization(self):
+        """Test ContentLoader initialization with supported languages."""
+        loader = ContentLoader(supported_languages=["en", "zh-tw", "ja"])
+        assert loader.supported_languages == ["en", "zh-tw", "ja"]
+        
+        # Test default language support
+        loader_default = ContentLoader()
+        assert loader_default.supported_languages == ["en"]
+
+    def test_language_validation_success(self, multilingual_data):
+        """Test successful language validation."""
+        loader = ContentLoader(supported_languages=["en", "zh-tw", "ja"])
+        with patch("builtins.open", mock_open(read_data=json.dumps(multilingual_data))):
+            # Should not raise any exception
+            data = loader.load_data()
+            assert data == multilingual_data
+
+    def test_language_validation_unsupported_scenario(self):
+        """Test language validation failure for unsupported scenario language."""
+        invalid_data = {
+            "scenarios": [
+                {
+                    "id": "test_fr",
+                    "language": "fr",  # Unsupported language
+                    "name": "Test en français",
+                    "description": "Test scenario"
+                }
+            ],
+            "characters": []
+        }
+        loader = ContentLoader(supported_languages=["en", "zh-tw", "ja"])
+        with patch("builtins.open", mock_open(read_data=json.dumps(invalid_data))):
+            with pytest.raises(ValueError, match="Scenario 'test_fr' has unsupported language 'fr'"):
+                loader.load_data()
+
+    def test_language_validation_unsupported_character(self):
+        """Test language validation failure for unsupported character language."""
+        invalid_data = {
+            "scenarios": [],
+            "characters": [
+                {
+                    "id": "char_de",
+                    "language": "de",  # Unsupported language
+                    "name": "German Character",
+                    "description": "German speaking character"
+                }
+            ]
+        }
+        loader = ContentLoader(supported_languages=["en", "zh-tw", "ja"])
+        with patch("builtins.open", mock_open(read_data=json.dumps(invalid_data))):
+            with pytest.raises(ValueError, match="Character 'char_de' has unsupported language 'de'"):
+                loader.load_data()
+
+    def test_language_defaults_to_en(self):
+        """Test that missing language field defaults to 'en'."""
+        data_no_lang = {
+            "scenarios": [
+                {
+                    "id": "test",
+                    "name": "Test Scenario",
+                    "description": "No language field"
+                }
+            ],
+            "characters": [
+                {
+                    "id": "char",
+                    "name": "Test Character",
+                    "description": "No language field"
+                }
+            ]
+        }
+        loader = ContentLoader(supported_languages=["en"])
+        with patch("builtins.open", mock_open(read_data=json.dumps(data_no_lang))):
+            # Should not raise exception as missing language defaults to "en"
+            data = loader.load_data()
+            assert data == data_no_lang
+
+    def test_get_scenarios_by_language(self, multilingual_data):
+        """Test filtering scenarios by language."""
+        loader = ContentLoader(supported_languages=["en", "zh-tw", "ja"])
+        with patch("builtins.open", mock_open(read_data=json.dumps(multilingual_data))):
+            # Test English scenarios
+            en_scenarios = loader.get_scenarios_by_language("en")
+            assert len(en_scenarios) == 1
+            assert en_scenarios[0]["id"] == "medical_en"
+            
+            # Test Traditional Chinese scenarios
+            zh_tw_scenarios = loader.get_scenarios_by_language("zh-tw")
+            assert len(zh_tw_scenarios) == 1
+            assert zh_tw_scenarios[0]["id"] == "medical_zh_tw"
+            
+            # Test Japanese scenarios
+            ja_scenarios = loader.get_scenarios_by_language("ja")
+            assert len(ja_scenarios) == 1
+            assert ja_scenarios[0]["id"] == "medical_ja"
+            
+            # Test non-existent language
+            empty_scenarios = loader.get_scenarios_by_language("fr")
+            assert empty_scenarios == []
+
+    def test_get_characters_by_language(self, multilingual_data):
+        """Test filtering characters by language."""
+        loader = ContentLoader(supported_languages=["en", "zh-tw", "ja"])
+        with patch("builtins.open", mock_open(read_data=json.dumps(multilingual_data))):
+            # Test English characters
+            en_characters = loader.get_characters_by_language("en")
+            assert len(en_characters) == 1
+            assert en_characters[0]["id"] == "patient_en"
+            
+            # Test Traditional Chinese characters
+            zh_tw_characters = loader.get_characters_by_language("zh-tw")
+            assert len(zh_tw_characters) == 1
+            assert zh_tw_characters[0]["id"] == "patient_zh_tw"
+            
+            # Test Japanese characters
+            ja_characters = loader.get_characters_by_language("ja")
+            assert len(ja_characters) == 1
+            assert ja_characters[0]["id"] == "patient_ja"
+
+    def test_get_scenario_characters_by_language(self, multilingual_data):
+        """Test getting scenario characters filtered by language."""
+        loader = ContentLoader(supported_languages=["en", "zh-tw", "ja"])
+        with patch("builtins.open", mock_open(read_data=json.dumps(multilingual_data))):
+            # Test English scenario characters
+            en_chars = loader.get_scenario_characters_by_language("medical_en", "en")
+            assert len(en_chars) == 1
+            assert en_chars[0]["id"] == "patient_en"
+            
+            # Test Traditional Chinese scenario characters
+            zh_tw_chars = loader.get_scenario_characters_by_language("medical_zh_tw", "zh-tw")
+            assert len(zh_tw_chars) == 1
+            assert zh_tw_chars[0]["id"] == "patient_zh_tw"
+            
+            # Test non-existent scenario
+            empty_chars = loader.get_scenario_characters_by_language("nonexistent", "en")
+            assert empty_chars == []

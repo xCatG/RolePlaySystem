@@ -6,13 +6,15 @@ from pathlib import Path
 class ContentLoader:
     """Load roleplay scenarios and characters from static JSON file."""
     
-    def __init__(self, data_file: str = "data/scenarios.json"):
-        """Initialize content loader with data file path.
+    def __init__(self, data_file: str = "data/scenarios.json", supported_languages: Optional[List[str]] = None):
+        """Initialize content loader with data file path and supported languages.
         
         Args:
             data_file: Path to the JSON file containing scenarios and characters
+            supported_languages: List of supported language codes for validation
         """
         self.data_file = Path(data_file)
+        self.supported_languages = supported_languages or ["en"]
         self._data = None
     
     def load_data(self) -> Dict:
@@ -24,11 +26,37 @@ class ContentLoader:
         Raises:
             FileNotFoundError: If data file doesn't exist
             JSONDecodeError: If data file contains invalid JSON
+            ValueError: If scenarios or characters contain unsupported languages
         """
         if self._data is None:
             with open(self.data_file) as f:
                 self._data = json.load(f)
+            self._validate_languages()
         return self._data
+    
+    def _validate_languages(self) -> None:
+        """Validate that all scenarios and characters use supported languages.
+        
+        Raises:
+            ValueError: If any scenario or character has unsupported language
+        """
+        # Validate scenarios
+        for scenario in self._data.get("scenarios", []):
+            scenario_lang = scenario.get("language", "en")
+            if scenario_lang not in self.supported_languages:
+                raise ValueError(
+                    f"Scenario '{scenario.get('id', 'unknown')}' has unsupported language '{scenario_lang}'. "
+                    f"Supported languages: {self.supported_languages}"
+                )
+        
+        # Validate characters
+        for character in self._data.get("characters", []):
+            character_lang = character.get("language", "en")
+            if character_lang not in self.supported_languages:
+                raise ValueError(
+                    f"Character '{character.get('id', 'unknown')}' has unsupported language '{character_lang}'. "
+                    f"Supported languages: {self.supported_languages}"
+                )
     
     def get_scenarios(self) -> List[Dict]:
         """Get all available scenarios.
@@ -83,3 +111,42 @@ class ContentLoader:
         
         compatible_chars = scenario.get("compatible_characters", [])
         return [c for c in self.get_characters() if c["id"] in compatible_chars]
+    
+    def get_scenarios_by_language(self, language: str = "en") -> List[Dict]:
+        """Get all scenarios for a specific language.
+        
+        Args:
+            language: Language code to filter by
+            
+        Returns:
+            List of scenario dictionaries for the specified language
+        """
+        return [s for s in self.get_scenarios() if s.get("language", "en") == language]
+    
+    def get_characters_by_language(self, language: str = "en") -> List[Dict]:
+        """Get all characters for a specific language.
+        
+        Args:
+            language: Language code to filter by
+            
+        Returns:
+            List of character dictionaries for the specified language
+        """
+        return [c for c in self.get_characters() if c.get("language", "en") == language]
+    
+    def get_scenario_characters_by_language(self, scenario_id: str, language: str = "en") -> List[Dict]:
+        """Get all characters compatible with a scenario in a specific language.
+        
+        Args:
+            scenario_id: The scenario ID
+            language: Language code to filter by
+            
+        Returns:
+            List of compatible character dictionaries for the specified language
+        """
+        scenario = self.get_scenario_by_id(scenario_id)
+        if not scenario:
+            return []
+        
+        compatible_chars = scenario.get("compatible_characters", [])
+        return [c for c in self.get_characters_by_language(language) if c["id"] in compatible_chars]

@@ -163,9 +163,10 @@ require_user_or_higher = RoleChecker({UserRole.USER, UserRole.SCRIPTER, UserRole
 @lru_cache(maxsize=None)
 def get_content_loader() -> ContentLoader:
     """
-    Provides a singleton instance of ContentLoader.
+    Provides a singleton instance of ContentLoader with language validation.
     """
-    return ContentLoader()
+    config = get_server_config()
+    return ContentLoader(supported_languages=config.supported_languages)
 
 
 @lru_cache(maxsize=None)
