@@ -294,6 +294,398 @@ Application not working?
 │           └── Yes → System is working!
 ```
 
+## Production Architecture
+
+### Overview
+
+The production deployment evolves from the single-container POC to a scalable, resilient microservices architecture:
+
+```
+┌─────────────┐     ┌─────────────┐     ┌─────────────┐
+│   Nginx     │────▶│  Frontend   │────▶│ Static CDN  │
+│  (SSL/LB)   │     │  (Vue.js)   │     │   (Assets)  │
+└─────────────┘     └─────────────┘     └─────────────┘
+       │
+       ▼
+┌─────────────┐     ┌─────────────┐     ┌─────────────┐
+│  API Gateway│────▶│Auth Service │────▶│  Redis      │
+│  (Kong/AWS) │     │  (FastAPI)  │     │  (Sessions) │
+└─────────────┘     └─────────────┘     └─────────────┘
+       │
+       ├────────────▶┌─────────────┐     ┌─────────────┐
+       │             │Chat Service │────▶│  PostgreSQL │
+       │             │  (FastAPI)  │     │  (Metadata) │
+       │             └─────────────┘     └─────────────┘
+       │                    │
+       │                    ▼
+       │             ┌─────────────┐     ┌─────────────┐
+       └────────────▶│ Eval Service│────▶│  S3/GCS     │
+                     │  (FastAPI)  │     │  (Logs)     │
+                     └─────────────┘     └─────────────┘
+```
+
+### Docker Compose Production Setup
+
+```yaml
+# docker-compose.prod.yml
+version: '3.8'
+
+services:
+  frontend:
+    image: rps-frontend:${VERSION:-latest}
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      - backend
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+    restart: unless-stopped
+    
+  backend:
+    image: rps-backend:${VERSION:-latest}
+    environment:
+      - DATABASE_URL=postgresql://rps:${DB_PASSWORD}@postgres:5432/rps
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379
+      - S3_BUCKET=${S3_BUCKET}
+      - ENVIRONMENT=prod
+    depends_on:
+      - postgres
+      - redis
+    deploy:
+      replicas: 3
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_DB=rps
+      - POSTGRES_USER=rps
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+      
+  redis:
+    image: redis:7-alpine
+    command: redis-server --requirepass ${REDIS_PASSWORD}
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
+```
+
+### Kubernetes Deployment
+
+```yaml
+# k8s/deployment.yml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rps-backend
+  namespace: production
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: rps-backend
+  template:
+    metadata:
+      labels:
+        app: rps-backend
+    spec:
+      containers:
+      - name: backend
+        image: registry.example.com/rps-backend:v1.0.0
+        ports:
+        - containerPort: 8000
+        env:
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: rps-secrets
+              key: database-url
+        - name: REDIS_URL
+          valueFrom:
+            secretKeyRef:
+              name: rps-secrets
+              key: redis-url
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rps-backend
+  namespace: production
+spec:
+  selector:
+    app: rps-backend
+  ports:
+  - port: 80
+    targetPort: 8000
+  type: ClusterIP
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: rps-backend-hpa
+  namespace: production
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: rps-backend
+  minReplicas: 3
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+```
+
+### Migration Path from POC to Production
+
+#### Phase 1: Database Migration (2-3 weeks)
+1. **Design Schema**
+   ```sql
+   -- Users table
+   CREATE TABLE users (
+     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+     username VARCHAR(50) UNIQUE NOT NULL,
+     email VARCHAR(255) UNIQUE NOT NULL,
+     role VARCHAR(20) NOT NULL DEFAULT 'USER',
+     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+   );
+   
+   -- Sessions table
+   CREATE TABLE chat_sessions (
+     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+     user_id UUID REFERENCES users(id),
+     scenario_id VARCHAR(50) NOT NULL,
+     character_id VARCHAR(50) NOT NULL,
+     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+     ended_at TIMESTAMP WITH TIME ZONE,
+     log_file_path VARCHAR(500)
+   );
+   ```
+
+2. **Implement Database Models**
+   - SQLAlchemy models for all entities
+   - Alembic for migration management
+   - Connection pooling configuration
+
+3. **Create Migration Scripts**
+   - Export FileStorage data to SQL
+   - Verify data integrity
+   - Performance testing
+
+#### Phase 2: Service Separation (3-4 weeks)
+1. **Extract Services**
+   - Auth Service: User management, JWT, OAuth
+   - Chat Service: Session management, ADK integration
+   - Evaluation Service: Export, analytics
+
+2. **API Gateway Setup**
+   - Kong or AWS API Gateway
+   - Rate limiting per service
+   - Request routing rules
+
+3. **Inter-Service Communication**
+   - gRPC for internal services
+   - Message queue for async tasks
+   - Service discovery
+
+#### Phase 3: Infrastructure (2-3 weeks)
+1. **Kubernetes Setup**
+   - EKS/GKE/AKS cluster provisioning
+   - Namespace configuration
+   - RBAC policies
+
+2. **CI/CD Pipeline**
+   ```yaml
+   # .github/workflows/deploy.yml
+   name: Deploy to Production
+   on:
+     push:
+       tags:
+         - 'v*'
+   jobs:
+     test:
+       runs-on: ubuntu-latest
+       steps:
+         - uses: actions/checkout@v3
+         - name: Run tests
+           run: |
+             make test
+             make integration-test
+     
+     build:
+       needs: test
+       runs-on: ubuntu-latest
+       steps:
+         - uses: docker/build-push-action@v4
+           with:
+             push: true
+             tags: |
+               ${{ secrets.REGISTRY }}/rps-backend:${{ github.ref_name }}
+               ${{ secrets.REGISTRY }}/rps-backend:latest
+     
+     deploy:
+       needs: build
+       runs-on: ubuntu-latest
+       steps:
+         - name: Deploy to Kubernetes
+           run: |
+             kubectl set image deployment/rps-backend \
+               backend=${{ secrets.REGISTRY }}/rps-backend:${{ github.ref_name }} \
+               -n production
+             kubectl rollout status deployment/rps-backend -n production
+   ```
+
+3. **Monitoring Stack**
+   - Prometheus for metrics
+   - Grafana for visualization
+   - Loki for log aggregation
+   - Jaeger for distributed tracing
+
+#### Phase 4: Security & Performance (2-3 weeks)
+1. **Security Hardening**
+   - HashiCorp Vault for secrets
+   - mTLS between services
+   - WAF configuration
+   - Penetration testing
+
+2. **Performance Optimization**
+   - Redis caching layer
+   - Database query optimization
+   - CDN for static assets
+   - Load testing (target: 10k concurrent users)
+
+3. **Disaster Recovery**
+   - Multi-region deployment
+   - Automated backups
+   - Failover testing
+   - RTO/RPO documentation
+
+### Production Environment Variables
+
+```env
+# .env.prod
+# Database
+DATABASE_URL=postgresql://rps:password@postgres:5432/rps
+DATABASE_POOL_SIZE=20
+DATABASE_MAX_OVERFLOW=40
+
+# Redis
+REDIS_URL=redis://:password@redis:6379
+REDIS_MAX_CONNECTIONS=50
+
+# S3/GCS Storage
+S3_BUCKET=rps-production-logs
+S3_REGION=us-east-1
+AWS_ACCESS_KEY_ID=your-access-key
+AWS_SECRET_ACCESS_KEY=your-secret-key
+
+# Security
+JWT_SECRET_KEY=<generate-strong-key>
+JWT_ALGORITHM=RS256
+JWT_PUBLIC_KEY_PATH=/secrets/jwt-public.pem
+JWT_PRIVATE_KEY_PATH=/secrets/jwt-private.pem
+
+# API Rate Limiting
+RATE_LIMIT_PER_MINUTE=60
+RATE_LIMIT_PER_HOUR=1000
+
+# Monitoring
+OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
+OTEL_SERVICE_NAME=rps-backend
+OTEL_METRICS_EXPORTER=prometheus
+
+# Feature Flags
+ENABLE_WEBSOCKET_CHAT=true
+ENABLE_OAUTH_LOGIN=true
+ENABLE_EVALUATION_ANALYTICS=true
+```
+
+### Production Checklist (Extended)
+
+#### Infrastructure
+- [ ] Multi-region Kubernetes clusters
+- [ ] Auto-scaling policies configured
+- [ ] Load balancer with health checks
+- [ ] CDN for static assets
+- [ ] Database replication (primary + read replicas)
+- [ ] Redis cluster mode enabled
+- [ ] S3 lifecycle policies for log rotation
+- [ ] Backup and restore procedures tested
+
+#### Security
+- [ ] TLS 1.3 everywhere
+- [ ] API Gateway with rate limiting
+- [ ] WAF rules configured
+- [ ] Secrets rotation policy
+- [ ] Security scanning in CI/CD
+- [ ] Penetration test passed
+- [ ] OWASP Top 10 addressed
+- [ ] Data encryption at rest
+
+#### Monitoring
+- [ ] Application metrics dashboard
+- [ ] Infrastructure metrics dashboard
+- [ ] Log aggregation and search
+- [ ] Distributed tracing enabled
+- [ ] Alerting rules configured
+- [ ] On-call rotation setup
+- [ ] Runbooks documented
+- [ ] SLIs/SLOs defined
+
+#### Performance
+- [ ] Load tested to 10k concurrent users
+- [ ] P95 latency < 200ms
+- [ ] Database queries optimized (< 50ms)
+- [ ] Redis cache hit rate > 90%
+- [ ] CDN cache hit rate > 80%
+- [ ] Image optimization applied
+- [ ] Response compression enabled
+- [ ] Connection pooling tuned
+
 ## Support
 
 For additional help:
@@ -301,3 +693,4 @@ For additional help:
 - Review the health endpoint: `curl http://localhost:8000/health`
 - Ensure all environment variables are set correctly
 - Verify the data volume is properly mounted
+- For production issues, check the monitoring dashboards and distributed traces

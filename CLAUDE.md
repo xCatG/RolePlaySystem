@@ -62,7 +62,16 @@
 - **On-Demand Runners**: ADK Agent and Runner created per message, not stored between requests
 - **Export Ready**: ChatLogger provides text export and session listing without touching ADK state
 
-### 11. **Frontend Architecture - Modular Monolith**
+### 11. **Docker Deployment Architecture** (COMPLETED)
+- **Static Data Path**: Moved scenarios.json to `static_data/` to avoid volume mount conflicts
+- **Route Ordering**: Static files registered AFTER handlers to prevent catch-all override
+- **Health Check**: Added `/health` endpoint with scenario loading validation
+- **Environment Detection**: ContentLoader automatically detects Docker vs local environment
+- **Production Ready**: JWT_SECRET_KEY loaded from .env.prod for secure deployments
+- **Volume Mounts**: Separate volumes for user data and static content
+- **Port Configuration**: Configurable via BACKEND_PORT environment variable
+
+### 12. **Frontend Architecture - Modular Monolith**
 - **Start Simple Philosophy**: Begin with single module to minimize learning curve and development complexity
 - **Built-in Seams**: Structure code with domain boundaries (auth/, chat/, evaluation/) from day one
 - **Clear Evolution Path**: Each domain organized as future module with index.ts exports for clean APIs
@@ -71,7 +80,7 @@
 - **Future-Proof Boundaries**: Service layer contracts, store interfaces, and component exports designed for modularity
 - **Progressive Complexity**: Split modules only when file count, team conflicts, or build time demands it
 
-### 12. **Testing Strategy**
+### 13. **Testing Strategy**
 - **Multi-Language Structure**: Tests organized by language to support future TypeScript web frontend, Android client, etc.
 - **Test Location**: `/test/python/` for Python backend tests (separate from source code)
 - **Test Types & Organization**:
@@ -112,6 +121,8 @@
 - [x] Refactor `role_play/server/config.py` - Add HandlerConfig, AuthConfig, OAuthConfig
 - [x] Create `role_play/server/user_account_handler.py` - User registration/login endpoints
 - [x] Update `run_server.py` - Main server entry point using BaseServer
+- [x] Add health check endpoint - `/health` with scenario loading validation
+- [x] Fix static file serving order - Register after handlers to prevent route conflicts
 
 ### Authentication Module
 - [ ] Create `role_play/auth/__init__.py`
@@ -141,7 +152,7 @@
   - [x] Clear separation between runtime state (ADK) and persistence (ChatLogger)
 - [x] **POC Features**:
   - [x] Create `role_play/chat/content_loader.py` - Load scenarios/characters from static JSON file
-  - [x] Create `data/scenarios.json` - Fixed scenario and character definitions
+  - [x] Create `static_data/scenarios.json` - Fixed scenario and character definitions (moved from data/ for Docker)
   - [x] Implement HTTP-based chat (no WebSocket needed for POC)
   - [x] Create simple text export endpoint: GET /chat/session/{id}/export-text
   - [x] Basic session listing: GET /chat/sessions (no complex filtering)
@@ -215,7 +226,7 @@
 ### Documentation
 - [ ] Update README.md with architecture overview
 - [ ] Create API.md with endpoint documentation
-- [ ] Create DEPLOYMENT.md with deployment instructions
+- [x] Create DEPLOYMENT.md with deployment instructions
 - [ ] Create OAUTH_SETUP.md with Google OAuth setup guide
 - [ ] Create ENVIRONMENTS.md with multi-environment setup
 
@@ -232,6 +243,38 @@
 - [ ] Design script storage schema
 - [ ] Design evaluation results schema
 - [ ] Create migration scripts
+
+### Production Deployment
+- [ ] Create `k8s/` directory with Kubernetes manifests
+  - [ ] `k8s/deployment.yml` - Backend deployment with health checks and resource limits
+  - [ ] `k8s/service.yml` - Service definitions for internal communication
+  - [ ] `k8s/ingress.yml` - Ingress rules for external access
+  - [ ] `k8s/configmap.yml` - Environment-specific configurations
+  - [ ] `k8s/secrets.yml` - Secret definitions (template only)
+- [ ] Create `docker-compose.prod.yml` - Multi-service production setup
+- [ ] Implement S3Storage backend in `role_play/common/storage.py`
+- [ ] Create database models and migrations
+  - [ ] User accounts with OAuth support
+  - [ ] Session metadata and indexing
+  - [ ] Evaluation results schema
+- [ ] Set up monitoring and observability
+  - [ ] Create `monitoring/prometheus.yml` - Metrics collection config
+  - [ ] Create `monitoring/grafana-dashboards/` - Pre-built dashboards
+  - [ ] Add OpenTelemetry instrumentation to FastAPI
+- [ ] Create CI/CD pipeline
+  - [ ] `.github/workflows/test.yml` - Run tests on PR
+  - [ ] `.github/workflows/build.yml` - Build and push Docker images
+  - [ ] `.github/workflows/deploy.yml` - Deploy to staging/production
+- [ ] Security hardening
+  - [ ] Implement API rate limiting with Redis
+  - [ ] Add request validation and sanitization
+  - [ ] Set up HashiCorp Vault integration for secrets
+  - [ ] Configure CORS for production domains only
+- [ ] Performance optimization
+  - [ ] Implement response caching for content endpoints
+  - [ ] Add database connection pooling
+  - [ ] Configure CDN for static assets
+  - [ ] Optimize Docker images for size
 
 ## Implementation Order
 
@@ -264,6 +307,14 @@
    - Documentation
    - Error handling improvements
    - Production deployment setup
+
+6. **Phase 6 - Production Deployment** (After MVP)
+   - Database migration from FileStorage
+   - Kubernetes deployment setup
+   - Monitoring and observability
+   - Security hardening
+   - Performance optimization
+   - Multi-region deployment
 
 ## Implementation Notes
 
@@ -343,9 +394,10 @@
   - `GET /chat/session/{id}/export-text` - Export session as text
   - `GET /evaluation/sessions` - List sessions for evaluation
   - `GET /evaluation/session/{id}/download` - Download session transcript
-- **Data Configuration** (Updated 2025-05-28):
-  - Created `data/scenarios.json` with 2 scenarios and 4 characters
-  - ContentLoader successfully loads static content from project root
+- **Data Configuration** (Updated 2025-05-29):
+  - Created `static_data/scenarios.json` with 2 scenarios and 4 characters
+  - ContentLoader dynamically detects environment (Docker vs local) for correct path resolution
+  - Moved from `data/` to `static_data/` to avoid Docker volume mount conflicts
   - Note: In production, this would be environment-specific data in a database
 - **Testing** (Updated 2025-05-28):
   - Added comprehensive unit tests for ContentLoader (16 test cases, 100% coverage)
@@ -365,6 +417,8 @@
 - **Fail-Fast Validation**: Storage path and configuration validation at server startup
 - **No Global State**: Eliminated global variables in dependencies, pure factory functions
 - **Production Ready**: JWT secret validation, proper error handling, concurrency warnings
+- **Docker Support**: Environment detection for static data paths, health check endpoint
+- **Route Ordering Fix**: Static files registered after handlers to prevent API route conflicts
 
 ### Chat System Architecture (COMPLETED - Separated Concerns)
 - **Clean Architecture**: Separated ADK runtime state from JSONL persistence layer
@@ -384,6 +438,25 @@
 - **No Persistent Runners**: ADK Runners created per-message and immediately discarded
 - **POC Features**: Static content, HTTP-only chat, text export for evaluation
 
+### Docker Deployment (COMPLETED)
+- **Dockerfile**: Multi-stage build with production optimizations
+- **Static Data Handling**: Scenarios moved to `static_data/` directory for clean volume mounts
+- **Health Check Endpoint**: `/health` endpoint reports server status and scenario loading
+- **Route Ordering**: Fixed static file serving to not override API routes
+- **Environment Variables**: Full support for JWT_SECRET_KEY, BACKEND_PORT, STORAGE_PATH
+- **Deployment Guide**: Comprehensive DEPLOYMENT.md with troubleshooting steps
+- **Production Ready**: Works with .env.prod for secure JWT configuration
+
+### Production Architecture (PLANNED)
+- **Container Orchestration**: Kubernetes with horizontal pod autoscaling
+- **Service Mesh**: Microservices architecture with API gateway
+- **Database Migration**: PostgreSQL for structured data, S3/GCS for file storage
+- **Caching Layer**: Redis for session cache and real-time data
+- **Observability**: Prometheus, Grafana, Loki, Tempo stack
+- **CI/CD Pipeline**: GitHub Actions with automated testing and deployment
+- **Security Hardening**: Secrets management, mTLS, API rate limiting, WAF
+- **Multi-Region**: Active-active deployment with failover capabilities
+
 # important-instruction-reminders
 Do what has been asked; nothing more, nothing less.
 NEVER create files unless they're absolutely necessary for achieving your goal.
@@ -391,6 +464,8 @@ ALWAYS prefer editing an existing file to creating a new one.
 NEVER proactively create documentation files (*.md) or README files. Only create documentation files if explicitly requested by the User.
 Please clean up any files that you've created for testing or debugging purposes after they're no longer needed.
 ALWAYS sync the data type for Frontend (ts) with backend (python pydantic) with making changes to keep them in sync
+
+Unless otherwise noted, please add appropriate tests as you add more code; when refactoring, make sure to update test cases
 
 ## Datetime Handling Guidelines (Python)
 Always use **UTC** for any persisted datetime. Never store user-local or client-generated times.
