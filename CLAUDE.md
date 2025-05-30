@@ -63,12 +63,11 @@
 - **Export Ready**: ChatLogger provides text export and session listing without touching ADK state
 
 ### 11. **Docker Deployment Architecture** (COMPLETED)
-- **Static Data Path**: Moved scenarios.json to `static_data/` to avoid volume mount conflicts
+- **Static Data Path**: scenarios.json baked into Docker image at `static_data/` (temporary until Scripter module)
 - **Route Ordering**: Static files registered AFTER handlers to prevent catch-all override
 - **Health Check**: Added `/health` endpoint with scenario loading validation
-- **Environment Detection**: ContentLoader automatically detects Docker vs local environment
 - **Production Ready**: JWT_SECRET_KEY loaded from .env.prod for secure deployments
-- **Volume Mounts**: Separate volumes for user data and static content
+- **Volume Mounts**: User data persisted in volume, static content baked into image
 - **Port Configuration**: Configurable via BACKEND_PORT environment variable
 
 ### 12. **Frontend Architecture - Modular Monolith**
@@ -165,6 +164,12 @@
 - [ ] Create `role_play/scripter/handler.py` - ScripterHandler (admin only)
 - [ ] Create `role_play/scripter/models.py` - Script models
 - [ ] Create `role_play/scripter/storage.py` - Script persistence
+- [ ] **Scenario/Character Management**: Replace static scenarios.json with dynamic system
+  - [ ] CRUD operations for scenarios and characters
+  - [ ] Database storage for production (currently baked into Docker image)
+  - [ ] API endpoints for creating/editing scenarios and characters
+  - [ ] Version control and change tracking
+  - [ ] Import/export functionality
 
 ### Evaluation Module (POC - Simple Export)
 - [x] Create `role_play/evaluation/__init__.py`
@@ -394,11 +399,11 @@
   - `GET /chat/session/{id}/export-text` - Export session as text
   - `GET /evaluation/sessions` - List sessions for evaluation
   - `GET /evaluation/session/{id}/download` - Download session transcript
-- **Data Configuration** (Updated 2025-05-29):
-  - Created `static_data/scenarios.json` with 2 scenarios and 4 characters
-  - ContentLoader dynamically detects environment (Docker vs local) for correct path resolution
+- **Data Configuration** (Updated 2025-05-30):
+  - Created `static_data/scenarios.json` with 2 scenarios and 4 characters (baked into Docker image)
+  - Simplified ContentLoader to use single static path (removed environment detection)
   - Moved from `data/` to `static_data/` to avoid Docker volume mount conflicts
-  - Note: In production, this would be environment-specific data in a database
+  - TODO: Replace with dynamic scenario/character management in Scripter module
 - **Testing** (Updated 2025-05-28):
   - Added comprehensive unit tests for ContentLoader (16 test cases, 100% coverage)
   - Tests use mocking to avoid file system dependencies
@@ -440,7 +445,7 @@
 
 ### Docker Deployment (COMPLETED)
 - **Dockerfile**: Multi-stage build with production optimizations
-- **Static Data Handling**: Scenarios moved to `static_data/` directory for clean volume mounts
+- **Static Data Handling**: scenarios.json baked into image at `static_data/` (temporary solution)
 - **Health Check Endpoint**: `/health` endpoint reports server status and scenario loading
 - **Route Ordering**: Fixed static file serving to not override API routes
 - **Environment Variables**: Full support for JWT_SECRET_KEY, BACKEND_PORT, STORAGE_PATH

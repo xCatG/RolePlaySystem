@@ -60,7 +60,7 @@ class TestContentLoader:
     def test_init_default_path(self):
         """Test ContentLoader initialization with default path."""
         loader = ContentLoader()
-        assert loader.data_file == Path("data/scenarios.json")
+        assert loader.data_file == Path("static_data/scenarios.json")
         assert loader._data is None
 
     def test_init_custom_path(self):

@@ -136,6 +136,7 @@ docker logs rps-app 2>&1 | grep -i error
    docker exec rps-app ls -la /app/backend/static_data/
    
    # Should show: scenarios.json
+   # Note: File is baked into Docker image, not from volume mount
    ```
 
 2. **Route ordering issue (API returns HTML instead of JSON)**
@@ -219,7 +220,7 @@ The Docker setup uses a volume mount for persistent data storage:
 - Host: `./rps_data_volume/`
 - Container: `/app/backend/data/`
 
-**Important**: This volume mount can override files in the container's `/app/backend/data/` directory. Static data files like `scenarios.json` are stored in `/app/backend/static_data/` to avoid this issue.
+**Important**: The `scenarios.json` file is baked into the Docker image at `/app/backend/static_data/` to avoid conflicts with the volume mount. This is a temporary solution until the Scripter module implements proper scenario/character management.
 
 ### 7. Health Check Endpoint
 
