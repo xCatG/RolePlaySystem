@@ -39,11 +39,51 @@ class ServerConfig(BaseModel):
 
     # Storage settings
     storage_type: str = Field(
-        default="file", description="Storage backend type (file, s3)"
+        default="file", description="Storage backend type (file, gcs, s3)"
     )
     storage_path: str = Field(
         default_factory=lambda: os.path.expanduser(os.getenv("STORAGE_PATH", "./data")),
         description="Storage path for file backend (must exist)",
+    )
+    
+    # Google Cloud Storage settings
+    gcs_bucket_name: Optional[str] = Field(
+        default_factory=lambda: os.getenv("GCS_BUCKET_NAME"),
+        description="GCS bucket name for gcs storage type"
+    )
+    gcs_project_id: Optional[str] = Field(
+        default_factory=lambda: os.getenv("GCS_PROJECT_ID"),
+        description="GCS project ID (optional if using default credentials)"
+    )
+    gcs_credentials_path: Optional[str] = Field(
+        default_factory=lambda: os.getenv("GCS_CREDENTIALS_PATH"),
+        description="Path to GCS service account JSON file (optional)"
+    )
+    gcs_prefix: str = Field(
+        default_factory=lambda: os.getenv("GCS_PREFIX", ""),
+        description="GCS object key prefix for namespacing"
+    )
+    
+    # AWS S3 settings
+    s3_bucket_name: Optional[str] = Field(
+        default_factory=lambda: os.getenv("S3_BUCKET_NAME"),
+        description="S3 bucket name for s3 storage type"
+    )
+    s3_region_name: str = Field(
+        default_factory=lambda: os.getenv("S3_REGION_NAME", "us-east-1"),
+        description="S3 region name"
+    )
+    s3_access_key_id: Optional[str] = Field(
+        default_factory=lambda: os.getenv("S3_ACCESS_KEY_ID"),
+        description="S3 access key ID (optional, uses IAM roles if not provided)"
+    )
+    s3_secret_access_key: Optional[str] = Field(
+        default_factory=lambda: os.getenv("S3_SECRET_ACCESS_KEY"),
+        description="S3 secret access key (optional, uses IAM roles if not provided)"
+    )
+    s3_prefix: str = Field(
+        default_factory=lambda: os.getenv("S3_PREFIX", ""),
+        description="S3 object key prefix for namespacing"
     )
 
     # Handler configuration

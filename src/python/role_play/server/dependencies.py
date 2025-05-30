@@ -9,7 +9,7 @@ from typing import Annotated, Set
 from google.adk.sessions import InMemorySessionService
 
 from ..common.auth import AuthManager
-from ..common.storage import StorageBackend, FileStorage
+from ..common.storage import StorageBackend, FileStorage, GCSStorage, S3Storage
 from ..common.models import User, UserRole
 from ..common.exceptions import AuthenticationError, TokenExpiredError
 from .config_loader import get_config, ServerConfig
@@ -51,6 +51,30 @@ def get_storage_backend() -> StorageBackend:
             )
         
         return FileStorage(config.storage_path)
+    
+    elif config.storage_type == "gcs":
+        if not config.gcs_bucket_name:
+            raise ValueError("GCS_BUCKET_NAME is required for GCS storage backend")
+        
+        return GCSStorage(
+            bucket_name=config.gcs_bucket_name,
+            project_id=config.gcs_project_id,
+            credentials_path=config.gcs_credentials_path,
+            prefix=config.gcs_prefix
+        )
+    
+    elif config.storage_type == "s3":
+        if not config.s3_bucket_name:
+            raise ValueError("S3_BUCKET_NAME is required for S3 storage backend")
+        
+        return S3Storage(
+            bucket_name=config.s3_bucket_name,
+            region_name=config.s3_region_name,
+            aws_access_key_id=config.s3_access_key_id,
+            aws_secret_access_key=config.s3_secret_access_key,
+            prefix=config.s3_prefix
+        )
+    
     else:
         raise ValueError(f"Unsupported storage type: {config.storage_type}")
 

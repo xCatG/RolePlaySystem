@@ -1,0 +1,37 @@
+# Production Configuration with AWS S3 Storage
+# Environment variables can override any setting using ${VAR_NAME:default_value} syntax
+
+# Server settings
+host: "${HOST:0.0.0.0}"
+port: "${PORT:8000}"
+debug: false
+
+# API settings
+title: "Role Play System - Production"
+description: "Role Play System API - Production Environment"
+version: "1.0.0"
+
+# CORS settings (configure for your production domains)
+enable_cors: true
+cors_origins:
+  - "${CORS_ORIGIN_1:https://your-domain.com}"
+  - "${CORS_ORIGIN_2:}"  # Optional additional CORS origin via env var
+
+# Authentication settings
+jwt_secret_key: "${JWT_SECRET_KEY}"  # Required in production
+jwt_algorithm: "HS256"
+jwt_expire_hours: "${JWT_EXPIRE_HOURS:24}"
+
+# AWS S3 Storage settings
+storage_type: "s3"
+s3_bucket_name: "${S3_BUCKET_NAME}"  # Required for S3
+s3_region_name: "${S3_REGION_NAME:us-east-1}"
+s3_access_key_id: "${S3_ACCESS_KEY_ID:}"  # Optional, uses IAM roles if not provided
+s3_secret_access_key: "${S3_SECRET_ACCESS_KEY:}"  # Optional, uses IAM roles if not provided
+s3_prefix: "${S3_PREFIX:prod/}"  # Prefix for namespacing objects
+
+# Handler configuration
+enabled_handlers:
+  user_account: "role_play.server.user_account_handler.UserAccountHandler"
+  chat: "role_play.chat.handler.ChatHandler"
+  evaluation: "role_play.evaluation.handler.EvaluationHandler"

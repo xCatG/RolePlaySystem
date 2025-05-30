@@ -10,6 +10,20 @@ from .exceptions import StorageError
 from .models import User, UserAuthMethod, SessionData
 from .time_utils import utc_now
 
+try:
+    from google.cloud import storage as gcs
+    from google.auth.exceptions import DefaultCredentialsError
+    GOOGLE_CLOUD_AVAILABLE = True
+except ImportError:
+    GOOGLE_CLOUD_AVAILABLE = False
+
+try:
+    import boto3
+    from botocore.exceptions import BotoCoreError, NoCredentialsError
+    AWS_S3_AVAILABLE = True
+except ImportError:
+    AWS_S3_AVAILABLE = False
+
 
 class StorageBackend(ABC):
     """
@@ -305,3 +319,516 @@ class FileStorage(StorageBackend):
             data_file.unlink()
             return True
         return False
+
+
+class GCSStorage(StorageBackend):
+    """
+    Google Cloud Storage backend for production deployments.
+    
+    This implementation stores JSON objects in GCS bucket with folder structure
+    similar to FileStorage for consistency.
+    """
+
+    def __init__(
+        self,
+        bucket_name: str,
+        project_id: Optional[str] = None,
+        credentials_path: Optional[str] = None,
+        prefix: str = ""
+    ):
+        """
+        Initialize GCS storage backend.
+        
+        Args:
+            bucket_name: GCS bucket name
+            project_id: GCP project ID (optional if using default credentials)
+            credentials_path: Path to service account JSON file (optional)
+            prefix: Object key prefix for namespacing (e.g., "dev/", "prod/")
+        """
+        if not GOOGLE_CLOUD_AVAILABLE:
+            raise ImportError(
+                "google-cloud-storage is required for GCS backend. "
+                "Install with: pip install google-cloud-storage"
+            )
+        
+        self.bucket_name = bucket_name
+        self.project_id = project_id
+        self.prefix = prefix.rstrip('/') + '/' if prefix else ''
+        
+        try:
+            if credentials_path:
+                os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = credentials_path
+            
+            self.client = gcs.Client(project=project_id)
+            self.bucket = self.client.bucket(bucket_name)
+            
+            # Test connectivity
+            if not self.bucket.exists():
+                raise StorageError(f"GCS bucket '{bucket_name}' does not exist or is not accessible")
+                
+        except (DefaultCredentialsError, Exception) as e:
+            raise StorageError(f"Failed to initialize GCS storage: {e}")
+
+    def _get_object_key(self, category: str, key: str) -> str:
+        """Generate object key with prefix and category."""
+        return f"{self.prefix}{category}/{key}.json"
+
+    async def _store_object(self, key: str, data: Dict[str, Any]) -> None:
+        """Store JSON object in GCS."""
+        try:
+            blob = self.bucket.blob(key)
+            blob.upload_from_string(
+                json.dumps(data, indent=2, default=str),
+                content_type='application/json'
+            )
+        except Exception as e:
+            raise StorageError(f"Failed to store object {key}: {e}")
+
+    async def _get_object(self, key: str) -> Optional[Dict[str, Any]]:
+        """Get JSON object from GCS."""
+        try:
+            blob = self.bucket.blob(key)
+            if not blob.exists():
+                return None
+            
+            content = blob.download_as_text()
+            return json.loads(content)
+        except Exception as e:
+            raise StorageError(f"Failed to get object {key}: {e}")
+
+    async def _delete_object(self, key: str) -> bool:
+        """Delete object from GCS."""
+        try:
+            blob = self.bucket.blob(key)
+            if blob.exists():
+                blob.delete()
+                return True
+            return False
+        except Exception as e:
+            raise StorageError(f"Failed to delete object {key}: {e}")
+
+    async def _list_objects_in_category(self, category: str) -> List[Dict[str, Any]]:
+        """List all objects in a category."""
+        try:
+            prefix = f"{self.prefix}{category}/"
+            blobs = self.bucket.list_blobs(prefix=prefix)
+            objects = []
+            
+            for blob in blobs:
+                content = blob.download_as_text()
+                objects.append(json.loads(content))
+            
+            return objects
+        except Exception as e:
+            raise StorageError(f"Failed to list objects in category {category}: {e}")
+
+    async def get_user(self, user_id: str) -> Optional[User]:
+        """Get user by ID."""
+        key = self._get_object_key("users", user_id)
+        user_data = await self._get_object(key)
+        return User(**user_data) if user_data else None
+
+    async def get_user_by_username(self, username: str) -> Optional[User]:
+        """Get user by username."""
+        users = await self._list_objects_in_category("users")
+        for user_data in users:
+            if user_data.get("username") == username:
+                return User(**user_data)
+        return None
+
+    async def get_user_by_email(self, email: str) -> Optional[User]:
+        """Get user by email."""
+        users = await self._list_objects_in_category("users")
+        for user_data in users:
+            if user_data.get("email") == email:
+                return User(**user_data)
+        return None
+
+    async def create_user(self, user: User) -> User:
+        """Create a new user."""
+        key = self._get_object_key("users", user.id)
+        
+        # Check if user already exists
+        if await self._get_object(key):
+            raise StorageError(f"User {user.id} already exists")
+        
+        await self._store_object(key, user.model_dump())
+        return user
+
+    async def update_user(self, user: User) -> User:
+        """Update an existing user."""
+        key = self._get_object_key("users", user.id)
+        
+        # Check if user exists
+        if not await self._get_object(key):
+            raise StorageError(f"User {user.id} not found")
+        
+        user.updated_at = utc_now()
+        await self._store_object(key, user.model_dump())
+        return user
+
+    async def delete_user(self, user_id: str) -> bool:
+        """Delete a user."""
+        key = self._get_object_key("users", user_id)
+        return await self._delete_object(key)
+
+    async def get_user_auth_methods(self, user_id: str) -> List[UserAuthMethod]:
+        """Get all auth methods for a user."""
+        auth_methods = await self._list_objects_in_category("auth_methods")
+        return [
+            UserAuthMethod(**auth_data)
+            for auth_data in auth_methods
+            if auth_data.get("user_id") == user_id
+        ]
+
+    async def get_user_auth_method(
+        self, provider: str, provider_user_id: str
+    ) -> Optional[UserAuthMethod]:
+        """Get auth method by provider and provider user ID."""
+        auth_methods = await self._list_objects_in_category("auth_methods")
+        for auth_data in auth_methods:
+            if (auth_data.get("provider") == provider and 
+                auth_data.get("provider_user_id") == provider_user_id):
+                return UserAuthMethod(**auth_data)
+        return None
+
+    async def create_user_auth_method(self, auth_method: UserAuthMethod) -> UserAuthMethod:
+        """Create a new auth method for a user."""
+        key = self._get_object_key("auth_methods", auth_method.id)
+        
+        # Check if auth method already exists
+        if await self._get_object(key):
+            raise StorageError(f"Auth method {auth_method.id} already exists")
+        
+        await self._store_object(key, auth_method.model_dump())
+        return auth_method
+
+    async def update_user_auth_method(self, auth_method: UserAuthMethod) -> UserAuthMethod:
+        """Update an existing auth method."""
+        key = self._get_object_key("auth_methods", auth_method.id)
+        
+        # Check if auth method exists
+        if not await self._get_object(key):
+            raise StorageError(f"Auth method {auth_method.id} not found")
+        
+        await self._store_object(key, auth_method.model_dump())
+        return auth_method
+
+    async def delete_user_auth_method(self, auth_method_id: str) -> bool:
+        """Delete an auth method."""
+        key = self._get_object_key("auth_methods", auth_method_id)
+        return await self._delete_object(key)
+
+    async def create_session(self, session: SessionData) -> SessionData:
+        """Create a new session."""
+        key = self._get_object_key("sessions", session.session_id)
+        
+        # Check if session already exists
+        if await self._get_object(key):
+            raise StorageError(f"Session {session.session_id} already exists")
+        
+        await self._store_object(key, session.model_dump())
+        return session
+
+    async def get_session(self, session_id: str) -> Optional[SessionData]:
+        """Get session by ID."""
+        key = self._get_object_key("sessions", session_id)
+        session_data = await self._get_object(key)
+        return SessionData(**session_data) if session_data else None
+
+    async def update_session(self, session: SessionData) -> SessionData:
+        """Update an existing session."""
+        key = self._get_object_key("sessions", session.session_id)
+        
+        # Check if session exists
+        if not await self._get_object(key):
+            raise StorageError(f"Session {session.session_id} not found")
+        
+        await self._store_object(key, session.model_dump())
+        return session
+
+    async def delete_session(self, session_id: str) -> bool:
+        """Delete a session."""
+        key = self._get_object_key("sessions", session_id)
+        return await self._delete_object(key)
+
+    async def store_data(self, key: str, data: Any) -> None:
+        """Store arbitrary data."""
+        object_key = self._get_object_key("data", key)
+        await self._store_object(object_key, {"data": data})
+
+    async def get_data(self, key: str) -> Optional[Any]:
+        """Get arbitrary data."""
+        object_key = self._get_object_key("data", key)
+        file_data = await self._get_object(object_key)
+        return file_data.get("data") if file_data else None
+
+    async def delete_data(self, key: str) -> bool:
+        """Delete arbitrary data."""
+        object_key = self._get_object_key("data", key)
+        return await self._delete_object(object_key)
+
+
+class S3Storage(StorageBackend):
+    """
+    AWS S3 storage backend for production deployments.
+    
+    This implementation stores JSON objects in S3 bucket with folder structure
+    similar to FileStorage for consistency.
+    """
+
+    def __init__(
+        self,
+        bucket_name: str,
+        region_name: str = "us-east-1",
+        aws_access_key_id: Optional[str] = None,
+        aws_secret_access_key: Optional[str] = None,
+        prefix: str = ""
+    ):
+        """
+        Initialize S3 storage backend.
+        
+        Args:
+            bucket_name: S3 bucket name
+            region_name: AWS region (default: us-east-1)
+            aws_access_key_id: AWS access key (optional, uses IAM roles if not provided)
+            aws_secret_access_key: AWS secret key (optional, uses IAM roles if not provided)
+            prefix: Object key prefix for namespacing (e.g., "dev/", "prod/")
+        """
+        if not AWS_S3_AVAILABLE:
+            raise ImportError(
+                "boto3 is required for S3 backend. "
+                "Install with: pip install boto3"
+            )
+        
+        self.bucket_name = bucket_name
+        self.region_name = region_name
+        self.prefix = prefix.rstrip('/') + '/' if prefix else ''
+        
+        try:
+            # Create S3 client with optional credentials
+            session_kwargs = {"region_name": region_name}
+            if aws_access_key_id and aws_secret_access_key:
+                session_kwargs.update({
+                    "aws_access_key_id": aws_access_key_id,
+                    "aws_secret_access_key": aws_secret_access_key
+                })
+            
+            session = boto3.Session(**session_kwargs)
+            self.s3_client = session.client('s3')
+            
+            # Test connectivity
+            self.s3_client.head_bucket(Bucket=bucket_name)
+                
+        except (NoCredentialsError, BotoCoreError, Exception) as e:
+            raise StorageError(f"Failed to initialize S3 storage: {e}")
+
+    def _get_object_key(self, category: str, key: str) -> str:
+        """Generate object key with prefix and category."""
+        return f"{self.prefix}{category}/{key}.json"
+
+    async def _store_object(self, key: str, data: Dict[str, Any]) -> None:
+        """Store JSON object in S3."""
+        try:
+            self.s3_client.put_object(
+                Bucket=self.bucket_name,
+                Key=key,
+                Body=json.dumps(data, indent=2, default=str),
+                ContentType='application/json'
+            )
+        except Exception as e:
+            raise StorageError(f"Failed to store object {key}: {e}")
+
+    async def _get_object(self, key: str) -> Optional[Dict[str, Any]]:
+        """Get JSON object from S3."""
+        try:
+            response = self.s3_client.get_object(Bucket=self.bucket_name, Key=key)
+            content = response['Body'].read().decode('utf-8')
+            return json.loads(content)
+        except self.s3_client.exceptions.NoSuchKey:
+            return None
+        except Exception as e:
+            raise StorageError(f"Failed to get object {key}: {e}")
+
+    async def _delete_object(self, key: str) -> bool:
+        """Delete object from S3."""
+        try:
+            # Check if object exists first
+            try:
+                self.s3_client.head_object(Bucket=self.bucket_name, Key=key)
+            except self.s3_client.exceptions.NoSuchKey:
+                return False
+            
+            self.s3_client.delete_object(Bucket=self.bucket_name, Key=key)
+            return True
+        except Exception as e:
+            raise StorageError(f"Failed to delete object {key}: {e}")
+
+    async def _list_objects_in_category(self, category: str) -> List[Dict[str, Any]]:
+        """List all objects in a category."""
+        try:
+            prefix = f"{self.prefix}{category}/"
+            response = self.s3_client.list_objects_v2(
+                Bucket=self.bucket_name,
+                Prefix=prefix
+            )
+            
+            objects = []
+            if 'Contents' in response:
+                for obj in response['Contents']:
+                    obj_response = self.s3_client.get_object(
+                        Bucket=self.bucket_name,
+                        Key=obj['Key']
+                    )
+                    content = obj_response['Body'].read().decode('utf-8')
+                    objects.append(json.loads(content))
+            
+            return objects
+        except Exception as e:
+            raise StorageError(f"Failed to list objects in category {category}: {e}")
+
+    async def get_user(self, user_id: str) -> Optional[User]:
+        """Get user by ID."""
+        key = self._get_object_key("users", user_id)
+        user_data = await self._get_object(key)
+        return User(**user_data) if user_data else None
+
+    async def get_user_by_username(self, username: str) -> Optional[User]:
+        """Get user by username."""
+        users = await self._list_objects_in_category("users")
+        for user_data in users:
+            if user_data.get("username") == username:
+                return User(**user_data)
+        return None
+
+    async def get_user_by_email(self, email: str) -> Optional[User]:
+        """Get user by email."""
+        users = await self._list_objects_in_category("users")
+        for user_data in users:
+            if user_data.get("email") == email:
+                return User(**user_data)
+        return None
+
+    async def create_user(self, user: User) -> User:
+        """Create a new user."""
+        key = self._get_object_key("users", user.id)
+        
+        # Check if user already exists
+        if await self._get_object(key):
+            raise StorageError(f"User {user.id} already exists")
+        
+        await self._store_object(key, user.model_dump())
+        return user
+
+    async def update_user(self, user: User) -> User:
+        """Update an existing user."""
+        key = self._get_object_key("users", user.id)
+        
+        # Check if user exists
+        if not await self._get_object(key):
+            raise StorageError(f"User {user.id} not found")
+        
+        user.updated_at = utc_now()
+        await self._store_object(key, user.model_dump())
+        return user
+
+    async def delete_user(self, user_id: str) -> bool:
+        """Delete a user."""
+        key = self._get_object_key("users", user_id)
+        return await self._delete_object(key)
+
+    async def get_user_auth_methods(self, user_id: str) -> List[UserAuthMethod]:
+        """Get all auth methods for a user."""
+        auth_methods = await self._list_objects_in_category("auth_methods")
+        return [
+            UserAuthMethod(**auth_data)
+            for auth_data in auth_methods
+            if auth_data.get("user_id") == user_id
+        ]
+
+    async def get_user_auth_method(
+        self, provider: str, provider_user_id: str
+    ) -> Optional[UserAuthMethod]:
+        """Get auth method by provider and provider user ID."""
+        auth_methods = await self._list_objects_in_category("auth_methods")
+        for auth_data in auth_methods:
+            if (auth_data.get("provider") == provider and 
+                auth_data.get("provider_user_id") == provider_user_id):
+                return UserAuthMethod(**auth_data)
+        return None
+
+    async def create_user_auth_method(self, auth_method: UserAuthMethod) -> UserAuthMethod:
+        """Create a new auth method for a user."""
+        key = self._get_object_key("auth_methods", auth_method.id)
+        
+        # Check if auth method already exists
+        if await self._get_object(key):
+            raise StorageError(f"Auth method {auth_method.id} already exists")
+        
+        await self._store_object(key, auth_method.model_dump())
+        return auth_method
+
+    async def update_user_auth_method(self, auth_method: UserAuthMethod) -> UserAuthMethod:
+        """Update an existing auth method."""
+        key = self._get_object_key("auth_methods", auth_method.id)
+        
+        # Check if auth method exists
+        if not await self._get_object(key):
+            raise StorageError(f"Auth method {auth_method.id} not found")
+        
+        await self._store_object(key, auth_method.model_dump())
+        return auth_method
+
+    async def delete_user_auth_method(self, auth_method_id: str) -> bool:
+        """Delete an auth method."""
+        key = self._get_object_key("auth_methods", auth_method_id)
+        return await self._delete_object(key)
+
+    async def create_session(self, session: SessionData) -> SessionData:
+        """Create a new session."""
+        key = self._get_object_key("sessions", session.session_id)
+        
+        # Check if session already exists
+        if await self._get_object(key):
+            raise StorageError(f"Session {session.session_id} already exists")
+        
+        await self._store_object(key, session.model_dump())
+        return session
+
+    async def get_session(self, session_id: str) -> Optional[SessionData]:
+        """Get session by ID."""
+        key = self._get_object_key("sessions", session_id)
+        session_data = await self._get_object(key)
+        return SessionData(**session_data) if session_data else None
+
+    async def update_session(self, session: SessionData) -> SessionData:
+        """Update an existing session."""
+        key = self._get_object_key("sessions", session.session_id)
+        
+        # Check if session exists
+        if not await self._get_object(key):
+            raise StorageError(f"Session {session.session_id} not found")
+        
+        await self._store_object(key, session.model_dump())
+        return session
+
+    async def delete_session(self, session_id: str) -> bool:
+        """Delete a session."""
+        key = self._get_object_key("sessions", session_id)
+        return await self._delete_object(key)
+
+    async def store_data(self, key: str, data: Any) -> None:
+        """Store arbitrary data."""
+        object_key = self._get_object_key("data", key)
+        await self._store_object(object_key, {"data": data})
+
+    async def get_data(self, key: str) -> Optional[Any]:
+        """Get arbitrary data."""
+        object_key = self._get_object_key("data", key)
+        file_data = await self._get_object(object_key)
+        return file_data.get("data") if file_data else None
+
+    async def delete_data(self, key: str) -> bool:
+        """Delete arbitrary data."""
+        object_key = self._get_object_key("data", key)
+        return await self._delete_object(object_key)
