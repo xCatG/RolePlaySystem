@@ -1,0 +1,47 @@
+# Configuration for the Proof of Concept (PoC) environment
+# Values here can be overridden by environment variables (e.g., ${VAR_NAME:default})
+
+# Server settings
+host: "0.0.0.0" # Listens on all available network interfaces
+port: ${PORT:8000} # Cloud Run will set PORT, defaults to 8000 otherwise
+debug: false # Debug mode should be off for deployed environments
+environment: "poc" # Explicitly set the environment type
+
+# API settings
+title: "Role Play System - PoC"
+description: "Role Play System API - Proof of Concept Environment"
+version: "1.0.0-poc" # Version specific to PoC
+
+# CORS settings
+enable_cors: true
+# Important: For Cloud Run, this should be the URL of your deployed frontend.
+# If you have a custom domain like https://poc.rps.cattail-sw.com, use that.
+# If you are using the default Cloud Run URL (e.g., https://your-service-xxxxxx-uc.a.run.app), add that.
+cors_origins:
+  - "${CORS_ORIGINS:https://poc.rps.cattail-sw.com}" 
+  # Add other origins if needed, e.g., for local testing against the deployed PoC
+  # - "http://localhost:3000" 
+  # - "http://localhost:5173"
+
+# Authentication settings
+# JWT_SECRET_KEY MUST be set via an environment variable or Secret Manager in Cloud Run.
+# Do NOT hardcode it here. The default_factory in ServerConfig will pick up JWT_SECRET_KEY env var.
+# jwt_secret_key: ${JWT_SECRET_KEY} # This line is effectively handled by ServerConfig's default_factory
+jwt_algorithm: "HS256"
+jwt_expire_hours: ${JWT_EXPIRE_HOURS:1} # Shorter expiry for PoC might be reasonable
+
+# Storage settings
+storage_type: "file" # Using file storage for PoC
+# For Cloud Run, /tmp is an in-memory filesystem, suitable for ephemeral data.
+storage_path: "${STORAGE_PATH:/tmp/data}" 
+
+# Handler configuration - same as dev for PoC unless specific features are disabled/enabled
+enabled_handlers:
+  user_account: "role_play.server.user_account_handler.UserAccountHandler"
+  chat: "role_play.chat.handler.ChatHandler"
+  evaluation: "role_play.evaluation.handler.EvaluationHandler"
+
+# Add any other PoC-specific configurations here
+# For example, if you use feature flags:
+# feature_flags:
+#   new_chat_interface: false

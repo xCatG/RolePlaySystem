@@ -23,6 +23,7 @@ class Environment(Enum):
     DEV = "dev"
     BETA = "beta"
     PROD = "prod"
+    POC = "poc"
 
 
 class ConfigLoader:
@@ -206,8 +207,11 @@ class ConfigLoader:
         # Create appropriate config class
         if env_enum == Environment.PROD:
             config = ProductionConfig(**yaml_config)
+        elif env_enum == Environment.POC:
+            from .config import PocConfig
+            config = PocConfig(**yaml_config)
         else:
-            # Use development config for both DEV and BETA
+            # Use development config for DEV and BETA
             config = DevelopmentConfig(**yaml_config)
         
         self._loaded_config = config
