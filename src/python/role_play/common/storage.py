@@ -11,6 +11,12 @@ from .models import User, UserAuthMethod, SessionData
 from .time_utils import utc_now
 
 try:
+    from filelock import FileLock, Timeout
+    FILELOCK_AVAILABLE = True
+except ImportError:
+    FILELOCK_AVAILABLE = False
+
+try:
     from google.cloud import storage as gcs
     from google.auth.exceptions import DefaultCredentialsError
     GOOGLE_CLOUD_AVAILABLE = True
@@ -23,6 +29,87 @@ try:
     AWS_S3_AVAILABLE = True
 except ImportError:
     AWS_S3_AVAILABLE = False
+
+try:
+    import redis.asyncio as redis
+    REDIS_AVAILABLE = True
+except ImportError:
+    REDIS_AVAILABLE = False
+
+import asyncio
+import uuid
+import time
+from contextlib import asynccontextmanager
+from datetime import datetime, timedelta
+
+
+class DistributedLockMixin:
+    """
+    Mixin for adding distributed locking capabilities to storage backends.
+    Supports Redis-based locking for cloud storage backends.
+    """
+    
+    def __init__(self, *args, redis_url: Optional[str] = None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.redis_client = None
+        self.instance_id = str(uuid.uuid4())
+        
+        if redis_url and REDIS_AVAILABLE:
+            self.redis_client = redis.from_url(redis_url)
+            print("Distributed locking enabled with Redis")
+        elif redis_url and not REDIS_AVAILABLE:
+            print("Redis URL provided but redis package not available. Install with: pip install redis")
+    
+    @asynccontextmanager
+    async def _acquire_distributed_lock(self, lock_key: str, timeout: int = 5):
+        """
+        Acquire a distributed lock for the given key.
+        
+        Args:
+            lock_key: Key to lock
+            timeout: Lock timeout in seconds
+        """
+        if not self.redis_client:
+            # Fallback to no locking if Redis not available
+            yield
+            return
+        
+        full_lock_key = f"rps:lock:{lock_key}"
+        acquired = False
+        
+        try:
+            # Try to acquire lock
+            acquired = await self.redis_client.set(
+                full_lock_key,
+                self.instance_id,
+                nx=True,  # Only set if not exists
+                ex=timeout  # Expire after timeout seconds
+            )
+            
+            if not acquired:
+                raise StorageError(f"Could not acquire distributed lock for {lock_key}")
+            
+            yield
+            
+        finally:
+            if acquired and self.redis_client:
+                # Release lock only if we own it
+                lua_script = """
+                if redis.call("get", KEYS[1]) == ARGV[1] then
+                    return redis.call("del", KEYS[1])
+                else
+                    return 0
+                end
+                """
+                try:
+                    await self.redis_client.eval(lua_script, 1, full_lock_key, self.instance_id)
+                except Exception as e:
+                    print(f"Warning: Failed to release lock {lock_key}: {e}")
+    
+    async def close(self):
+        """Close Redis connection if open."""
+        if self.redis_client:
+            await self.redis_client.close()
 
 
 class StorageBackend(ABC):
@@ -126,6 +213,40 @@ class StorageBackend(ABC):
         """Delete arbitrary data."""
         pass
 
+    @abstractmethod
+    async def append_to_log(self, log_key: str, data: Any) -> None:
+        """
+        Append data to a log file (JSONL format).
+        
+        This operation must be atomic and thread-safe. For file storage,
+        this uses file locking. For cloud storage, this uses atomic operations.
+        
+        Args:
+            log_key: Key identifying the log file
+            data: Data to append (will be JSON serialized)
+        """
+        pass
+
+    @abstractmethod
+    async def read_log(self, log_key: str) -> List[Any]:
+        """
+        Read all entries from a log file.
+        
+        Returns:
+            List of deserialized entries from the log
+        """
+        pass
+
+    @abstractmethod
+    async def log_exists(self, log_key: str) -> bool:
+        """Check if a log file exists."""
+        pass
+
+    @abstractmethod
+    async def delete_log(self, log_key: str) -> bool:
+        """Delete a log file."""
+        pass
+
 
 class FileStorage(StorageBackend):
     """
@@ -138,6 +259,12 @@ class FileStorage(StorageBackend):
     """
 
     def __init__(self, storage_dir: str = "data"):
+        if not FILELOCK_AVAILABLE:
+            raise ImportError(
+                "filelock is required for FileStorage. "
+                "Install with: pip install filelock"
+            )
+            
         self.storage_dir = Path(storage_dir)
         self.storage_dir.mkdir(exist_ok=True)
         
@@ -145,8 +272,9 @@ class FileStorage(StorageBackend):
         self.auth_methods_dir = self.storage_dir / "auth_methods"
         self.sessions_dir = self.storage_dir / "sessions"
         self.data_dir = self.storage_dir / "data"
+        self.logs_dir = self.storage_dir / "logs"
         
-        for dir_path in [self.users_dir, self.auth_methods_dir, self.sessions_dir, self.data_dir]:
+        for dir_path in [self.users_dir, self.auth_methods_dir, self.sessions_dir, self.data_dir, self.logs_dir]:
             dir_path.mkdir(exist_ok=True)
 
     def _read_json_file(self, file_path: Path) -> Optional[Dict[str, Any]]:
@@ -320,13 +448,75 @@ class FileStorage(StorageBackend):
             return True
         return False
 
+    def _get_log_path(self, log_key: str) -> Path:
+        """Get the path for a log file."""
+        return self.logs_dir / f"{log_key}.jsonl"
 
-class GCSStorage(StorageBackend):
+    def _get_lock_path(self, file_path: Path) -> Path:
+        """Get the lock file path for a given file."""
+        return Path(f"{file_path}.lock")
+
+    async def append_to_log(self, log_key: str, data: Any) -> None:
+        """Append data to a log file with file locking."""
+        log_file = self._get_log_path(log_key)
+        lock_file = self._get_lock_path(log_file)
+        
+        try:
+            with FileLock(lock_file, timeout=5):
+                with open(log_file, 'a', encoding='utf-8') as f:
+                    f.write(json.dumps(data, default=str) + '\n')
+        except Timeout:
+            raise StorageError(f"Timeout acquiring lock for log {log_key}")
+        except Exception as e:
+            raise StorageError(f"Failed to append to log {log_key}: {e}")
+
+    async def read_log(self, log_key: str) -> List[Any]:
+        """Read all entries from a log file with file locking."""
+        log_file = self._get_log_path(log_key)
+        if not log_file.exists():
+            return []
+        
+        lock_file = self._get_lock_path(log_file)
+        entries = []
+        
+        try:
+            with FileLock(lock_file, timeout=5):
+                with open(log_file, 'r', encoding='utf-8') as f:
+                    for line in f:
+                        line = line.strip()
+                        if line:
+                            try:
+                                entries.append(json.loads(line))
+                            except json.JSONDecodeError:
+                                # Skip malformed lines
+                                continue
+        except Timeout:
+            raise StorageError(f"Timeout acquiring lock for reading log {log_key}")
+        except Exception as e:
+            raise StorageError(f"Failed to read log {log_key}: {e}")
+        
+        return entries
+
+    async def log_exists(self, log_key: str) -> bool:
+        """Check if a log file exists."""
+        return self._get_log_path(log_key).exists()
+
+    async def delete_log(self, log_key: str) -> bool:
+        """Delete a log file."""
+        log_file = self._get_log_path(log_key)
+        if log_file.exists():
+            log_file.unlink()
+            return True
+        return False
+
+
+class GCSStorage(DistributedLockMixin, StorageBackend):
     """
     Google Cloud Storage backend for production deployments.
     
     This implementation stores JSON objects in GCS bucket with folder structure
-    similar to FileStorage for consistency.
+    similar to FileStorage for consistency. Supports optional Redis-based
+    distributed locking for high-concurrency scenarios.
     """
 
     def __init__(
@@ -334,7 +524,8 @@ class GCSStorage(StorageBackend):
         bucket_name: str,
         project_id: Optional[str] = None,
         credentials_path: Optional[str] = None,
-        prefix: str = ""
+        prefix: str = "",
+        redis_url: Optional[str] = None
     ):
         """
         Initialize GCS storage backend.
@@ -344,6 +535,7 @@ class GCSStorage(StorageBackend):
             project_id: GCP project ID (optional if using default credentials)
             credentials_path: Path to service account JSON file (optional)
             prefix: Object key prefix for namespacing (e.g., "dev/", "prod/")
+            redis_url: Redis URL for distributed locking (optional)
         """
         if not GOOGLE_CLOUD_AVAILABLE:
             raise ImportError(
@@ -368,6 +560,9 @@ class GCSStorage(StorageBackend):
                 
         except (DefaultCredentialsError, Exception) as e:
             raise StorageError(f"Failed to initialize GCS storage: {e}")
+        
+        # Initialize distributed locking mixin
+        super().__init__(redis_url=redis_url)
 
     def _get_object_key(self, category: str, key: str) -> str:
         """Generate object key with prefix and category."""
@@ -566,6 +761,82 @@ class GCSStorage(StorageBackend):
     async def delete_data(self, key: str) -> bool:
         """Delete arbitrary data."""
         object_key = self._get_object_key("data", key)
+        return await self._delete_object(object_key)
+
+    def _get_log_object_key(self, log_key: str) -> str:
+        """Generate object key for log files."""
+        return f"{self.prefix}logs/{log_key}.jsonl"
+
+    async def append_to_log(self, log_key: str, data: Any) -> None:
+        """
+        Append data to a log file in S3.
+        
+        Note: S3 doesn't support true append operations, so we read-modify-write.
+        This is atomic at the object level but has race conditions with concurrent writes.
+        For production, consider using DynamoDB or SQS for high-concurrency logging.
+        """
+        object_key = self._get_log_object_key(log_key)
+        
+        try:
+            # Read existing content
+            try:
+                response = self.s3_client.get_object(Bucket=self.bucket_name, Key=object_key)
+                existing_content = response['Body'].read().decode('utf-8')
+            except self.s3_client.exceptions.NoSuchKey:
+                existing_content = ""
+            
+            # Append new line
+            new_line = json.dumps(data, default=str) + '\n'
+            updated_content = existing_content + new_line
+            
+            # Write back atomically
+            self.s3_client.put_object(
+                Bucket=self.bucket_name,
+                Key=object_key,
+                Body=updated_content,
+                ContentType='application/x-jsonlines'
+            )
+        except Exception as e:
+            raise StorageError(f"Failed to append to log {log_key}: {e}")
+
+    async def read_log(self, log_key: str) -> List[Any]:
+        """Read all entries from a log file in S3."""
+        object_key = self._get_log_object_key(log_key)
+        
+        try:
+            response = self.s3_client.get_object(Bucket=self.bucket_name, Key=object_key)
+            content = response['Body'].read().decode('utf-8')
+            entries = []
+            
+            for line in content.splitlines():
+                line = line.strip()
+                if line:
+                    try:
+                        entries.append(json.loads(line))
+                    except json.JSONDecodeError:
+                        # Skip malformed lines
+                        continue
+            
+            return entries
+        except self.s3_client.exceptions.NoSuchKey:
+            return []
+        except Exception as e:
+            raise StorageError(f"Failed to read log {log_key}: {e}")
+
+    async def log_exists(self, log_key: str) -> bool:
+        """Check if a log file exists in S3."""
+        object_key = self._get_log_object_key(log_key)
+        try:
+            self.s3_client.head_object(Bucket=self.bucket_name, Key=object_key)
+            return True
+        except self.s3_client.exceptions.NoSuchKey:
+            return False
+        except Exception as e:
+            raise StorageError(f"Failed to check log existence {log_key}: {e}")
+
+    async def delete_log(self, log_key: str) -> bool:
+        """Delete a log file from S3."""
+        object_key = self._get_log_object_key(log_key)
         return await self._delete_object(object_key)
 
 
@@ -831,4 +1102,80 @@ class S3Storage(StorageBackend):
     async def delete_data(self, key: str) -> bool:
         """Delete arbitrary data."""
         object_key = self._get_object_key("data", key)
+        return await self._delete_object(object_key)
+
+    def _get_log_object_key(self, log_key: str) -> str:
+        """Generate object key for log files."""
+        return f"{self.prefix}logs/{log_key}.jsonl"
+
+    async def append_to_log(self, log_key: str, data: Any) -> None:
+        """
+        Append data to a log file in S3.
+        
+        Note: S3 doesn't support true append operations, so we read-modify-write.
+        This is atomic at the object level but has race conditions with concurrent writes.
+        For production, consider using DynamoDB or SQS for high-concurrency logging.
+        """
+        object_key = self._get_log_object_key(log_key)
+        
+        try:
+            # Read existing content
+            try:
+                response = self.s3_client.get_object(Bucket=self.bucket_name, Key=object_key)
+                existing_content = response['Body'].read().decode('utf-8')
+            except self.s3_client.exceptions.NoSuchKey:
+                existing_content = ""
+            
+            # Append new line
+            new_line = json.dumps(data, default=str) + '\n'
+            updated_content = existing_content + new_line
+            
+            # Write back atomically
+            self.s3_client.put_object(
+                Bucket=self.bucket_name,
+                Key=object_key,
+                Body=updated_content,
+                ContentType='application/x-jsonlines'
+            )
+        except Exception as e:
+            raise StorageError(f"Failed to append to log {log_key}: {e}")
+
+    async def read_log(self, log_key: str) -> List[Any]:
+        """Read all entries from a log file in S3."""
+        object_key = self._get_log_object_key(log_key)
+        
+        try:
+            response = self.s3_client.get_object(Bucket=self.bucket_name, Key=object_key)
+            content = response['Body'].read().decode('utf-8')
+            entries = []
+            
+            for line in content.splitlines():
+                line = line.strip()
+                if line:
+                    try:
+                        entries.append(json.loads(line))
+                    except json.JSONDecodeError:
+                        # Skip malformed lines
+                        continue
+            
+            return entries
+        except self.s3_client.exceptions.NoSuchKey:
+            return []
+        except Exception as e:
+            raise StorageError(f"Failed to read log {log_key}: {e}")
+
+    async def log_exists(self, log_key: str) -> bool:
+        """Check if a log file exists in S3."""
+        object_key = self._get_log_object_key(log_key)
+        try:
+            self.s3_client.head_object(Bucket=self.bucket_name, Key=object_key)
+            return True
+        except self.s3_client.exceptions.NoSuchKey:
+            return False
+        except Exception as e:
+            raise StorageError(f"Failed to check log existence {log_key}: {e}")
+
+    async def delete_log(self, log_key: str) -> bool:
+        """Delete a log file from S3."""
+        object_key = self._get_log_object_key(log_key)
         return await self._delete_object(object_key)

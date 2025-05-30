@@ -196,12 +196,10 @@ def get_content_loader() -> ContentLoader:
 def get_chat_logger() -> ChatLogger:
     """
     Provides a singleton instance of ChatLogger.
-    The storage path for chat logs is derived from the main server config.
+    Uses the same storage backend as the main storage for consistency.
     """
-    config = get_server_config()
-    # Store chat logs in a 'chat_logs' subdirectory of the main storage path
-    chat_logs_path = Path(config.storage_path) / "chat_logs"
-    return ChatLogger(storage_path_str=str(chat_logs_path))
+    storage_backend = get_storage_backend()
+    return ChatLogger(storage_backend=storage_backend)
 
 
 @lru_cache(maxsize=None)

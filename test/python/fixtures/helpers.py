@@ -51,6 +51,7 @@ class MockStorageBackend(StorageBackend):
         self.auth_methods = {}
         self.sessions = {}
         self.data = {}
+        self.logs = {}  # log_key -> list of entries
     
     async def get_user(self, user_id: str):
         return self.users.get(user_id)
@@ -130,5 +131,26 @@ class MockStorageBackend(StorageBackend):
     async def delete_data(self, key: str):
         if key in self.data:
             del self.data[key]
+            return True
+        return False
+    
+    async def append_to_log(self, log_key: str, data: Any):
+        """Append data to a log file."""
+        if log_key not in self.logs:
+            self.logs[log_key] = []
+        self.logs[log_key].append(data)
+    
+    async def read_log(self, log_key: str):
+        """Read all entries from a log file."""
+        return self.logs.get(log_key, [])
+    
+    async def log_exists(self, log_key: str):
+        """Check if a log file exists."""
+        return log_key in self.logs
+    
+    async def delete_log(self, log_key: str):
+        """Delete a log file."""
+        if log_key in self.logs:
+            del self.logs[log_key]
             return True
         return False

@@ -13,3 +13,4 @@ passlib
 filelock>=3.13.0
 google-cloud-storage
 boto3
+redis

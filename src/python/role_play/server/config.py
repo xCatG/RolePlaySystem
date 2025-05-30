@@ -85,6 +85,12 @@ class ServerConfig(BaseModel):
         default_factory=lambda: os.getenv("S3_PREFIX", ""),
         description="S3 object key prefix for namespacing"
     )
+    
+    # Redis settings for distributed locking (optional)
+    redis_url: Optional[str] = Field(
+        default_factory=lambda: os.getenv("REDIS_URL"),
+        description="Redis URL for distributed locking (optional, for cloud storage)"
+    )
 
     # Handler configuration
     enabled_handlers: Dict[str, str] = Field(
