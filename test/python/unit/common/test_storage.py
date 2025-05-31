@@ -3,6 +3,7 @@
 import pytest
 import tempfile
 import json
+import uuid
 from pathlib import Path
 from unittest.mock import patch, mock_open
 import asyncio
@@ -77,21 +78,23 @@ class TestFileStorageInitialization:
 class TestFileStorageLocking:
     """Test FileStorage locking mechanism."""
     
-    def test_lock_context_manager(self):
+    @pytest.mark.asyncio
+    async def test_lock_context_manager(self):
         """Test the lock context manager works."""
         with tempfile.TemporaryDirectory() as temp_dir:
             storage = FileStorage(temp_dir)
             
             # Should not raise any exceptions
-            with storage.lock("test/path"):
+            async with storage.lock("test/path"):
                 pass
     
-    def test_lock_creates_lock_file(self):
+    @pytest.mark.asyncio
+    async def test_lock_creates_lock_file(self):
         """Test that locking creates appropriate lock file."""
         with tempfile.TemporaryDirectory() as temp_dir:
             storage = FileStorage(temp_dir)
             
-            with storage.lock("users/123/profile"):
+            async with storage.lock("users/123/profile"):
                 # Lock file should exist during lock
                 lock_path = storage.locks_dir / "users_123_profile.lock"
                 # Note: The actual lock file might not be visible due to filelock implementation
@@ -377,8 +380,8 @@ class TestFileStorageErrorHandling:
             # Create a file first
             await storage.write("test/file", "content")
             
-            # Mock open to raise IOError
-            with patch('builtins.open', side_effect=IOError("Disk error")):
+            # Mock aiofiles.open to raise IOError
+            with patch('aiofiles.open', side_effect=IOError("Disk error")):
                 with pytest.raises(StorageError) as exc_info:
                     await storage.read("test/file")
                 
@@ -390,8 +393,8 @@ class TestFileStorageErrorHandling:
         with tempfile.TemporaryDirectory() as temp_dir:
             storage = FileStorage(temp_dir)
             
-            # Mock open to raise IOError
-            with patch('builtins.open', side_effect=IOError("No space left")):
+            # Mock aiofiles.open to raise IOError
+            with patch('aiofiles.open', side_effect=IOError("No space left")):
                 with pytest.raises(StorageError) as exc_info:
                     await storage.write("test/file", "content")
                 
@@ -557,7 +560,7 @@ class TestFileStorageComplexOperations:
             
             # This is hard to test without real contention, but we can at least
             # verify the timeout parameter is accepted
-            with storage.lock("test/resource", timeout=0.1):
+            async with storage.lock("test/resource", timeout=0.1):
                 pass  # Should work fine
     
     @pytest.mark.asyncio
@@ -566,16 +569,12 @@ class TestFileStorageComplexOperations:
         with tempfile.TemporaryDirectory() as temp_dir:
             storage = FileStorage(temp_dir)
             
-            # Mock FileLock to raise Timeout
-            from filelock import Timeout
+            # Mock os.open to always fail (simulate lock file always exists)
             from unittest.mock import patch
             
-            with patch('role_play.common.storage.FileLock') as mock_lock:
-                mock_instance = mock_lock.return_value
-                mock_instance.__enter__.side_effect = Timeout("test")
-                
+            with patch('os.open', side_effect=FileExistsError("Lock file exists")):
                 with pytest.raises(LockAcquisitionError) as exc_info:
-                    with storage.lock("test/resource", timeout=0.1):
+                    async with storage.lock("test/resource", timeout=0.1):
                         pass
                 
                 assert "Failed to acquire lock" in str(exc_info.value)
@@ -607,8 +606,9 @@ class TestFileStorageComplexOperations:
         with tempfile.TemporaryDirectory() as temp_dir:
             storage = FileStorage(temp_dir)
             
-            # Create a user
-            user = UserFactory.create(id="workflow-123", username="testuser")
+            # Create a user with unique ID to avoid conflicts
+            unique_id = f"workflow-{uuid.uuid4().hex[:8]}"
+            user = UserFactory.create(id=unique_id, username=f"testuser_{unique_id}")
             await storage.create_user(user)
             
             # Create auth methods
@@ -635,7 +635,7 @@ class TestFileStorageComplexOperations:
             
             # Verify everything exists
             retrieved_user = await storage.get_user(user.id)
-            assert retrieved_user.username == "testuser"
+            assert retrieved_user.username == f"testuser_{unique_id}"
             
             auth_methods = await storage.get_user_auth_methods(user.id)
             assert len(auth_methods) == 2

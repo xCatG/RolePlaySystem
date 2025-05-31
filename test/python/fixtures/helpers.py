@@ -3,9 +3,9 @@
 import json
 import tempfile
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Generator
+from typing import Any, Dict, List, Optional, AsyncGenerator
 from unittest.mock import AsyncMock, MagicMock
-from contextlib import contextmanager
+from contextlib import asynccontextmanager
 
 from role_play.common.storage import StorageBackend
 
@@ -54,8 +54,8 @@ class MockStorageBackend(StorageBackend):
         self.data = {}
         self.storage = {}  # For file-like operations
     
-    @contextmanager
-    def lock(self, resource_path: str, timeout: float = 5.0) -> Generator[None, None, None]:
+    @asynccontextmanager
+    async def lock(self, resource_path: str, timeout: float = 5.0) -> AsyncGenerator[None, None]:
         """Mock lock that does nothing."""
         yield
     

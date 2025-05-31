@@ -1,10 +1,23 @@
-"""AWS S3 Storage backend implementation (STUB)."""
+"""
+AWS S3 Storage backend implementation (STUB).
+
+⚠️  PRODUCTION WARNING: This S3 backend uses object-based locking which provides
+only BEST-EFFORT guarantees due to S3's consistency model. For production use:
+
+1. ALWAYS use Redis locking strategy instead of object locking
+2. Monitor lock contention metrics closely
+3. Consider using DynamoDB for user/auth lookups instead of S3 scanning
+4. Be aware that append operations are expensive (full read-modify-write)
+
+See config/storage-examples.yaml for Redis configuration examples.
+"""
 
 import json
 import time
 import uuid
-from contextlib import contextmanager
-from typing import Any, Dict, List, Optional, Generator
+import asyncio
+from contextlib import asynccontextmanager
+from typing import Any, Dict, List, Optional, AsyncGenerator
 
 from .storage import StorageBackend, LockAcquisitionError, S3StorageConfig
 from .exceptions import StorageError
@@ -39,6 +52,16 @@ class S3StorageBackend(StorageBackend):
     - Use redis locking strategy for mission-critical scenarios
     - Monitor lock acquisition metrics to detect contention issues
     - Consider implementing proper S3 object versioning for more robust locking
+    - S3's best-effort locking is NOT suitable for high-concurrency or financial data
+    
+    ⚠️  IMPORTANT: For production deployments, configure Redis locking:
+    storage:
+      type: s3
+      bucket: my-bucket
+      lock:
+        strategy: redis  # <-- STRONGLY RECOMMENDED for S3 production
+        redis_host: redis.example.com
+        redis_port: 6379
     """
 
     def __init__(self, config: S3StorageConfig):
@@ -65,6 +88,17 @@ class S3StorageBackend(StorageBackend):
         if config.lock.strategy == "file":
             raise StorageError("File-based locking not supported for S3 backend")
         
+        # Warn about object-based locking limitations
+        if config.lock.strategy == "object":
+            import warnings
+            warnings.warn(
+                "⚠️  S3 object-based locking provides only BEST-EFFORT guarantees. "
+                "For production use with S3, configure Redis locking instead. "
+                "See storage-examples.yaml for Redis configuration examples.",
+                UserWarning,
+                stacklevel=2
+            )
+        
         # Generate unique instance ID for lock ownership
         self.instance_id = str(uuid.uuid4())
 
@@ -76,8 +110,8 @@ class S3StorageBackend(StorageBackend):
         """Get the lock object key for a resource."""
         return f"{self.prefix}.locks/{resource_path.replace('/', '_')}"
 
-    @contextmanager
-    def lock(self, resource_path: str, timeout: float = 5.0) -> Generator[None, None, None]:
+    @asynccontextmanager
+    async def lock(self, resource_path: str, timeout: float = 5.0) -> AsyncGenerator[None, None]:
         """
         Acquire an S3 object-based lock for a resource (BEST-EFFORT IMPLEMENTATION).
         
@@ -99,8 +133,12 @@ class S3StorageBackend(StorageBackend):
             LockAcquisitionError: If lock cannot be acquired within timeout
         """
         if self.config.lock.strategy == "redis":
-            # TODO: Implement Redis-based locking (RECOMMENDED FOR PRODUCTION)
-            raise NotImplementedError("Redis-based locking not yet implemented - recommended for S3 production use")
+            # TODO: Implement Redis-based locking (STRONGLY RECOMMENDED FOR PRODUCTION)
+            raise NotImplementedError(
+                "Redis-based locking not yet implemented but is STRONGLY RECOMMENDED for S3 production use. "
+                "The object-based locking below is a simplified best-effort implementation that may have "
+                "race conditions under high load. Please implement Redis locking before production deployment."
+            )
         
         # Use simplified object-based locking (BEST-EFFORT)
         lock_key = self._get_lock_key(resource_path)
@@ -119,7 +157,8 @@ class S3StorageBackend(StorageBackend):
         for attempt in range(self.config.lock.retry_attempts):
             try:
                 # Try to create lock object
-                self.s3_client.put_object(
+                await asyncio.to_thread(
+                    self.s3_client.put_object,
                     Bucket=self.bucket_name,
                     Key=lock_key,
                     Body=json.dumps(lock_data),
@@ -128,11 +167,12 @@ class S3StorageBackend(StorageBackend):
                 
                 # Verify we actually own the lock (GET-after-PUT verification)
                 # This helps detect race conditions but doesn't eliminate them entirely
-                time.sleep(0.1)  # Brief delay to account for S3 propagation
+                await asyncio.sleep(0.1)  # Brief delay to account for S3 propagation
                 
                 try:
-                    response = self.s3_client.get_object(Bucket=self.bucket_name, Key=lock_key)
-                    existing_lock_data = json.loads(response['Body'].read().decode('utf-8'))
+                    response = await asyncio.to_thread(self.s3_client.get_object, Bucket=self.bucket_name, Key=lock_key)
+                    body_content = await asyncio.to_thread(response['Body'].read)
+                    existing_lock_data = json.loads(body_content.decode('utf-8'))
                     
                     if existing_lock_data.get("owner") == self.instance_id:
                         acquired = True
@@ -142,7 +182,7 @@ class S3StorageBackend(StorageBackend):
                         if existing_lock_data.get("expires_at", 0) < time.time():
                             # Try to delete expired lock and retry
                             try:
-                                self.s3_client.delete_object(Bucket=self.bucket_name, Key=lock_key)
+                                await asyncio.to_thread(self.s3_client.delete_object, Bucket=self.bucket_name, Key=lock_key)
                             except ClientError:
                                 pass  # May have been deleted by someone else
                         
@@ -160,7 +200,7 @@ class S3StorageBackend(StorageBackend):
             if time.time() - start_time >= timeout:
                 break
             
-            time.sleep(self.config.lock.retry_delay_seconds)
+            await asyncio.sleep(self.config.lock.retry_delay_seconds)
         
         if not acquired:
             raise LockAcquisitionError(
@@ -172,7 +212,7 @@ class S3StorageBackend(StorageBackend):
         finally:
             # Release the lock (best effort)
             try:
-                self.s3_client.delete_object(Bucket=self.bucket_name, Key=lock_key)
+                await asyncio.to_thread(self.s3_client.delete_object, Bucket=self.bucket_name, Key=lock_key)
             except ClientError:
                 pass  # Lock may have expired or been cleaned up
 
@@ -189,7 +229,14 @@ class S3StorageBackend(StorageBackend):
     async def append(self, path: str, data: str) -> None:
         """Append text data to S3 object."""
         # TODO: Implement S3 append operation (read + concatenate + write)
-        raise NotImplementedError("S3 append operation not yet implemented")
+        # WARNING: S3 doesn't support native append. This operation requires:
+        # 1. Acquire lock (use Redis in production!)
+        # 2. Read existing object
+        # 3. Concatenate data
+        # 4. Write back entire object
+        # 5. Release lock
+        # This is expensive and prone to race conditions without proper locking!
+        raise NotImplementedError("S3 append operation not yet implemented - requires careful locking strategy")
 
     async def read_bytes(self, path: str) -> bytes:
         """Read binary data from S3."""
@@ -248,6 +295,9 @@ class S3StorageBackend(StorageBackend):
 
     async def get_user_by_username(self, username: str) -> Optional[User]:
         """Get user by username."""
+        # WARNING: This implementation requires listing and reading all user profiles.
+        # For production with many users, consider maintaining a username index in DynamoDB
+        # or using a proper database for user lookups instead of S3 scanning.
         user_keys = await self.list_keys("users/")
         
         for key in user_keys:

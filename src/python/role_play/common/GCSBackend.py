@@ -3,8 +3,9 @@
 import json
 import time
 import uuid
-from contextlib import contextmanager
-from typing import Any, Dict, List, Optional, Generator
+import asyncio
+from contextlib import asynccontextmanager
+from typing import Any, Dict, List, Optional, AsyncGenerator
 
 from .storage import StorageBackend, LockAcquisitionError, GCSStorageConfig
 from .exceptions import StorageError
@@ -67,8 +68,8 @@ class GCSStorageBackend(StorageBackend):
         """Get the lock object key for a resource."""
         return f"{self.prefix}.locks/{resource_path.replace('/', '_')}"
 
-    @contextmanager
-    def lock(self, resource_path: str, timeout: float = 5.0) -> Generator[None, None, None]:
+    @asynccontextmanager
+    async def lock(self, resource_path: str, timeout: float = 5.0) -> AsyncGenerator[None, None]:
         """
         Acquire a GCS object-based lock for a resource.
         
@@ -107,7 +108,8 @@ class GCSStorageBackend(StorageBackend):
         for attempt in range(self.config.lock.retry_attempts):
             try:
                 # Try to create lock object atomically (if_generation_match=0 means object must not exist)
-                lock_blob.upload_from_string(
+                await asyncio.to_thread(
+                    lock_blob.upload_from_string,
                     json.dumps(lock_data),
                     content_type='application/json',
                     if_generation_match=0
@@ -118,18 +120,19 @@ class GCSStorageBackend(StorageBackend):
             except Conflict:
                 # Lock object already exists, check if it's expired
                 try:
-                    existing_lock_data = json.loads(lock_blob.download_as_text())
+                    existing_lock_text = await asyncio.to_thread(lock_blob.download_as_text)
+                    existing_lock_data = json.loads(existing_lock_text)
                     if existing_lock_data.get("expires_at", 0) < time.time():
                         # Lock is expired, try to delete it and retry
                         try:
-                            lock_blob.delete()
+                            await asyncio.to_thread(lock_blob.delete)
                         except NotFound:
                             pass  # Already deleted, continue to retry
                     else:
                         # Lock is still valid, wait before retry
                         if time.time() - start_time >= timeout:
                             break
-                        time.sleep(self.config.lock.retry_delay_seconds)
+                        await asyncio.sleep(self.config.lock.retry_delay_seconds)
                         
                 except (NotFound, json.JSONDecodeError):
                     # Lock object is malformed or deleted, retry
@@ -148,7 +151,7 @@ class GCSStorageBackend(StorageBackend):
         finally:
             # Release the lock
             try:
-                lock_blob.delete()
+                await asyncio.to_thread(lock_blob.delete)
             except NotFound:
                 pass  # Lock was already released or expired
 
@@ -158,7 +161,7 @@ class GCSStorageBackend(StorageBackend):
         blob = self.bucket.blob(key)
         
         try:
-            return blob.download_as_text(encoding='utf-8')
+            return await asyncio.to_thread(blob.download_as_text, encoding='utf-8')
         except NotFound:
             raise StorageError(f"Path not found: {path}")
         except Exception as e:
@@ -170,7 +173,7 @@ class GCSStorageBackend(StorageBackend):
         blob = self.bucket.blob(key)
         
         try:
-            blob.upload_from_string(data, content_type='text/plain; charset=utf-8')
+            await asyncio.to_thread(blob.upload_from_string, data, content_type='text/plain; charset=utf-8')
         except Exception as e:
             raise StorageError(f"Failed to write {path}: {e}")
 
@@ -192,7 +195,7 @@ class GCSStorageBackend(StorageBackend):
         blob = self.bucket.blob(key)
         
         try:
-            return blob.download_as_bytes()
+            return await asyncio.to_thread(blob.download_as_bytes)
         except NotFound:
             raise StorageError(f"Path not found: {path}")
         except Exception as e:
@@ -204,7 +207,7 @@ class GCSStorageBackend(StorageBackend):
         blob = self.bucket.blob(key)
         
         try:
-            blob.upload_from_string(data, content_type='application/octet-stream')
+            await asyncio.to_thread(blob.upload_from_string, data, content_type='application/octet-stream')
         except Exception as e:
             raise StorageError(f"Failed to write {path}: {e}")
 
@@ -224,7 +227,7 @@ class GCSStorageBackend(StorageBackend):
         """Check if a GCS object exists."""
         key = self._get_key(path)
         blob = self.bucket.blob(key)
-        return blob.exists()
+        return await asyncio.to_thread(blob.exists)
 
     async def delete(self, path: str) -> bool:
         """Delete a GCS object."""
@@ -232,7 +235,7 @@ class GCSStorageBackend(StorageBackend):
         blob = self.bucket.blob(key)
         
         try:
-            blob.delete()
+            await asyncio.to_thread(blob.delete)
             return True
         except NotFound:
             return False
@@ -245,14 +248,20 @@ class GCSStorageBackend(StorageBackend):
         keys = []
         
         try:
-            for blob in self.client.list_blobs(self.bucket, prefix=search_prefix):
-                # Remove the storage prefix to get the original key
-                key = blob.name
-                if key.startswith(self.prefix):
-                    key = key[len(self.prefix):]
-                    # Skip lock files and hidden files
-                    if not key.startswith('.locks/') and not key.startswith('.'):
-                        keys.append(key)
+            # Run the blocking list_blobs operation in a thread
+            def _list_blobs():
+                result = []
+                for blob in self.client.list_blobs(self.bucket, prefix=search_prefix):
+                    # Remove the storage prefix to get the original key
+                    key = blob.name
+                    if key.startswith(self.prefix):
+                        key = key[len(self.prefix):]
+                        # Skip lock files and hidden files
+                        if not key.startswith('.locks/') and not key.startswith('.'):
+                            result.append(key)
+                return result
+            
+            keys = await asyncio.to_thread(_list_blobs)
         except Exception as e:
             raise StorageError(f"Failed to list keys with prefix {prefix}: {e}")
         

@@ -35,12 +35,19 @@ storage:
     lease_duration_seconds: "${LOCK_LEASE_DURATION:30}"  # Shorter for production
     retry_attempts: "${LOCK_RETRY_ATTEMPTS:5}"
     retry_delay_seconds: "${LOCK_RETRY_DELAY:0.3}"
-    # Redis configuration (ready for future migration)
+    
+    # ⚠️  IMPORTANT: For high-load production scenarios, consider migrating to Redis locking
+    # for better performance and reliability. GCS object locking works well for moderate load
+    # but Redis provides superior lock performance and contention handling.
+    #
+    # To enable Redis locking, uncomment and configure:
     # strategy: "redis"
     # redis_host: "${REDIS_HOST:}"
     # redis_port: "${REDIS_PORT:6379}"
     # redis_password: "${REDIS_PASSWORD:}"
     # redis_db: "${REDIS_DB:0}"
+    #
+    # Monitor lock acquisition metrics (see storage_monitoring.py) to determine when to migrate.
 
 # Legacy storage settings (maintained for backward compatibility)
 storage_type: "gcs"

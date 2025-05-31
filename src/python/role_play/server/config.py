@@ -1,8 +1,10 @@
 """Configuration system for the Role Play System server."""
 
-from pydantic import BaseModel, Field
-from typing import Optional, List, Dict, Any
+from pydantic import BaseModel, Field, validator
+from typing import Optional, List, Dict, Any, Union
 import os
+
+from ..common.storage import StorageConfigUnion, FileStorageConfig, GCSStorageConfig, S3StorageConfig, LockConfig
 
 
 class ServerConfig(BaseModel):
@@ -37,13 +39,18 @@ class ServerConfig(BaseModel):
         default=24, description="JWT token expiration in hours"
     )
 
-    # Storage settings
+    # Storage settings (legacy - for backward compatibility)
     storage_type: str = Field(
-        default="file", description="Storage backend type (file, s3)"
+        default="file", description="Storage backend type (file, s3) - DEPRECATED: Use storage.type"
     )
     storage_path: str = Field(
         default_factory=lambda: os.path.expanduser(os.getenv("STORAGE_PATH", "./data")),
-        description="Storage path for file backend (must exist)",
+        description="Storage path for file backend (must exist) - DEPRECATED: Use storage.base_dir",
+    )
+    
+    # New storage configuration
+    storage: Optional[StorageConfigUnion] = Field(
+        default=None, description="Storage configuration (new format)"
     )
 
     # Handler configuration
@@ -51,6 +58,25 @@ class ServerConfig(BaseModel):
         default={"user_account": "role_play.server.user_account_handler.UserAccountHandler"},
         description="Map of handler names to their import paths"
     )
+    
+    @validator('storage', pre=True)
+    def parse_storage_config(cls, v):
+        """Parse storage configuration from dict format."""
+        if v is None:
+            return None
+        
+        if isinstance(v, dict):
+            storage_type = v.get('type')
+            if storage_type == 'file':
+                return FileStorageConfig(**v)
+            elif storage_type == 'gcs':
+                return GCSStorageConfig(**v)
+            elif storage_type == 's3':
+                return S3StorageConfig(**v)
+            else:
+                raise ValueError(f"Unknown storage type: {storage_type}")
+        
+        return v
 
 
 class DevelopmentConfig(ServerConfig):

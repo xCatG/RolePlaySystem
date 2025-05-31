@@ -4,7 +4,6 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, EmailStr
 from typing import Annotated
 
-from .auth_decorators import auth_required
 from .base_handler import BaseHandler
 from .dependencies import get_auth_manager, get_current_user
 from ..common.auth import AuthManager

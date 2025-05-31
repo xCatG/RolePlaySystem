@@ -3,11 +3,13 @@
 import json
 import os
 from abc import ABC, abstractmethod
-from contextlib import contextmanager
+from contextlib import contextmanager, asynccontextmanager
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Generator, Union, Literal
-from filelock import FileLock, Timeout
+from typing import Any, Dict, List, Optional, Generator, Union, Literal, AsyncGenerator
 from pydantic import BaseModel, Field
+import asyncio
+import aiofiles
+import aiofiles.os
 
 from .exceptions import StorageError
 from .models import User, UserAuthMethod, SessionData
@@ -132,8 +134,8 @@ class StorageBackend(ABC):
     """
 
     @abstractmethod
-    @contextmanager
-    def lock(self, resource_path: str, timeout: float = 5.0) -> Generator[None, None, None]:
+    @asynccontextmanager
+    async def lock(self, resource_path: str, timeout: float = 5.0) -> AsyncGenerator[None, None]:
         """
         Acquire an exclusive lock for a resource.
         
@@ -308,8 +310,8 @@ class FileStorage(StorageBackend):
         lock_name = resource_path.replace('/', '_') + '.lock'
         return self.locks_dir / lock_name
 
-    @contextmanager
-    def lock(self, resource_path: str, timeout: float = 5.0) -> Generator[None, None, None]:
+    @asynccontextmanager
+    async def lock(self, resource_path: str, timeout: float = 5.0) -> AsyncGenerator[None, None]:
         """
         Acquire a file-based lock for a resource.
         
@@ -324,15 +326,46 @@ class FileStorage(StorageBackend):
             LockAcquisitionError: If lock cannot be acquired within timeout
         """
         lock_path = self._get_lock_path(resource_path)
-        lock = FileLock(str(lock_path), timeout=timeout)
         
-        try:
-            with lock:
-                yield
-        except Timeout:
+        # Use a simpler file-based locking approach that works better with asyncio
+        start_time = asyncio.get_event_loop().time()
+        acquired = False
+        
+        while not acquired and (asyncio.get_event_loop().time() - start_time) < timeout:
+            try:
+                # Try to create lock file exclusively (atomic operation)
+                await aiofiles.os.makedirs(lock_path.parent, exist_ok=True)
+                
+                # Use exclusive creation to implement the lock
+                fd = await asyncio.to_thread(
+                    os.open, str(lock_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY
+                )
+                await asyncio.to_thread(os.close, fd)
+                acquired = True
+                
+            except FileExistsError:
+                # Lock file already exists, wait and retry
+                await asyncio.sleep(0.1)
+            except Exception as e:
+                raise StorageError(f"Error acquiring lock: {e}")
+        
+        if not acquired:
             raise LockAcquisitionError(
                 f"Failed to acquire lock for {resource_path} within {timeout} seconds"
             )
+        
+        try:
+            yield
+        finally:
+            # Always try to release the lock by removing the lock file
+            try:
+                await aiofiles.os.remove(str(lock_path))
+            except FileNotFoundError:
+                # Lock file already removed, ignore
+                pass
+            except Exception:
+                # Ignore other release errors to prevent masking original exceptions
+                pass
 
     def _get_storage_path(self, key: str) -> Path:
         """Convert a storage key to an actual file path."""
@@ -347,8 +380,8 @@ class FileStorage(StorageBackend):
         file_path = self._get_storage_path(path)
         
         try:
-            with open(file_path, 'r', encoding='utf-8') as f:
-                return f.read()
+            async with aiofiles.open(file_path, 'r', encoding='utf-8') as f:
+                return await f.read()
         except FileNotFoundError:
             raise StorageError(f"Path not found: {path}")
         except IOError as e:
@@ -359,11 +392,11 @@ class FileStorage(StorageBackend):
         file_path = self._get_storage_path(path)
         
         # Create parent directories if needed
-        file_path.parent.mkdir(parents=True, exist_ok=True)
+        await asyncio.to_thread(file_path.parent.mkdir, parents=True, exist_ok=True)
         
         try:
-            with open(file_path, 'w', encoding='utf-8') as f:
-                f.write(data)
+            async with aiofiles.open(file_path, 'w', encoding='utf-8') as f:
+                await f.write(data)
         except IOError as e:
             raise StorageError(f"Failed to write {path}: {e}")
 
@@ -372,11 +405,11 @@ class FileStorage(StorageBackend):
         file_path = self._get_storage_path(path)
         
         # Create parent directories if needed
-        file_path.parent.mkdir(parents=True, exist_ok=True)
+        await asyncio.to_thread(file_path.parent.mkdir, parents=True, exist_ok=True)
         
         try:
-            with open(file_path, 'a', encoding='utf-8') as f:
-                f.write(data)
+            async with aiofiles.open(file_path, 'a', encoding='utf-8') as f:
+                await f.write(data)
         except IOError as e:
             raise StorageError(f"Failed to append to {path}: {e}")
 
@@ -386,8 +419,8 @@ class FileStorage(StorageBackend):
         file_path = self._get_storage_path(path)
         
         try:
-            with open(file_path, 'rb') as f:
-                return f.read()
+            async with aiofiles.open(file_path, 'rb') as f:
+                return await f.read()
         except FileNotFoundError:
             raise StorageError(f"Path not found: {path}")
         except IOError as e:
@@ -398,11 +431,11 @@ class FileStorage(StorageBackend):
         file_path = self._get_storage_path(path)
         
         # Create parent directories if needed
-        file_path.parent.mkdir(parents=True, exist_ok=True)
+        await asyncio.to_thread(file_path.parent.mkdir, parents=True, exist_ok=True)
         
         try:
-            with open(file_path, 'wb') as f:
-                f.write(data)
+            async with aiofiles.open(file_path, 'wb') as f:
+                await f.write(data)
         except IOError as e:
             raise StorageError(f"Failed to write {path}: {e}")
 
@@ -411,24 +444,24 @@ class FileStorage(StorageBackend):
         file_path = self._get_storage_path(path)
         
         # Create parent directories if needed
-        file_path.parent.mkdir(parents=True, exist_ok=True)
+        await asyncio.to_thread(file_path.parent.mkdir, parents=True, exist_ok=True)
         
         try:
-            with open(file_path, 'ab') as f:
-                f.write(data)
+            async with aiofiles.open(file_path, 'ab') as f:
+                await f.write(data)
         except IOError as e:
             raise StorageError(f"Failed to append to {path}: {e}")
 
     async def exists(self, path: str) -> bool:
         """Check if a file exists."""
         file_path = self._get_storage_path(path)
-        return file_path.exists()
+        return await asyncio.to_thread(file_path.exists)
 
     async def delete(self, path: str) -> bool:
         """Delete a file."""
         file_path = self._get_storage_path(path)
-        if file_path.exists():
-            file_path.unlink()
+        if await asyncio.to_thread(file_path.exists):
+            await asyncio.to_thread(file_path.unlink)
             return True
         return False
 
@@ -437,12 +470,18 @@ class FileStorage(StorageBackend):
         prefix_path = self._get_storage_path(prefix)
         keys = []
         
-        if prefix_path.exists():
-            for file_path in prefix_path.rglob('*'):
-                if file_path.is_file() and not file_path.name.startswith('.'):
-                    # Convert back to storage key format
-                    relative_path = file_path.relative_to(self.storage_dir)
-                    keys.append(str(relative_path))
+        if await asyncio.to_thread(prefix_path.exists):
+            # Run the blocking rglob operation in a thread
+            def _list_files():
+                result = []
+                for file_path in prefix_path.rglob('*'):
+                    if file_path.is_file() and not file_path.name.startswith('.'):
+                        # Convert back to storage key format
+                        relative_path = file_path.relative_to(self.storage_dir)
+                        result.append(str(relative_path))
+                return result
+            
+            keys = await asyncio.to_thread(_list_files)
         
         return keys
 
@@ -502,7 +541,7 @@ class FileStorage(StorageBackend):
         if await self.exists(user_path):
             raise StorageError(f"User {user.id} already exists")
         
-        with self.lock(user_path):
+        async with self.lock(user_path):
             await self._write_json(user_path, user.model_dump())
         
         return user
@@ -516,7 +555,7 @@ class FileStorage(StorageBackend):
         
         user.updated_at = utc_now()
         
-        with self.lock(user_path):
+        async with self.lock(user_path):
             await self._write_json(user_path, user.model_dump())
         
         return user
@@ -567,7 +606,7 @@ class FileStorage(StorageBackend):
         if await self.exists(auth_path):
             raise StorageError(f"Auth method {auth_method.id} already exists")
         
-        with self.lock(auth_path):
+        async with self.lock(auth_path):
             await self._write_json(auth_path, auth_method.model_dump())
         
         return auth_method
@@ -579,7 +618,7 @@ class FileStorage(StorageBackend):
         if not await self.exists(auth_path):
             raise StorageError(f"Auth method {auth_method.id} not found")
         
-        with self.lock(auth_path):
+        async with self.lock(auth_path):
             await self._write_json(auth_path, auth_method.model_dump())
         
         return auth_method
@@ -602,7 +641,7 @@ class FileStorage(StorageBackend):
         if await self.exists(session_path):
             raise StorageError(f"Session {session.session_id} already exists")
         
-        with self.lock(session_path):
+        async with self.lock(session_path):
             await self._write_json(session_path, session.model_dump())
         
         return session
@@ -622,7 +661,7 @@ class FileStorage(StorageBackend):
         if not await self.exists(session_path):
             raise StorageError(f"Session {session.session_id} not found")
         
-        with self.lock(session_path):
+        async with self.lock(session_path):
             await self._write_json(session_path, session.model_dump())
         
         return session
@@ -636,7 +675,7 @@ class FileStorage(StorageBackend):
         """Store arbitrary data."""
         data_path = f"data/{key}"
         
-        with self.lock(data_path):
+        async with self.lock(data_path):
             await self._write_json(data_path, {"data": data})
 
     async def get_data(self, key: str) -> Optional[Any]:

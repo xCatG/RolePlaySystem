@@ -124,10 +124,14 @@ def create_storage_from_env(environment: Union[Environment, str] = None) -> Stor
     
     storage_type = storage_type.lower()
     
-    # Create lock configuration
+    # Create lock configuration with appropriate defaults based on storage type
     from .storage import LockConfig
+    
+    # Determine default lock strategy based on storage type
+    default_lock_strategy = "file" if storage_type == "file" else "object"
+    
     lock_config = LockConfig(
-        strategy=os.getenv("LOCK_STRATEGY", "file"),
+        strategy=os.getenv("LOCK_STRATEGY", default_lock_strategy),
         lease_duration_seconds=int(os.getenv("LOCK_LEASE_DURATION", "60")),
         retry_attempts=int(os.getenv("LOCK_RETRY_ATTEMPTS", "3")),
         retry_delay_seconds=float(os.getenv("LOCK_RETRY_DELAY", "1.0")),
