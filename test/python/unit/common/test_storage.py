@@ -4,9 +4,11 @@ import pytest
 import tempfile
 import json
 import uuid
+import os
 from pathlib import Path
 from unittest.mock import patch, mock_open
 import asyncio
+import aiofiles
 
 from role_play.common.storage import FileStorage, StorageBackend, LockAcquisitionError
 from role_play.common.exceptions import StorageError
@@ -97,10 +99,46 @@ class TestFileStorageLocking:
             async with storage.lock("users/123/profile"):
                 # Lock file should exist during lock
                 lock_path = storage.locks_dir / "users_123_profile.lock"
-                # Note: The actual lock file might not be visible due to filelock implementation
-                pass
+                assert lock_path.exists()
+                
+                # Verify lock file contains PID and metadata
+                async with aiofiles.open(lock_path, 'r') as f:
+                    content = await f.read()
+                lock_data = json.loads(content)
+                assert "pid" in lock_data
+                assert "timestamp" in lock_data
+                assert "resource" in lock_data
+                assert lock_data["pid"] == os.getpid()
+                assert lock_data["resource"] == "users/123/profile"
             
-            # After releasing lock, we're done
+            # Lock file should be removed after context
+            assert not lock_path.exists()
+    
+    @pytest.mark.asyncio
+    async def test_stale_lock_detection(self):
+        """Test that stale locks can be detected and removed."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            storage = FileStorage(temp_dir)
+            lock_path = storage._get_lock_path("test/resource")
+            
+            # Create a stale lock file (very old timestamp, non-existent PID)
+            stale_lock_data = {
+                "pid": 999999,  # Extremely unlikely to exist
+                "timestamp": 0,  # Very old timestamp
+                "resource": "test/resource"
+            }
+            
+            await aiofiles.os.makedirs(lock_path.parent, exist_ok=True)
+            async with aiofiles.open(lock_path, 'w') as f:
+                await f.write(json.dumps(stale_lock_data))
+            
+            # Verify the lock is detected as stale
+            is_stale = await storage._is_stale_lock(lock_path, max_age_seconds=1.0)
+            assert is_stale is True
+            
+            # Should be able to acquire lock despite existing lock file (stale lock gets removed)
+            async with storage.lock("test/resource", timeout=1.0):
+                pass  # Should succeed by removing stale lock
 
 
 class TestFileStorageBasicOperations:

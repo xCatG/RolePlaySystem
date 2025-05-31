@@ -2,6 +2,7 @@
 
 import json
 import os
+import signal
 from abc import ABC, abstractmethod
 from contextlib import contextmanager, asynccontextmanager
 from pathlib import Path
@@ -336,15 +337,35 @@ class FileStorage(StorageBackend):
                 # Try to create lock file exclusively (atomic operation)
                 await aiofiles.os.makedirs(lock_path.parent, exist_ok=True)
                 
+                # Create lock data with PID and timestamp for stale lock detection
+                lock_data = {
+                    "pid": os.getpid(),
+                    "timestamp": asyncio.get_event_loop().time(),
+                    "resource": resource_path
+                }
+                lock_content = json.dumps(lock_data)
+                
                 # Use exclusive creation to implement the lock
                 fd = await asyncio.to_thread(
                     os.open, str(lock_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY
                 )
+                await asyncio.to_thread(os.write, fd, lock_content.encode('utf-8'))
                 await asyncio.to_thread(os.close, fd)
                 acquired = True
                 
             except FileExistsError:
-                # Lock file already exists, wait and retry
+                # Lock file already exists, check if it's stale
+                if await self._is_stale_lock(lock_path, timeout):
+                    # Try to remove stale lock and retry immediately
+                    try:
+                        await aiofiles.os.remove(str(lock_path))
+                        continue  # Retry immediately without sleeping
+                    except FileNotFoundError:
+                        continue  # Already removed, retry immediately
+                    except Exception:
+                        pass  # Could not remove, treat as active lock
+                
+                # Lock is active, wait and retry
                 await asyncio.sleep(0.1)
             except Exception as e:
                 raise StorageError(f"Error acquiring lock: {e}")
@@ -366,6 +387,58 @@ class FileStorage(StorageBackend):
             except Exception:
                 # Ignore other release errors to prevent masking original exceptions
                 pass
+
+    async def _is_stale_lock(self, lock_path: Path, max_age_seconds: float = 300.0) -> bool:
+        """
+        Check if a lock file is stale (from a dead process or too old).
+        
+        Args:
+            lock_path: Path to the lock file
+            max_age_seconds: Maximum age for a lock before considering it stale
+            
+        Returns:
+            True if the lock appears to be stale and should be removed
+        """
+        try:
+            # Read lock file content
+            async with aiofiles.open(lock_path, 'r') as f:
+                content = await f.read()
+            
+            lock_data = json.loads(content)
+            lock_pid = lock_data.get("pid")
+            lock_timestamp = lock_data.get("timestamp", 0)
+            
+            # Check age-based staleness first (simpler and cross-platform)
+            current_time = asyncio.get_event_loop().time()
+            if current_time - lock_timestamp > max_age_seconds:
+                return True
+            
+            # Check if process is still running (if PID is available)
+            if lock_pid:
+                try:
+                    # Send signal 0 to check if process exists (doesn't actually send signal)
+                    await asyncio.to_thread(os.kill, lock_pid, 0)
+                    # Process exists, lock is not stale
+                    return False
+                except ProcessLookupError:
+                    # Process doesn't exist, lock is stale
+                    return True
+                except PermissionError:
+                    # Process exists but we can't signal it, assume it's active
+                    return False
+                except Exception:
+                    # Unknown error, err on the side of caution
+                    return False
+            
+            # No PID info, rely on age check only
+            return False
+            
+        except (FileNotFoundError, json.JSONDecodeError, KeyError):
+            # Lock file is malformed or missing, consider it stale
+            return True
+        except Exception:
+            # Any other error, err on the side of caution
+            return False
 
     def _get_storage_path(self, key: str) -> Path:
         """Convert a storage key to an actual file path."""
