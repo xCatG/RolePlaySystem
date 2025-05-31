@@ -4,9 +4,10 @@ from pathlib import Path
 from fastapi import HTTPException, Depends, APIRouter
 from fastapi.responses import PlainTextResponse, FileResponse
 from ..server.base_handler import BaseHandler
-from ..server.dependencies import require_user_or_higher
+from ..server.dependencies import require_user_or_higher, get_storage_backend, get_chat_logger
 from ..common.models import BaseResponse, User
-from .export import ExportUtility
+from ..common.storage import StorageBackend
+from ..chat.chat_logger import ChatLogger
 import logging
 
 logger = logging.getLogger(__name__)
@@ -19,7 +20,7 @@ class SessionSummary(BaseResponse):
     character: str
     message_count: int
     started: str
-    jsonl_filename: str
+    storage_path: str
 
 class SessionListResponse(BaseResponse):
     """Response containing list of sessions for evaluation."""
@@ -41,53 +42,37 @@ class EvaluationHandler(BaseHandler):
     @property
     def prefix(self) -> str:
         return "/eval"
-
-    def __init__(self):
-        """Initialize evaluation handler."""
-        super().__init__()
-        self.sessions_path = Path("./storage/sessions")
-        self.sessions_path.mkdir(parents=True, exist_ok=True)
-        self.export_util = ExportUtility()
     
     async def get_evaluation_sessions(
         self, 
-        current_user: Annotated[User, Depends(require_user_or_higher)]
+        current_user: Annotated[User, Depends(require_user_or_higher)],
+        chat_logger: Annotated[ChatLogger, Depends(get_chat_logger)]
     ) -> SessionListResponse:
         """Get all sessions available for evaluation.
         
         Args:
             current_user: Authenticated user
+            chat_logger: Chat logger instance
             
         Returns:
             List of sessions ready for evaluation
         """
         try:
+            # Get all sessions for the current user from ChatLogger
+            sessions_data = await chat_logger.list_user_sessions(current_user.id)
+            
             sessions = []
-            
-            # Find all JSONL files for this user
-            pattern = f"{current_user.id}_*.jsonl"
-            for jsonl_file in self.sessions_path.glob(pattern):
-                try:
-                    # Get summary from JSONL
-                    summary = self.export_util.get_session_summary(jsonl_file)
-                    
-                    if summary["session_id"]:
-                        sessions.append(SessionSummary(
-                            success=True,
-                            session_id=summary["session_id"],
-                            participant=summary["participant"] or "Unknown",
-                            scenario=summary["scenario"] or "Unknown",
-                            character=summary["character"] or "Unknown",
-                            message_count=summary["message_count"],
-                            started=summary["started"] or "Unknown",
-                            jsonl_filename=jsonl_file.name
-                        ))
-                except Exception as e:
-                    logger.warning(f"Failed to process file {jsonl_file}: {e}")
-                    continue
-            
-            # Sort by start time (newest first)
-            sessions.sort(key=lambda s: s.started, reverse=True)
+            for session_data in sessions_data:
+                sessions.append(SessionSummary(
+                    success=True,
+                    session_id=session_data["session_id"],
+                    participant=session_data.get("participant_name", "Unknown"),
+                    scenario=session_data.get("scenario_name", "Unknown"),
+                    character=session_data.get("character_name", "Unknown"),
+                    message_count=session_data.get("message_count", 0),
+                    started=session_data.get("created_at", "Unknown"),
+                    storage_path=session_data.get("storage_path", "")
+                ))
             
             return SessionListResponse(
                 success=True,
@@ -101,41 +86,28 @@ class EvaluationHandler(BaseHandler):
     async def download_session(
         self,
         session_id: str,
-        current_user: Annotated[User, Depends(require_user_or_higher)]
+        current_user: Annotated[User, Depends(require_user_or_higher)],
+        chat_logger: Annotated[ChatLogger, Depends(get_chat_logger)]
     ):
         """Download session transcript as text file.
         
         Args:
             session_id: ID of the session to download
             current_user: Authenticated user
+            chat_logger: Chat logger instance
             
         Returns:
             Text file download response
         """
         try:
-            # Find the JSONL file for this session
-            jsonl_file = None
-            pattern = f"{current_user.id}_*.jsonl"
+            # Export session as text using ChatLogger
+            text_content = await chat_logger.export_session_text(
+                user_id=current_user.id,
+                session_id=session_id
+            )
             
-            for file_path in self.sessions_path.glob(pattern):
-                try:
-                    # Check if this file contains the requested session
-                    with open(file_path, 'r') as f:
-                        first_line = f.readline()
-                        if first_line:
-                            import json
-                            entry = json.loads(first_line)
-                            if entry.get("session_id") == session_id:
-                                jsonl_file = file_path
-                                break
-                except:
-                    continue
-            
-            if not jsonl_file:
+            if text_content == "Session log file not found.":
                 raise HTTPException(status_code=404, detail="Session not found")
-            
-            # Convert to text
-            text_content = self.export_util.jsonl_to_text(jsonl_file)
             
             # Return as downloadable text file
             return PlainTextResponse(

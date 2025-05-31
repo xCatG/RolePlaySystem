@@ -42,6 +42,15 @@
 - **Evolution Path**: FileStorage (POC) → S3Storage (Production)
 - **User Storage**: Support for user profiles, auth methods, and sessions
 - **Location**: `role_play/common/storage.py`
+- **Per-User Data Segmentation**: All user-specific data organized under user ID prefix
+  - Pattern: `users/{user_id}/profile`, `users/{user_id}/chat_logs/{session_id}`, etc.
+  - Benefits: Easier per-user operations, better access control, cleaner organization
+  - Migration path: FileStorage uses actual directories, cloud storage uses key prefixes
+- **Key/Path Conventions**: 
+  - No file extensions in storage keys (no .json suffix)
+  - Storage implementations handle serialization internally
+  - Keys are opaque strings that work identically across FileStorage/GCS/S3
+  - Example: `users/123/profile` not `users/123.json`
 
 ### 8. **Multi-Environment Support**
 - **Environment Configs**: Separate configs for dev/beta/prod
@@ -57,7 +66,7 @@
 - **Stateless Handlers**: ChatHandler created per-request via FastAPI dependency injection
 - **Singleton Services**: ContentLoader, ChatLogger, and InMemorySessionService shared across requests
 - **File Locking**: ChatLogger implements FileLock for safe concurrent JSONL writes
-- **Storage Format**: `user_id_session_id.jsonl` files with structured events (session_start, message, session_end)
+- **Storage Format**: `users/{user_id}/chat_logs/{session_id}` with structured JSONL events (session_start, message, session_end)
 - **Session State**: ADK session stores metadata (character_id, scenario_id, message_count) + reference to JSONL file
 - **On-Demand Runners**: ADK Agent and Runner created per message, not stored between requests
 - **Export Ready**: ChatLogger provides text export and session listing without touching ADK state
@@ -102,6 +111,13 @@
 - [x] Create `role_play/common/exceptions.py` - Custom exceptions
 - [x] Create `role_play/common/storage.py` - Storage abstraction (FileStorage, S3Storage)
 - [x] Create `role_play/common/auth.py` - AuthManager, TokenData, UserRole, AuthProvider, User model
+- [ ] Update storage implementation for per-user data segmentation and extensible locking
+  - [ ] Refactor FileStorage to use `users/{user_id}/` prefix pattern
+  - [ ] Remove .json file extensions from storage keys
+  - [ ] Add configurable locking strategies (file, object, redis)
+  - [ ] Update ChatLogger to use new storage paths
+  - [ ] Add GCSStorage and S3Storage implementations
+  - [ ] Add monitoring capabilities for lock performance
 
 ### Server Core
 - [x] Create `role_play/server/base_handler.py` - BaseHandler abstract class

@@ -156,7 +156,7 @@ class ChatHandler(BaseHandler):
             if request.character_id not in scenario.get("compatible_characters", []):
                 raise HTTPException(status_code=400, detail="Character not compatible with scenario")
 
-            app_session_id, jsonl_path = chat_logger.start_session(
+            app_session_id, storage_path = await chat_logger.start_session(
                 user_id=current_user.id,
                 participant_name=request.participant_name,
                 scenario_id=request.scenario_id,
@@ -167,7 +167,7 @@ class ChatHandler(BaseHandler):
 
             initial_adk_state = {
                 "app_session_id": app_session_id,
-                "jsonl_path_str": str(jsonl_path.name),
+                "storage_path": storage_path,
                 "user_id": current_user.id,
                 "participant_name": request.participant_name,
                 "scenario_id": request.scenario_id,
@@ -191,7 +191,7 @@ class ChatHandler(BaseHandler):
                 session_id=app_session_id,
                 scenario_name=scenario["name"],
                 character_name=character["name"],
-                jsonl_filename=jsonl_path.name
+                jsonl_filename=storage_path
             )
         except HTTPException:
             raise
@@ -206,7 +206,7 @@ class ChatHandler(BaseHandler):
     ) -> SessionListResponse:
         """Get all sessions for the current user by listing logs from ChatLogger."""
         try:
-            sessions_data = chat_logger.list_user_sessions(current_user.id)
+            sessions_data = await chat_logger.list_user_sessions(current_user.id)
             session_infos = [
                 SessionInfo(
                     session_id=s_data["session_id"],
@@ -215,7 +215,7 @@ class ChatHandler(BaseHandler):
                     participant_name=s_data.get("participant_name", "Unknown"),
                     created_at=s_data.get("created_at", ""),
                     message_count=s_data.get("message_count", 0),
-                    jsonl_filename=s_data.get("jsonl_filename", "")
+                    jsonl_filename=s_data.get("storage_path", "")
                 ) for s_data in sessions_data
             ]
             return SessionListResponse(success=True, sessions=session_infos)
@@ -240,15 +240,14 @@ class ChatHandler(BaseHandler):
             if not adk_session:
                 raise HTTPException(status_code=404, detail="Active session not found or access denied.")
 
-            jsonl_filename_str = adk_session.state.get("jsonl_path_str")
-            if not jsonl_filename_str:
-                raise HTTPException(status_code=500, detail="Session state missing log filename.")
-            jsonl_path = chat_logger.storage_path / jsonl_filename_str
+            storage_path = adk_session.state.get("storage_path")
+            if not storage_path:
+                raise HTTPException(status_code=500, detail="Session state missing storage path.")
 
             adk_session.state["message_count"] += 1
             participant_msg_num = adk_session.state["message_count"]
-            chat_logger.log_message(
-                jsonl_path=jsonl_path, session_id=session_id, role="participant",
+            await chat_logger.log_message(
+                user_id=current_user.id, session_id=session_id, role="participant",
                 content=request.message, message_number=participant_msg_num
             )
 
@@ -288,8 +287,8 @@ class ChatHandler(BaseHandler):
 
             adk_session.state["message_count"] += 1
             character_msg_num = adk_session.state["message_count"]
-            chat_logger.log_message(
-                jsonl_path=jsonl_path, session_id=session_id, role="character",
+            await chat_logger.log_message(
+                user_id=current_user.id, session_id=session_id, role="character",
                 content=response_text, message_number=character_msg_num
             )
 
@@ -319,12 +318,10 @@ class ChatHandler(BaseHandler):
                 logger.warning(f"Attempt to end session {session_id} not found in ADK InMemory service.")
                 return
 
-            jsonl_filename_str = adk_session.state.get("jsonl_path_str")
-            if not jsonl_filename_str:
-                logger.error(f"Cannot end session {session_id}: log filename missing from ADK state.")
+            storage_path = adk_session.state.get("storage_path")
+            if not storage_path:
+                logger.error(f"Cannot end session {session_id}: storage path missing from ADK state.")
                 raise HTTPException(status_code=500, detail="Session state corrupted, cannot end session.")
-
-            jsonl_path = chat_logger.storage_path / jsonl_filename_str
             message_count = adk_session.state.get("message_count", 0)
             created_iso = adk_session.state.get("session_creation_time_iso")
             duration_seconds = 0
@@ -335,8 +332,8 @@ class ChatHandler(BaseHandler):
                 except ValueError:
                     logger.warning(f"Could not parse creation_time_iso: {created_iso} for session {session_id}")
 
-            chat_logger.end_session(
-                jsonl_path=jsonl_path,
+            await chat_logger.end_session(
+                user_id=current_user.id,
                 session_id=session_id,
                 total_messages=message_count,
                 duration_seconds=duration_seconds,
@@ -362,7 +359,7 @@ class ChatHandler(BaseHandler):
     ) -> PlainTextResponse:
         """Export session as text file using ChatLogger."""
         try:
-            text_content = chat_logger.export_session_text(app_session_id=session_id, user_id=current_user.id)
+            text_content = await chat_logger.export_session_text(user_id=current_user.id, session_id=session_id)
             if text_content == "Session log file not found.":
                 raise HTTPException(status_code=404, detail="Session log not found for export.")
 
