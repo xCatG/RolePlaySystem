@@ -1,0 +1,127 @@
+# Storage Configuration Examples
+# Copy one of these sections to your main config file and customize as needed
+
+# Development - File Storage (simple, no external dependencies)
+storage_dev_file:
+  type: file
+  base_dir: ./data
+  lock:
+    strategy: file
+    lease_duration_seconds: 60
+    retry_attempts: 3
+    retry_delay_seconds: 1.0
+
+# Development - GCS (for testing cloud storage locally)
+storage_dev_gcs:
+  type: gcs
+  bucket: my-dev-roleplay-bucket
+  prefix: dev-data/
+  project_id: my-gcp-project-dev
+  credentials_file: /path/to/dev-service-account.json
+  lock:
+    strategy: object
+    lease_duration_seconds: 60
+    retry_attempts: 3
+    retry_delay_seconds: 1.0
+
+# Development - S3 (for testing S3-compatible storage)
+storage_dev_s3:
+  type: s3
+  bucket: my-dev-roleplay-bucket
+  prefix: dev-data/
+  region_name: us-west-2
+  # For development, you can use LocalStack or MinIO
+  endpoint_url: http://localhost:9000  # Remove for real S3
+  lock:
+    strategy: object  # Consider 'redis' for better consistency
+    lease_duration_seconds: 60
+    retry_attempts: 3
+    retry_delay_seconds: 1.0
+
+# Beta Environment - GCS with Object Locking
+storage_beta_gcs:
+  type: gcs
+  bucket: my-beta-roleplay-bucket
+  prefix: beta-data/
+  project_id: my-gcp-project
+  credentials_file: ${GCP_CREDENTIALS_FILE}
+  lock:
+    strategy: object
+    lease_duration_seconds: 45
+    retry_attempts: 5
+    retry_delay_seconds: 0.5
+
+# Production - GCS with Redis Locking (Recommended for High Performance)
+storage_prod_gcs_redis:
+  type: gcs
+  bucket: my-prod-roleplay-bucket
+  prefix: prod-data/
+  project_id: my-gcp-project
+  credentials_file: ${GCP_CREDENTIALS_FILE}
+  lock:
+    strategy: redis
+    lease_duration_seconds: 30
+    retry_attempts: 5
+    retry_delay_seconds: 0.5
+    redis_host: redis.example.com
+    redis_port: 6379
+    redis_password: ${REDIS_PASSWORD}
+    redis_db: 0
+
+# Production - S3 with Redis Locking (Recommended for S3)
+storage_prod_s3_redis:
+  type: s3
+  bucket: my-prod-roleplay-bucket
+  prefix: prod-data/
+  region_name: us-west-2
+  lock:
+    strategy: redis  # Strongly recommended for S3 production use
+    lease_duration_seconds: 30
+    retry_attempts: 5
+    retry_delay_seconds: 0.5
+    redis_host: redis.example.com
+    redis_port: 6379
+    redis_password: ${REDIS_PASSWORD}
+    redis_db: 0
+
+# Environment Variables for Reference:
+# 
+# For GCS:
+# export GCP_PROJECT_ID=my-gcp-project
+# export GCP_CREDENTIALS_FILE=/path/to/service-account.json
+# export STORAGE_BUCKET=my-roleplay-bucket
+# 
+# For S3:
+# export AWS_REGION=us-west-2
+# export AWS_ACCESS_KEY_ID=your-access-key
+# export AWS_SECRET_ACCESS_KEY=your-secret-key
+# export STORAGE_BUCKET=my-roleplay-bucket
+# 
+# For Redis:
+# export REDIS_HOST=redis.example.com
+# export REDIS_PASSWORD=your-redis-password
+# 
+# Common:
+# export ENV=dev|beta|prod
+# export STORAGE_TYPE=file|gcs|s3
+# export STORAGE_PREFIX=optional-prefix/
+# export LOCK_STRATEGY=file|object|redis
+
+# Decision Guidance:
+#
+# Development:
+# - Use 'file' storage for simplicity and speed
+# - Can test with 'gcs' or 's3' if you want to test cloud integration
+#
+# Beta/Staging:
+# - Use 'gcs' or 's3' with 'object' locking strategy
+# - Monitor lock performance to determine if Redis is needed
+#
+# Production Low-Medium Load:
+# - Use 'gcs' with 'object' locking (GCS has better consistency than S3)
+# - Use 's3' with 'redis' locking (recommended for S3)
+#
+# Production High Load:
+# - Use 'gcs' or 's3' with 'redis' locking strategy
+# - Set up Redis HA (Sentinel or Cluster) for reliability
+# - Monitor lock metrics to optimize lease duration and retry settings

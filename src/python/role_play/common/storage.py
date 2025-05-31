@@ -5,8 +5,9 @@ import os
 from abc import ABC, abstractmethod
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Generator, Union
+from typing import Any, Dict, List, Optional, Generator, Union, Literal
 from filelock import FileLock, Timeout
+from pydantic import BaseModel, Field
 
 from .exceptions import StorageError
 from .models import User, UserAuthMethod, SessionData
@@ -16,6 +17,107 @@ from .time_utils import utc_now
 class LockAcquisitionError(StorageError):
     """Raised when a lock cannot be acquired."""
     pass
+
+
+# Configuration models for locking strategies
+class LockConfig(BaseModel):
+    """Configuration for locking strategies."""
+    strategy: Literal["object", "redis", "file"] = Field(
+        default="file",
+        description="Locking strategy: 'object' for cloud storage object locks, "
+                    "'redis' for Redis-based locks, 'file' for local file locks."
+    )
+    lease_duration_seconds: int = Field(
+        default=60,
+        description="Lock lease duration in seconds (critical for 'object' and 'redis' strategies)"
+    )
+    retry_attempts: int = Field(
+        default=3,
+        description="Number of retry attempts for lock acquisition"
+    )
+    retry_delay_seconds: float = Field(
+        default=1.0,
+        description="Delay between retry attempts in seconds"
+    )
+    
+    # Redis-specific settings (used if strategy is 'redis')
+    redis_host: Optional[str] = Field(
+        default=None,
+        description="Redis host (required for redis strategy)"
+    )
+    redis_port: Optional[int] = Field(
+        default=6379,
+        description="Redis port"
+    )
+    redis_password: Optional[str] = Field(
+        default=None,
+        description="Redis password"
+    )
+    redis_db: Optional[int] = Field(
+        default=0,
+        description="Redis database number"
+    )
+    
+    # File-lock specific (used by FileStorage)
+    file_lock_dir: Optional[str] = Field(
+        default=None,
+        description="Directory for file locks (defaults to storage_dir/.locks)"
+    )
+
+
+# Base storage configuration
+class BaseStorageConfig(BaseModel):
+    """Base configuration for all storage backends."""
+    type: str
+    lock: LockConfig = Field(default_factory=LockConfig)
+
+
+class FileStorageConfig(BaseStorageConfig):
+    """Configuration for file-based storage."""
+    type: Literal["file"] = "file"
+    base_dir: str = Field(description="Base directory for file storage")
+    lock: LockConfig = Field(
+        default_factory=lambda: LockConfig(strategy="file"),
+        description="Lock configuration (defaults to file-based locking)"
+    )
+
+
+class GCSStorageConfig(BaseStorageConfig):
+    """Configuration for Google Cloud Storage."""
+    type: Literal["gcs"] = "gcs"
+    bucket: str = Field(description="GCS bucket name")
+    prefix: str = Field(default="", description="Key prefix for all objects")
+    project_id: Optional[str] = Field(default=None, description="GCP project ID")
+    credentials_file: Optional[str] = Field(
+        default=None,
+        description="Path to service account credentials JSON file"
+    )
+    lock: LockConfig = Field(
+        default_factory=lambda: LockConfig(strategy="object"),
+        description="Lock configuration (defaults to object-based locking)"
+    )
+
+
+class S3StorageConfig(BaseStorageConfig):
+    """Configuration for AWS S3 storage."""
+    type: Literal["s3"] = "s3"
+    bucket: str = Field(description="S3 bucket name")
+    prefix: str = Field(default="", description="Key prefix for all objects")
+    region_name: Optional[str] = Field(default=None, description="AWS region")
+    aws_access_key_id: Optional[str] = Field(default=None, description="AWS access key ID")
+    aws_secret_access_key: Optional[str] = Field(default=None, description="AWS secret access key")
+    endpoint_url: Optional[str] = Field(
+        default=None,
+        description="Custom S3-compatible endpoint URL"
+    )
+    lock: LockConfig = Field(
+        default_factory=lambda: LockConfig(strategy="object"),
+        description="Lock configuration (defaults to object-based locking)"
+    )
+
+
+# Union type for all storage configs
+StorageConfigUnion = Union[FileStorageConfig, GCSStorageConfig, S3StorageConfig]
 
 
 class StorageBackend(ABC):
