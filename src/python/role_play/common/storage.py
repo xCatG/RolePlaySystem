@@ -45,37 +45,37 @@ class StorageBackend(ABC):
         Raises:
             LockAcquisitionError: If lock cannot be acquired within timeout
         """
-        pass
+        pass  # pragma: no cover
 
     @abstractmethod
     async def read(self, path: str) -> str:
         """Read text data from storage."""
-        pass
+        pass  # pragma: no cover
 
     @abstractmethod
     async def write(self, path: str, data: str) -> None:
         """Write text data to storage."""
-        pass
+        pass  # pragma: no cover
 
     @abstractmethod
     async def append(self, path: str, data: str) -> None:
         """Append text data to storage."""
-        pass
+        pass  # pragma: no cover
 
     @abstractmethod
     async def exists(self, path: str) -> bool:
         """Check if a path exists in storage."""
-        pass
+        pass  # pragma: no cover
 
     @abstractmethod
     async def delete(self, path: str) -> bool:
         """Delete a path from storage."""
-        pass
+        pass  # pragma: no cover
 
     @abstractmethod
     async def list_keys(self, prefix: str) -> List[str]:
         """List all keys with the given prefix."""
-        pass
+        pass  # pragma: no cover
 
     # Optional bytes methods for binary data (can be overridden for efficiency)
     async def read_bytes(self, path: str) -> bytes:
@@ -94,94 +94,94 @@ class StorageBackend(ABC):
     @abstractmethod
     async def get_user(self, user_id: str) -> Optional[User]:
         """Get user by ID."""
-        pass
+        pass  # pragma: no cover
 
     @abstractmethod
     async def get_user_by_username(self, username: str) -> Optional[User]:
         """Get user by username."""
-        pass
+        pass  # pragma: no cover
 
     @abstractmethod
     async def get_user_by_email(self, email: str) -> Optional[User]:
         """Get user by email."""
-        pass
+        pass  # pragma: no cover
 
     @abstractmethod
     async def create_user(self, user: User) -> User:
         """Create a new user."""
-        pass
+        pass  # pragma: no cover
 
     @abstractmethod
     async def update_user(self, user: User) -> User:
         """Update an existing user."""
-        pass
+        pass  # pragma: no cover
 
     @abstractmethod
     async def delete_user(self, user_id: str) -> bool:
         """Delete a user."""
-        pass
+        pass  # pragma: no cover
 
     @abstractmethod
     async def get_user_auth_methods(self, user_id: str) -> List[UserAuthMethod]:
         """Get all auth methods for a user."""
-        pass
+        pass  # pragma: no cover
 
     @abstractmethod
     async def get_user_auth_method(
         self, provider: str, provider_user_id: str
     ) -> Optional[UserAuthMethod]:
         """Get auth method by provider and provider user ID."""
-        pass
+        pass  # pragma: no cover
 
     @abstractmethod
     async def create_user_auth_method(self, auth_method: UserAuthMethod) -> UserAuthMethod:
         """Create a new auth method for a user."""
-        pass
+        pass  # pragma: no cover
 
     @abstractmethod
     async def update_user_auth_method(self, auth_method: UserAuthMethod) -> UserAuthMethod:
         """Update an existing auth method."""
-        pass
+        pass  # pragma: no cover
 
     @abstractmethod
     async def delete_user_auth_method(self, auth_method_id: str) -> bool:
         """Delete an auth method."""
-        pass
+        pass  # pragma: no cover
 
     @abstractmethod
     async def create_session(self, session: SessionData) -> SessionData:
         """Create a new session."""
-        pass
+        pass  # pragma: no cover
 
     @abstractmethod
     async def get_session(self, session_id: str) -> Optional[SessionData]:
         """Get session by ID."""
-        pass
+        pass  # pragma: no cover
 
     @abstractmethod
     async def update_session(self, session: SessionData) -> SessionData:
         """Update an existing session."""
-        pass
+        pass  # pragma: no cover
 
     @abstractmethod
     async def delete_session(self, session_id: str) -> bool:
         """Delete a session."""
-        pass
+        pass  # pragma: no cover
 
     @abstractmethod
     async def store_data(self, key: str, data: Any) -> None:
         """Store arbitrary data."""
-        pass
+        pass  # pragma: no cover
 
     @abstractmethod
     async def get_data(self, key: str) -> Optional[Any]:
         """Get arbitrary data."""
-        pass
+        pass  # pragma: no cover
 
     @abstractmethod
     async def delete_data(self, key: str) -> bool:
         """Delete arbitrary data."""
-        pass
+        pass  # pragma: no cover
 
 
 class FileStorage(StorageBackend):
