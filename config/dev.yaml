@@ -24,7 +24,22 @@ jwt_secret_key: "${JWT_SECRET_KEY:development-secret-key}"
 jwt_algorithm: "HS256"
 jwt_expire_hours: "${JWT_EXPIRE_HOURS:24}"
 
-# Storage settings
+# Storage settings (new configurable format)
+storage:
+  type: "${STORAGE_TYPE:file}"
+  base_dir: "${STORAGE_PATH:./data}"
+  lock:
+    strategy: "${LOCK_STRATEGY:file}"
+    lease_duration_seconds: "${LOCK_LEASE_DURATION:60}"
+    retry_attempts: "${LOCK_RETRY_ATTEMPTS:3}"
+    retry_delay_seconds: "${LOCK_RETRY_DELAY:1.0}"
+    # Redis settings (only used if strategy is 'redis')
+    redis_host: "${REDIS_HOST:}"
+    redis_port: "${REDIS_PORT:6379}"
+    redis_password: "${REDIS_PASSWORD:}"
+    redis_db: "${REDIS_DB:0}"
+
+# Legacy storage settings (maintained for backward compatibility)
 storage_type: "file"
 storage_path: "${STORAGE_PATH:./data}"
 

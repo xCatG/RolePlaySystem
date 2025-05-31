@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from role_play.common.auth import AuthManager
-from role_play.common.storage import FileStorage
+from role_play.common.storage import FileStorage, FileStorageConfig
 from role_play.common.models import User, UserAuthMethod, UserRole, AuthProvider
 from role_play.common.exceptions import (
     AuthenticationError, UserNotFoundError, InvalidTokenError, TokenExpiredError
@@ -27,7 +27,8 @@ class TestAuthManagerUserRegistration:
     async def test_register_user_with_password_complete_flow(self):
         """Test complete user registration with password."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            storage = FileStorage(temp_dir)
+            config = FileStorageConfig(type="file", base_dir=temp_dir)
+            storage = FileStorage(config)
             auth_manager = AuthManager(
                 storage=storage,
                 jwt_secret_key="test_secret_for_integration",
@@ -70,7 +71,8 @@ class TestAuthManagerUserRegistration:
     async def test_register_user_without_password(self):
         """Test user registration without password (OAuth preparation)."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            storage = FileStorage(temp_dir)
+            config = FileStorageConfig(type="file", base_dir=temp_dir)
+            storage = FileStorage(config)
             auth_manager = AuthManager(storage, "test_secret")
             
             # Register user without password
@@ -91,7 +93,8 @@ class TestAuthManagerUserRegistration:
     async def test_register_duplicate_username(self):
         """Test registration with duplicate username fails."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            storage = FileStorage(temp_dir)
+            config = FileStorageConfig(type="file", base_dir=temp_dir)
+            storage = FileStorage(config)
             auth_manager = AuthManager(storage, "test_secret")
             
             # Register first user
@@ -118,7 +121,8 @@ class TestAuthManagerAuthentication:
     async def test_authenticate_user_complete_flow(self):
         """Test complete user authentication flow."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            storage = FileStorage(temp_dir)
+            config = FileStorageConfig(type="file", base_dir=temp_dir)
+            storage = FileStorage(config)
             auth_manager = AuthManager(storage, "test_secret")
             
             # Register user first
@@ -149,7 +153,8 @@ class TestAuthManagerAuthentication:
     async def test_authenticate_wrong_password(self):
         """Test authentication with wrong password fails."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            storage = FileStorage(temp_dir)
+            config = FileStorageConfig(type="file", base_dir=temp_dir)
+            storage = FileStorage(config)
             auth_manager = AuthManager(storage, "test_secret")
             
             # Register user
@@ -172,7 +177,8 @@ class TestAuthManagerAuthentication:
     async def test_authenticate_nonexistent_user(self):
         """Test authentication with non-existent user fails."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            storage = FileStorage(temp_dir)
+            config = FileStorageConfig(type="file", base_dir=temp_dir)
+            storage = FileStorage(config)
             auth_manager = AuthManager(storage, "test_secret")
             
             # Try to authenticate non-existent user
@@ -188,7 +194,8 @@ class TestAuthManagerAuthentication:
     async def test_authenticate_inactive_user(self):
         """Test authentication with inactive user fails."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            storage = FileStorage(temp_dir)
+            config = FileStorageConfig(type="file", base_dir=temp_dir)
+            storage = FileStorage(config)
             auth_manager = AuthManager(storage, "test_secret")
             
             # Register and then deactivate user
@@ -215,7 +222,8 @@ class TestAuthManagerAuthentication:
     async def test_authenticate_user_without_local_auth(self):
         """Test authentication fails for user without local auth method."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            storage = FileStorage(temp_dir)
+            config = FileStorageConfig(type="file", base_dir=temp_dir)
+            storage = FileStorage(config)
             auth_manager = AuthManager(storage, "test_secret")
             
             # Register user without password (no local auth method)
@@ -242,7 +250,8 @@ class TestAuthManagerTokenOperations:
     async def test_get_user_by_token_complete_flow(self):
         """Test getting user by token."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            storage = FileStorage(temp_dir)
+            config = FileStorageConfig(type="file", base_dir=temp_dir)
+            storage = FileStorage(config)
             auth_manager = AuthManager(storage, "test_secret")
             
             # Register user
@@ -262,7 +271,8 @@ class TestAuthManagerTokenOperations:
     async def test_verify_token_invalid_token(self):
         """Test token verification with invalid token."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            storage = FileStorage(temp_dir)
+            config = FileStorageConfig(type="file", base_dir=temp_dir)
+            storage = FileStorage(config)
             auth_manager = AuthManager(storage, "test_secret")
             
             # Try to verify invalid token
@@ -273,7 +283,8 @@ class TestAuthManagerTokenOperations:
     async def test_verify_token_wrong_secret(self):
         """Test token verification with wrong secret."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            storage = FileStorage(temp_dir)
+            config = FileStorageConfig(type="file", base_dir=temp_dir)
+            storage = FileStorage(config)
             auth_manager1 = AuthManager(storage, "secret1")
             auth_manager2 = AuthManager(storage, "secret2")
             
@@ -292,7 +303,8 @@ class TestAuthManagerTokenOperations:
     async def test_verify_token_expired(self):
         """Test token verification with expired token."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            storage = FileStorage(temp_dir)
+            config = FileStorageConfig(type="file", base_dir=temp_dir)
+            storage = FileStorage(config)
             # Create auth manager with very short token expiry
             auth_manager = AuthManager(
                 storage, 
@@ -315,7 +327,8 @@ class TestAuthManagerTokenOperations:
     async def test_get_user_by_token_inactive_user(self):
         """Test get_user_by_token with inactive user."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            storage = FileStorage(temp_dir)
+            config = FileStorageConfig(type="file", base_dir=temp_dir)
+            storage = FileStorage(config)
             auth_manager = AuthManager(storage, "test_secret")
             
             # Register user
@@ -342,7 +355,8 @@ class TestAuthManagerOAuthIntegration:
     async def test_authenticate_oauth_user_new_user(self):
         """Test OAuth authentication for new user."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            storage = FileStorage(temp_dir)
+            config = FileStorageConfig(type="file", base_dir=temp_dir)
+            storage = FileStorage(config)
             auth_manager = AuthManager(storage, "test_secret")
             
             # Simulate OAuth user info
@@ -377,7 +391,8 @@ class TestAuthManagerOAuthIntegration:
     async def test_authenticate_oauth_user_existing_user(self):
         """Test OAuth authentication for existing user."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            storage = FileStorage(temp_dir)
+            config = FileStorageConfig(type="file", base_dir=temp_dir)
+            storage = FileStorage(config)
             auth_manager = AuthManager(storage, "test_secret")
             
             # First OAuth login - creates user
@@ -422,7 +437,8 @@ class TestAuthManagerOAuthIntegration:
     async def test_authenticate_oauth_user_username_collision(self):
         """Test OAuth authentication with username collision."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            storage = FileStorage(temp_dir)
+            config = FileStorageConfig(type="file", base_dir=temp_dir)
+            storage = FileStorage(config)
             auth_manager = AuthManager(storage, "test_secret")
             
             # Create regular user first
@@ -457,7 +473,8 @@ class TestAuthManagerPasswordManagement:
     async def test_change_password_complete_flow(self):
         """Test complete password change workflow."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            storage = FileStorage(temp_dir)
+            config = FileStorageConfig(type="file", base_dir=temp_dir)
+            storage = FileStorage(config)
             auth_manager = AuthManager(storage, "test_secret")
             
             # Register user
@@ -492,7 +509,8 @@ class TestAuthManagerPasswordManagement:
     async def test_change_password_wrong_old_password(self):
         """Test password change with wrong old password."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            storage = FileStorage(temp_dir)
+            config = FileStorageConfig(type="file", base_dir=temp_dir)
+            storage = FileStorage(config)
             auth_manager = AuthManager(storage, "test_secret")
             
             user, _ = await auth_manager.register_user(
@@ -515,7 +533,8 @@ class TestAuthManagerPasswordManagement:
     async def test_change_password_user_not_found(self):
         """Test password change for non-existent user."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            storage = FileStorage(temp_dir)
+            config = FileStorageConfig(type="file", base_dir=temp_dir)
+            storage = FileStorage(config)
             auth_manager = AuthManager(storage, "test_secret")
             
             with pytest.raises(UserNotFoundError):
@@ -529,7 +548,8 @@ class TestAuthManagerPasswordManagement:
     async def test_change_password_no_local_auth(self):
         """Test password change for user without local auth."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            storage = FileStorage(temp_dir)
+            config = FileStorageConfig(type="file", base_dir=temp_dir)
+            storage = FileStorage(config)
             auth_manager = AuthManager(storage, "test_secret")
             
             # Create OAuth-only user
@@ -559,7 +579,8 @@ class TestAuthManagerCompleteScenarios:
     async def test_multi_user_multi_auth_scenario(self):
         """Test complex scenario with multiple users and auth methods."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            storage = FileStorage(temp_dir)
+            config = FileStorageConfig(type="file", base_dir=temp_dir)
+            storage = FileStorage(config)
             auth_manager = AuthManager(storage, "test_secret")
             
             # User 1: Local auth only

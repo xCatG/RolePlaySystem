@@ -9,8 +9,9 @@ from typing import Annotated, Set
 from google.adk.sessions import InMemorySessionService
 
 from ..common.auth import AuthManager
-from ..common.storage import StorageBackend, FileStorage
-from ..common.models import User, UserRole
+from ..common.storage import StorageBackend, FileStorage, FileStorageConfig, LockConfig
+from ..common.storage_factory import create_storage_backend
+from ..common.models import User, UserRole, Environment
 from ..common.exceptions import AuthenticationError, TokenExpiredError
 from .config_loader import get_config, ServerConfig
 from ..chat.content_loader import ContentLoader
@@ -34,6 +35,20 @@ def get_storage_backend() -> StorageBackend:
     """
     config = get_server_config()
     
+    # Determine environment
+    environment = os.getenv("ENVIRONMENT", "dev")
+    try:
+        env_enum = Environment(environment)
+    except ValueError:
+        # Default to dev for unknown environments
+        env_enum = Environment.DEV
+        logger.warning(f"Unknown environment '{environment}', defaulting to DEV")
+    
+    # Use new storage configuration if available
+    if config.storage:
+        return create_storage_backend(config.storage, env_enum)
+    
+    # Fall back to legacy configuration for backward compatibility
     if config.storage_type == "file":
         # Validate storage path exists
         if not os.path.exists(config.storage_path):
@@ -50,7 +65,12 @@ def get_storage_backend() -> StorageBackend:
                 f"Storage path '{config.storage_path}' is not readable/writable."
             )
         
-        return FileStorage(config.storage_path)
+        # Create FileStorageConfig from legacy settings
+        storage_config = FileStorageConfig(
+            base_dir=config.storage_path,
+            lock=LockConfig(strategy="file")
+        )
+        return create_storage_backend(storage_config, env_enum)
     else:
         raise ValueError(f"Unsupported storage type: {config.storage_type}")
 

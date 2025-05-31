@@ -2,9 +2,10 @@
 
 import pytest
 import tempfile
+import uuid
 from pathlib import Path
 
-from role_play.common.storage import FileStorage
+from role_play.common.storage import FileStorage, FileStorageConfig
 from role_play.common.models import User, UserAuthMethod, SessionData, UserRole, AuthProvider
 from role_play.common.exceptions import StorageError
 from role_play.common.time_utils import utc_now
@@ -24,25 +25,27 @@ class TestFileStorageUserIntegration:
     async def test_complete_user_lifecycle(self):
         """Test full user lifecycle: create, read, update, delete."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            storage = FileStorage(temp_dir)
+            config = FileStorageConfig(type="file", base_dir=temp_dir)
+            storage = FileStorage(config)
             
-            # Create user
+            # Create user with unique ID to avoid conflicts between test runs
+            unique_id = f"lifecycle-{uuid.uuid4().hex[:8]}"
             original_user = UserFactory.create(
-                id="lifecycle-123",
-                username="lifecycle_user",
-                email="lifecycle@example.com"
+                id=unique_id,
+                username=f"lifecycle_user_{unique_id}",
+                email=f"lifecycle_{unique_id}@example.com"
             )
             
             created_user = await storage.create_user(original_user)
             assert_user_equal(created_user, original_user)
             
             # Read user by ID
-            retrieved_user = await storage.get_user("lifecycle-123")
+            retrieved_user = await storage.get_user(unique_id)
             assert retrieved_user is not None
             assert_user_equal(retrieved_user, original_user)
             
             # Read user by username
-            retrieved_by_name = await storage.get_user_by_username("lifecycle_user")
+            retrieved_by_name = await storage.get_user_by_username(f"lifecycle_user_{unique_id}")
             assert retrieved_by_name is not None
             assert_user_equal(retrieved_by_name, original_user)
             
@@ -56,23 +59,24 @@ class TestFileStorageUserIntegration:
             assert updated_user.updated_at > original_user.updated_at
             
             # Verify update persisted
-            final_user = await storage.get_user("lifecycle-123")
+            final_user = await storage.get_user(unique_id)
             assert final_user.email == "updated@example.com"
             assert final_user.role == UserRole.ADMIN
             
             # Delete user
-            deleted = await storage.delete_user("lifecycle-123")
+            deleted = await storage.delete_user(unique_id)
             assert deleted is True
             
             # Verify user is gone
-            missing_user = await storage.get_user("lifecycle-123")
+            missing_user = await storage.get_user(unique_id)
             assert missing_user is None
     
     @pytest.mark.asyncio
     async def test_multiple_users_isolation(self):
         """Test that multiple users don't interfere with each other."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            storage = FileStorage(temp_dir)
+            config = FileStorageConfig(type="file", base_dir=temp_dir)
+            storage = FileStorage(config)
             
             # Create multiple users
             user1 = UserFactory.create(id="user1", username="user_one")
@@ -103,7 +107,8 @@ class TestFileStorageUserIntegration:
     async def test_username_uniqueness_not_enforced(self):
         """Test that storage doesn't enforce username uniqueness (business logic responsibility)."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            storage = FileStorage(temp_dir)
+            config = FileStorageConfig(type="file", base_dir=temp_dir)
+            storage = FileStorage(config)
             
             # Create two users with same username but different IDs
             user1 = UserFactory.create(id="user1", username="duplicate")
@@ -128,10 +133,12 @@ class TestFileStorageAuthMethodIntegration:
     async def test_complete_auth_method_lifecycle(self):
         """Test full auth method lifecycle."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            storage = FileStorage(temp_dir)
+            config = FileStorageConfig(type="file", base_dir=temp_dir)
+            storage = FileStorage(config)
             
-            # Create user first
-            user = UserFactory.create(id="auth-user-123")
+            # Create user first with unique ID
+            unique_user_id = f"auth-user-{uuid.uuid4().hex[:8]}"
+            user = UserFactory.create(id=unique_user_id)
             await storage.create_user(user)
             
             # Create auth method
@@ -179,7 +186,8 @@ class TestFileStorageAuthMethodIntegration:
     async def test_multiple_auth_methods_per_user(self):
         """Test user can have multiple auth methods."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            storage = FileStorage(temp_dir)
+            config = FileStorageConfig(type="file", base_dir=temp_dir)
+            storage = FileStorage(config)
             
             # Create user
             user = UserFactory.create(id="multi-auth-user")
@@ -215,7 +223,8 @@ class TestFileStorageAuthMethodIntegration:
     async def test_auth_methods_isolated_by_user(self):
         """Test that auth methods are properly isolated by user."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            storage = FileStorage(temp_dir)
+            config = FileStorageConfig(type="file", base_dir=temp_dir)
+            storage = FileStorage(config)
             
             # Create two users
             user1 = UserFactory.create(id="user1", username="user_one")
@@ -248,15 +257,18 @@ class TestFileStorageSessionIntegration:
     async def test_complete_session_lifecycle(self):
         """Test full session lifecycle."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            storage = FileStorage(temp_dir)
+            config = FileStorageConfig(type="file", base_dir=temp_dir)
+            storage = FileStorage(config)
             
-            # Create user first
-            user = UserFactory.create(id="session-user-123")
+            # Create user first with unique IDs
+            unique_user_id = f"session-user-{uuid.uuid4().hex[:8]}"
+            unique_session_id = f"session-{uuid.uuid4().hex[:8]}"
+            user = UserFactory.create(id=unique_user_id)
             await storage.create_user(user)
             
             # Create session
             session = SessionDataFactory.create(
-                session_id="session-123",
+                session_id=unique_session_id,
                 user_id=user.id,
                 metadata={"ip": "192.168.1.100", "browser": "Chrome"}
             )
@@ -265,7 +277,7 @@ class TestFileStorageSessionIntegration:
             assert_session_equal(created_session, session)
             
             # Retrieve session
-            retrieved_session = await storage.get_session("session-123")
+            retrieved_session = await storage.get_session(unique_session_id)
             assert retrieved_session is not None
             assert_session_equal(retrieved_session, session)
             
@@ -278,15 +290,15 @@ class TestFileStorageSessionIntegration:
             assert updated_session.last_activity > session.last_activity
             
             # Verify update persisted
-            final_session = await storage.get_session("session-123")
+            final_session = await storage.get_session(unique_session_id)
             assert final_session.metadata["page"] == "/dashboard"
             
             # Delete session
-            deleted = await storage.delete_session("session-123")
+            deleted = await storage.delete_session(unique_session_id)
             assert deleted is True
             
             # Verify session is gone
-            missing_session = await storage.get_session("session-123")
+            missing_session = await storage.get_session(unique_session_id)
             assert missing_session is None
 
 
@@ -298,7 +310,8 @@ class TestFileStorageCompleteWorkflows:
     async def test_complete_user_setup_workflow(self):
         """Test complete workflow: user + auth method + session."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            storage = FileStorage(temp_dir)
+            config = FileStorageConfig(type="file", base_dir=temp_dir)
+            storage = FileStorage(config)
             
             # Use test data builder for complete scenario
             user, auth_method, session = TestDataBuilder.create_complete_user_scenario(
@@ -335,13 +348,15 @@ class TestFileStorageCompleteWorkflows:
         """Test that data persists when creating new FileStorage instances."""
         with tempfile.TemporaryDirectory() as temp_dir:
             # Create and use first storage instance
-            storage1 = FileStorage(temp_dir)
+            config1 = FileStorageConfig(type="file", base_dir=temp_dir)
+            storage1 = FileStorage(config1)
             user = UserFactory.create(id="persistent-user", username="persistent")
             await storage1.create_user(user)
             await storage1.store_data("test_key", {"persisted": "data"})
             
             # Create new storage instance pointing to same directory
-            storage2 = FileStorage(temp_dir)
+            config2 = FileStorageConfig(type="file", base_dir=temp_dir)
+            storage2 = FileStorage(config2)
             
             # Data should be accessible from new instance
             retrieved_user = await storage2.get_user("persistent-user")
@@ -361,7 +376,8 @@ class TestFileStoragePerformance:
     async def test_large_number_of_users(self):
         """Test storage with large number of users."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            storage = FileStorage(temp_dir)
+            config = FileStorageConfig(type="file", base_dir=temp_dir)
+            storage = FileStorage(config)
             
             # Create many users
             user_count = 100

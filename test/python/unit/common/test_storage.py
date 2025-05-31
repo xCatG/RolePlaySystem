@@ -3,11 +3,14 @@
 import pytest
 import tempfile
 import json
+import uuid
+import os
 from pathlib import Path
 from unittest.mock import patch, mock_open
 import asyncio
+import aiofiles
 
-from role_play.common.storage import FileStorage, StorageBackend, LockAcquisitionError
+from role_play.common.storage import FileStorage, StorageBackend, LockAcquisitionError, FileStorageConfig
 from role_play.common.exceptions import StorageError
 from role_play.common.models import User, UserAuthMethod, SessionData, UserRole, AuthProvider
 
@@ -17,6 +20,15 @@ sys.path.append(str(Path(__file__).parent.parent.parent))
 
 from fixtures.factories import UserFactory, UserAuthMethodFactory, SessionDataFactory
 from fixtures.helpers import MockStorageBackend
+
+
+def create_file_storage(temp_dir: str) -> FileStorage:
+    """Helper function to create FileStorage with proper config."""
+    config = FileStorageConfig(
+        type="file",
+        base_dir=temp_dir
+    )
+    return FileStorage(config)
 
 
 class TestStorageBackend:
@@ -48,7 +60,7 @@ class TestFileStorageInitialization:
     def test_file_storage_default_directory(self):
         """Test FileStorage with default directory."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            storage = FileStorage(temp_dir)
+            storage = create_file_storage(temp_dir)
             
             assert storage.storage_dir == Path(temp_dir)
             assert storage.locks_dir == Path(temp_dir) / ".locks"
@@ -57,7 +69,7 @@ class TestFileStorageInitialization:
         """Test that FileStorage creates required directories."""
         with tempfile.TemporaryDirectory() as temp_dir:
             storage_path = Path(temp_dir) / "test_storage"
-            storage = FileStorage(str(storage_path))
+            storage = create_file_storage(str(storage_path))
             
             # Check directories were created
             assert storage_path.exists()
@@ -70,34 +82,72 @@ class TestFileStorageInitialization:
             storage_path.mkdir()
             
             # Should not raise error with existing directories
-            storage = FileStorage(str(storage_path))
+            storage = create_file_storage(str(storage_path))
             assert storage.storage_dir == storage_path
 
 
 class TestFileStorageLocking:
     """Test FileStorage locking mechanism."""
     
-    def test_lock_context_manager(self):
+    @pytest.mark.asyncio
+    async def test_lock_context_manager(self):
         """Test the lock context manager works."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            storage = FileStorage(temp_dir)
+            storage = create_file_storage(temp_dir)
             
             # Should not raise any exceptions
-            with storage.lock("test/path"):
+            async with storage.lock("test/path"):
                 pass
     
-    def test_lock_creates_lock_file(self):
+    @pytest.mark.asyncio
+    async def test_lock_creates_lock_file(self):
         """Test that locking creates appropriate lock file."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            storage = FileStorage(temp_dir)
+            storage = create_file_storage(temp_dir)
             
-            with storage.lock("users/123/profile"):
+            async with storage.lock("users/123/profile"):
                 # Lock file should exist during lock
                 lock_path = storage.locks_dir / "users_123_profile.lock"
-                # Note: The actual lock file might not be visible due to filelock implementation
-                pass
+                assert lock_path.exists()
+                
+                # Verify lock file contains PID and metadata
+                async with aiofiles.open(lock_path, 'r') as f:
+                    content = await f.read()
+                lock_data = json.loads(content)
+                assert "pid" in lock_data
+                assert "timestamp" in lock_data
+                assert "resource" in lock_data
+                assert lock_data["pid"] == os.getpid()
+                assert lock_data["resource"] == "users/123/profile"
             
-            # After releasing lock, we're done
+            # Lock file should be removed after context
+            assert not lock_path.exists()
+    
+    @pytest.mark.asyncio
+    async def test_stale_lock_detection(self):
+        """Test that stale locks can be detected and removed."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            storage = create_file_storage(temp_dir)
+            lock_path = storage._get_lock_path("test/resource")
+            
+            # Create a stale lock file (very old timestamp, non-existent PID)
+            stale_lock_data = {
+                "pid": 999999,  # Extremely unlikely to exist
+                "timestamp": 0,  # Very old timestamp
+                "resource": "test/resource"
+            }
+            
+            await aiofiles.os.makedirs(lock_path.parent, exist_ok=True)
+            async with aiofiles.open(lock_path, 'w') as f:
+                await f.write(json.dumps(stale_lock_data))
+            
+            # Verify the lock is detected as stale
+            is_stale = await storage._is_stale_lock(lock_path, lease_duration_seconds=1.0)
+            assert is_stale is True
+            
+            # Should be able to acquire lock despite existing lock file (stale lock gets removed)
+            async with storage.lock("test/resource", timeout=1.0):
+                pass  # Should succeed by removing stale lock
 
 
 class TestFileStorageBasicOperations:
@@ -107,7 +157,7 @@ class TestFileStorageBasicOperations:
     async def test_write_and_read_text(self):
         """Test writing and reading text data."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            storage = FileStorage(temp_dir)
+            storage = create_file_storage(temp_dir)
             
             test_data = "Hello, World!"
             path = "test/file.txt"
@@ -121,7 +171,7 @@ class TestFileStorageBasicOperations:
     async def test_append_text(self):
         """Test appending text data."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            storage = FileStorage(temp_dir)
+            storage = create_file_storage(temp_dir)
             
             path = "test/append.txt"
             
@@ -136,7 +186,7 @@ class TestFileStorageBasicOperations:
     async def test_exists(self):
         """Test checking file existence."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            storage = FileStorage(temp_dir)
+            storage = create_file_storage(temp_dir)
             
             path = "test/exists.txt"
             
@@ -149,7 +199,7 @@ class TestFileStorageBasicOperations:
     async def test_delete(self):
         """Test deleting files."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            storage = FileStorage(temp_dir)
+            storage = create_file_storage(temp_dir)
             
             path = "test/delete.txt"
             
@@ -168,7 +218,7 @@ class TestFileStorageBasicOperations:
     async def test_list_keys(self):
         """Test listing keys with prefix."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            storage = FileStorage(temp_dir)
+            storage = create_file_storage(temp_dir)
             
             # Create some files
             await storage.write("users/123/profile", "user data")
@@ -189,7 +239,7 @@ class TestFileStorageBasicOperations:
     async def test_read_nonexistent_file(self):
         """Test reading non-existent file raises error."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            storage = FileStorage(temp_dir)
+            storage = create_file_storage(temp_dir)
             
             with pytest.raises(StorageError) as exc_info:
                 await storage.read("nonexistent/file.txt")
@@ -200,7 +250,7 @@ class TestFileStorageBasicOperations:
     async def test_invalid_key_security(self):
         """Test that invalid keys (with ..) are rejected."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            storage = FileStorage(temp_dir)
+            storage = create_file_storage(temp_dir)
             
             with pytest.raises(StorageError) as exc_info:
                 await storage.write("../../../etc/passwd", "hacker data")
@@ -215,7 +265,7 @@ class TestFileStorageJSONOperations:
     async def test_read_write_json(self):
         """Test JSON read/write operations."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            storage = FileStorage(temp_dir)
+            storage = create_file_storage(temp_dir)
             
             test_data = {"key": "value", "number": 42, "list": [1, 2, 3]}
             path = "test/data"
@@ -229,7 +279,7 @@ class TestFileStorageJSONOperations:
     async def test_read_json_nonexistent(self):
         """Test reading non-existent JSON returns None."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            storage = FileStorage(temp_dir)
+            storage = create_file_storage(temp_dir)
             
             result = await storage._read_json("nonexistent/file")
             assert result is None
@@ -242,7 +292,7 @@ class TestFileStorageUserOperations:
     async def test_create_user_file_structure(self):
         """Test that create_user creates the correct file structure."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            storage = FileStorage(temp_dir)
+            storage = create_file_storage(temp_dir)
             user = UserFactory.create(id="test-123", username="testuser")
             
             await storage.create_user(user)
@@ -260,7 +310,7 @@ class TestFileStorageUserOperations:
     async def test_create_user_already_exists(self):
         """Test error when creating user that already exists."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            storage = FileStorage(temp_dir)
+            storage = create_file_storage(temp_dir)
             user = UserFactory.create(id="duplicate-123")
             
             # Create user first time
@@ -276,7 +326,7 @@ class TestFileStorageUserOperations:
     async def test_get_user_not_found(self):
         """Test getting non-existent user returns None."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            storage = FileStorage(temp_dir)
+            storage = create_file_storage(temp_dir)
             
             result = await storage.get_user("non-existent-id")
             assert result is None
@@ -285,7 +335,7 @@ class TestFileStorageUserOperations:
     async def test_update_user_not_found(self):
         """Test error when updating non-existent user."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            storage = FileStorage(temp_dir)
+            storage = create_file_storage(temp_dir)
             user = UserFactory.create(id="missing-123")
             
             with pytest.raises(StorageError) as exc_info:
@@ -297,7 +347,7 @@ class TestFileStorageUserOperations:
     async def test_delete_user_not_found(self):
         """Test deleting non-existent user returns True (no-op)."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            storage = FileStorage(temp_dir)
+            storage = create_file_storage(temp_dir)
             
             result = await storage.delete_user("non-existent-id")
             assert result is True  # Always returns True for delete operations
@@ -310,7 +360,7 @@ class TestFileStorageAuthMethodOperations:
     async def test_create_auth_method_file_structure(self):
         """Test that create_user_auth_method creates correct file."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            storage = FileStorage(temp_dir)
+            storage = create_file_storage(temp_dir)
             auth_method = UserAuthMethodFactory.create(id="auth-123", user_id="user-456")
             
             await storage.create_user_auth_method(auth_method)
@@ -333,7 +383,7 @@ class TestFileStorageSessionOperations:
     async def test_create_session_file_structure(self):
         """Test that create_session creates correct file."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            storage = FileStorage(temp_dir)
+            storage = create_file_storage(temp_dir)
             session = SessionDataFactory.create(session_id="session-123")
             
             await storage.create_session(session)
@@ -354,7 +404,7 @@ class TestFileStorageDataOperations:
     async def test_store_and_get_data(self):
         """Test storing and retrieving arbitrary data."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            storage = FileStorage(temp_dir)
+            storage = create_file_storage(temp_dir)
             
             test_data = {"complex": {"nested": "data"}, "list": [1, 2, 3]}
             key = "test/config"
@@ -372,13 +422,13 @@ class TestFileStorageErrorHandling:
     async def test_io_error_on_read(self):
         """Test handling IO errors during file reading."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            storage = FileStorage(temp_dir)
+            storage = create_file_storage(temp_dir)
             
             # Create a file first
             await storage.write("test/file", "content")
             
-            # Mock open to raise IOError
-            with patch('builtins.open', side_effect=IOError("Disk error")):
+            # Mock aiofiles.open to raise IOError
+            with patch('aiofiles.open', side_effect=IOError("Disk error")):
                 with pytest.raises(StorageError) as exc_info:
                     await storage.read("test/file")
                 
@@ -388,10 +438,10 @@ class TestFileStorageErrorHandling:
     async def test_io_error_on_write(self):
         """Test handling IO errors during file writing."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            storage = FileStorage(temp_dir)
+            storage = create_file_storage(temp_dir)
             
-            # Mock open to raise IOError
-            with patch('builtins.open', side_effect=IOError("No space left")):
+            # Mock aiofiles.open to raise IOError
+            with patch('aiofiles.open', side_effect=IOError("No space left")):
                 with pytest.raises(StorageError) as exc_info:
                     await storage.write("test/file", "content")
                 
@@ -405,7 +455,7 @@ class TestFileStorageBytesOperations:
     async def test_write_read_bytes(self):
         """Test writing and reading binary data."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            storage = FileStorage(temp_dir)
+            storage = create_file_storage(temp_dir)
             
             test_data = b"Binary data \x00\x01\x02"
             path = "test/binary"
@@ -419,7 +469,7 @@ class TestFileStorageBytesOperations:
     async def test_append_bytes(self):
         """Test appending binary data."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            storage = FileStorage(temp_dir)
+            storage = create_file_storage(temp_dir)
             
             path = "test/binary_append"
             
@@ -437,7 +487,7 @@ class TestFileStorageComplexOperations:
     async def test_concurrent_file_operations(self):
         """Test concurrent file operations."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            storage = FileStorage(temp_dir)
+            storage = create_file_storage(temp_dir)
             
             async def write_file(file_num):
                 path = f"concurrent/file_{file_num}"
@@ -458,7 +508,7 @@ class TestFileStorageComplexOperations:
     async def test_user_search_operations(self):
         """Test user search by username and email."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            storage = FileStorage(temp_dir)
+            storage = create_file_storage(temp_dir)
             
             # Create multiple users
             user1 = UserFactory.create(id="user1", username="alice", email="alice@example.com")
@@ -487,7 +537,7 @@ class TestFileStorageComplexOperations:
     async def test_auth_method_search_operations(self):
         """Test auth method search and retrieval."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            storage = FileStorage(temp_dir)
+            storage = create_file_storage(temp_dir)
             
             # Create auth methods for different users
             auth1 = UserAuthMethodFactory.create(
@@ -535,7 +585,7 @@ class TestFileStorageComplexOperations:
     async def test_json_decode_error_handling(self):
         """Test JSON decode error handling."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            storage = FileStorage(temp_dir)
+            storage = create_file_storage(temp_dir)
             
             # Write invalid JSON manually
             file_path = storage._get_storage_path("invalid.json")
@@ -553,29 +603,25 @@ class TestFileStorageComplexOperations:
     async def test_lock_timeout_simulation(self):
         """Test lock acquisition timeout (simulated)."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            storage = FileStorage(temp_dir)
+            storage = create_file_storage(temp_dir)
             
             # This is hard to test without real contention, but we can at least
             # verify the timeout parameter is accepted
-            with storage.lock("test/resource", timeout=0.1):
+            async with storage.lock("test/resource", timeout=0.1):
                 pass  # Should work fine
     
     @pytest.mark.asyncio
     async def test_lock_timeout_error(self):
         """Test lock timeout error by mocking."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            storage = FileStorage(temp_dir)
+            storage = create_file_storage(temp_dir)
             
-            # Mock FileLock to raise Timeout
-            from filelock import Timeout
+            # Mock os.open to always fail (simulate lock file always exists)
             from unittest.mock import patch
             
-            with patch('role_play.common.storage.FileLock') as mock_lock:
-                mock_instance = mock_lock.return_value
-                mock_instance.__enter__.side_effect = Timeout("test")
-                
+            with patch('os.open', side_effect=FileExistsError("Lock file exists")):
                 with pytest.raises(LockAcquisitionError) as exc_info:
-                    with storage.lock("test/resource", timeout=0.1):
+                    async with storage.lock("test/resource", timeout=0.1):
                         pass
                 
                 assert "Failed to acquire lock" in str(exc_info.value)
@@ -584,7 +630,7 @@ class TestFileStorageComplexOperations:
     async def test_string_bytes_conversion(self):
         """Test the default string/bytes conversion methods."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            storage = FileStorage(temp_dir)
+            storage = create_file_storage(temp_dir)
             
             # Test that base class default conversions would work
             # (FileStorage overrides these, but let's test the defaults)
@@ -605,10 +651,11 @@ class TestFileStorageComplexOperations:
     async def test_full_user_workflow(self):
         """Test a complete user creation and management workflow."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            storage = FileStorage(temp_dir)
+            storage = create_file_storage(temp_dir)
             
-            # Create a user
-            user = UserFactory.create(id="workflow-123", username="testuser")
+            # Create a user with unique ID to avoid conflicts
+            unique_id = f"workflow-{uuid.uuid4().hex[:8]}"
+            user = UserFactory.create(id=unique_id, username=f"testuser_{unique_id}")
             await storage.create_user(user)
             
             # Create auth methods
@@ -635,7 +682,7 @@ class TestFileStorageComplexOperations:
             
             # Verify everything exists
             retrieved_user = await storage.get_user(user.id)
-            assert retrieved_user.username == "testuser"
+            assert retrieved_user.username == f"testuser_{unique_id}"
             
             auth_methods = await storage.get_user_auth_methods(user.id)
             assert len(auth_methods) == 2
@@ -689,7 +736,7 @@ class TestStorageBackendDefaultMethods:
     async def test_empty_prefix_list_keys(self):
         """Test list_keys with empty results."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            storage = FileStorage(temp_dir)
+            storage = create_file_storage(temp_dir)
             
             # List keys for non-existent prefix
             keys = await storage.list_keys("nonexistent/")
@@ -699,7 +746,7 @@ class TestStorageBackendDefaultMethods:
     async def test_hidden_files_ignored(self):
         """Test that hidden files are ignored in list_keys."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            storage = FileStorage(temp_dir)
+            storage = create_file_storage(temp_dir)
             
             # Create regular and hidden files
             await storage.write("test/regular.txt", "content")

@@ -112,3 +112,10 @@ class BaseResponse(BaseModel):
     """Base fields for all API responses."""
     success: bool = True
     message: Optional[str] = None  # Human-readable message (useful for clients)
+
+
+class Environment(str, Enum):
+    """Supported deployment environments."""
+    DEV = "dev"
+    BETA = "beta"
+    PROD = "prod"

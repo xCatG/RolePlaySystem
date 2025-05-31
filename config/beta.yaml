@@ -1,0 +1,61 @@
+# Beta Configuration - Google Cloud Deployment
+# Environment variables can override any setting using ${VAR_NAME:default_value} syntax
+
+# Server settings
+host: "${HOST:0.0.0.0}"
+port: "${PORT:8080}"
+debug: false
+
+# API settings
+title: "Role Play System - Beta"
+description: "Role Play System API - Beta Environment"
+version: "1.0.0-beta"
+
+# CORS settings
+enable_cors: true
+cors_origins:
+  - "${FRONTEND_URL:https://beta.rps.cattail-sw.com}"
+  - "${CORS_ORIGIN:}"  # Optional additional CORS origin via env var
+
+# Authentication settings
+jwt_secret_key: "${JWT_SECRET_KEY}"  # Required env var, no default
+jwt_algorithm: "HS256"
+jwt_expire_hours: "${JWT_EXPIRE_HOURS:72}"  # 3 days for beta
+
+# Storage settings - Google Cloud Storage with object-based locking
+storage:
+  type: "gcs"
+  bucket: "${GCS_BUCKET:roleplay-beta-storage}"
+  prefix: "${GCS_PREFIX:beta/}"
+  project_id: "${GCP_PROJECT_ID}"
+  # Use Application Default Credentials in GCP environment
+  # credentials_file: "${GCP_CREDENTIALS_FILE:}"  # Optional, uses ADC if not set
+  lock:
+    strategy: "object"  # Using GCS atomic operations
+    lease_duration_seconds: "${LOCK_LEASE_DURATION:45}"
+    retry_attempts: "${LOCK_RETRY_ATTEMPTS:5}"
+    retry_delay_seconds: "${LOCK_RETRY_DELAY:0.5}"
+
+# Legacy storage settings (maintained for backward compatibility)
+storage_type: "gcs"
+storage_path: "gs://${GCS_BUCKET:roleplay-beta-storage}/${GCS_PREFIX:beta/}"
+
+# Handler configuration
+enabled_handlers:
+  user_account: "role_play.server.user_account_handler.UserAccountHandler"
+  chat: "role_play.chat.handler.ChatHandler"
+  evaluation: "role_play.evaluation.handler.EvaluationHandler"
+  # scripter: "role_play.scripter.handler.ScripterHandler"  # Enable when ready
+
+# Logging configuration
+logging:
+  level: "${LOG_LEVEL:INFO}"
+  format: "json"  # Structured logging for Cloud Logging
+  
+# Health check endpoint
+health_check_path: "/health"
+
+# Metrics configuration (for future Prometheus/monitoring)
+metrics:
+  enabled: true
+  path: "/metrics"

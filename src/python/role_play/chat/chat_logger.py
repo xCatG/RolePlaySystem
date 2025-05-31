@@ -72,7 +72,7 @@ class ChatLogger:
 
         try:
             # Use storage backend's locking
-            with self.storage.lock(storage_path):
+            async with self.storage.lock(storage_path):
                 # Write the initial event as JSONL (one JSON object per line)
                 event_line = json.dumps(session_start_event) + '\n'
                 await self.storage.write(storage_path, event_line)
@@ -121,7 +121,7 @@ class ChatLogger:
         }
         
         try:
-            with self.storage.lock(storage_path):
+            async with self.storage.lock(storage_path):
                 # Append the message event as a new line
                 event_line = json.dumps(message_event) + '\n'
                 await self.storage.append(storage_path, event_line)
@@ -154,7 +154,7 @@ class ChatLogger:
         }
         
         try:
-            with self.storage.lock(storage_path):
+            async with self.storage.lock(storage_path):
                 # Append the session end event
                 event_line = json.dumps(session_end_event) + '\n'
                 await self.storage.append(storage_path, event_line)
@@ -176,7 +176,7 @@ class ChatLogger:
         
         for log_key in log_keys:
             try:
-                with self.storage.lock(log_key, timeout=1.0):
+                async with self.storage.lock(log_key, timeout=10.0):
                     # Read the entire log file
                     log_content = await self.storage.read(log_key)
                     lines = log_content.strip().split('\n')
@@ -226,7 +226,7 @@ class ChatLogger:
         session_ended_info = {}
 
         try:
-            with self.storage.lock(storage_path, timeout=1.0):
+            async with self.storage.lock(storage_path, timeout=10.0):
                 # Read the entire log file
                 log_content = await self.storage.read(storage_path)
                 log_lines = log_content.strip().split('\n')

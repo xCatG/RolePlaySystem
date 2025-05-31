@@ -5,7 +5,7 @@ import tempfile
 from pathlib import Path
 
 from role_play.server.dependencies import get_storage_backend, get_chat_logger, get_auth_manager
-from role_play.common.storage import FileStorage
+from role_play.common.storage import FileStorage, FileStorageConfig
 from role_play.chat.chat_logger import ChatLogger
 from role_play.common.auth import AuthManager
 
@@ -43,7 +43,8 @@ class TestDependencyInjectionIntegration:
         """Test that chat logger dependency uses injected storage backend."""
         with tempfile.TemporaryDirectory() as temp_dir:
             # Create a storage backend
-            storage = FileStorage(temp_dir)
+            config = FileStorageConfig(type="file", base_dir=temp_dir)
+            storage = FileStorage(config)
             
             # Get chat logger with this storage
             chat_logger = get_chat_logger(storage)
@@ -56,7 +57,8 @@ class TestDependencyInjectionIntegration:
         """Test that auth manager dependency uses injected storage backend."""
         with tempfile.TemporaryDirectory() as temp_dir:
             # Create a storage backend
-            storage = FileStorage(temp_dir)
+            config = FileStorageConfig(type="file", base_dir=temp_dir)
+            storage = FileStorage(config)
             
             # Mock environment variables for auth manager
             import os
@@ -84,7 +86,8 @@ class TestDependencyInjectionIntegration:
         """Test full dependency chain with real storage operations."""
         with tempfile.TemporaryDirectory() as temp_dir:
             # Create storage backend
-            storage = FileStorage(temp_dir)
+            config = FileStorageConfig(type="file", base_dir=temp_dir)
+            storage = FileStorage(config)
             
             # Get dependencies
             chat_logger = get_chat_logger(storage)
@@ -180,7 +183,8 @@ class TestStorageBackendSingleton:
     def test_dependency_behavior_verification(self):
         """Test that dependencies work correctly with storage backend."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            storage = FileStorage(temp_dir)
+            config = FileStorageConfig(type="file", base_dir=temp_dir)
+            storage = FileStorage(config)
             
             # Get chat logger multiple times - should work fine
             chat_logger1 = get_chat_logger(storage)
@@ -208,7 +212,8 @@ class TestConcurrentDependencyAccess:
         import asyncio
         
         with tempfile.TemporaryDirectory() as temp_dir:
-            storage = FileStorage(temp_dir)
+            config = FileStorageConfig(type="file", base_dir=temp_dir)
+            storage = FileStorage(config)
             
             async def get_and_use_chat_logger(user_num):
                 chat_logger = get_chat_logger(storage)
@@ -256,7 +261,8 @@ class TestConcurrentDependencyAccess:
         import asyncio
         
         with tempfile.TemporaryDirectory() as temp_dir:
-            storage = FileStorage(temp_dir)
+            config = FileStorageConfig(type="file", base_dir=temp_dir)
+            storage = FileStorage(config)
             
             import os
             original_jwt_secret = os.environ.get('JWT_SECRET_KEY')

@@ -1,0 +1,82 @@
+# Production Configuration - Google Cloud Deployment
+# Environment variables can override any setting using ${VAR_NAME:default_value} syntax
+
+# Server settings
+host: "${HOST:0.0.0.0}"
+port: "${PORT:8080}"
+debug: false
+
+# API settings
+title: "Role Play System"
+description: "Role Play System API - Production"
+version: "${APP_VERSION:1.0.0}"
+
+# CORS settings
+enable_cors: true
+cors_origins:
+  - "${FRONTEND_URL:https://rps.cattail-sw.com}"
+  - "${CORS_ORIGIN:}"  # Optional additional CORS origin via env var
+
+# Authentication settings
+jwt_secret_key: "${JWT_SECRET_KEY}"  # Required env var, no default
+jwt_algorithm: "HS256"
+jwt_expire_hours: "${JWT_EXPIRE_HOURS:168}"  # 7 days for production
+
+# Storage settings - Google Cloud Storage with object-based locking
+storage:
+  type: "gcs"
+  bucket: "${GCS_BUCKET:roleplay-prod-storage}"
+  prefix: "${GCS_PREFIX:prod/}"
+  project_id: "${GCP_PROJECT_ID}"
+  # Use Application Default Credentials in GCP environment
+  # credentials_file: "${GCP_CREDENTIALS_FILE:}"  # Optional, uses ADC if not set
+  lock:
+    strategy: "object"  # Using GCS atomic operations
+    lease_duration_seconds: "${LOCK_LEASE_DURATION:30}"  # Shorter for production
+    retry_attempts: "${LOCK_RETRY_ATTEMPTS:5}"
+    retry_delay_seconds: "${LOCK_RETRY_DELAY:0.3}"
+    
+    # ⚠️  IMPORTANT: For high-load production scenarios, consider migrating to Redis locking
+    # for better performance and reliability. GCS object locking works well for moderate load
+    # but Redis provides superior lock performance and contention handling.
+    #
+    # To enable Redis locking, uncomment and configure:
+    # strategy: "redis"
+    # redis_host: "${REDIS_HOST:}"
+    # redis_port: "${REDIS_PORT:6379}"
+    # redis_password: "${REDIS_PASSWORD:}"
+    # redis_db: "${REDIS_DB:0}"
+    #
+    # Monitor lock acquisition metrics (see storage_monitoring.py) to determine when to migrate.
+
+# Legacy storage settings (maintained for backward compatibility)
+storage_type: "gcs"
+storage_path: "gs://${GCS_BUCKET:roleplay-prod-storage}/${GCS_PREFIX:prod/}"
+
+# Handler configuration
+enabled_handlers:
+  user_account: "role_play.server.user_account_handler.UserAccountHandler"
+  chat: "role_play.chat.handler.ChatHandler"
+  evaluation: "role_play.evaluation.handler.EvaluationHandler"
+  # scripter: "role_play.scripter.handler.ScripterHandler"  # Enable when ready
+
+# Logging configuration
+logging:
+  level: "${LOG_LEVEL:WARNING}"  # Less verbose for production
+  format: "json"  # Structured logging for Cloud Logging
+  
+# Health check endpoint
+health_check_path: "/health"
+
+# Metrics configuration
+metrics:
+  enabled: true
+  path: "/metrics"
+
+# Rate limiting (for future implementation)
+rate_limiting:
+  enabled: "${RATE_LIMIT_ENABLED:true}"
+  requests_per_minute: "${RATE_LIMIT_RPM:60}"
+  
+# Request timeout
+request_timeout_seconds: "${REQUEST_TIMEOUT:30}"
