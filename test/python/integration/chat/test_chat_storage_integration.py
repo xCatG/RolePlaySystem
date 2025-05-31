@@ -8,7 +8,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from role_play.chat.chat_logger import ChatLogger
-from role_play.common.storage import FileStorage
+from role_play.common.storage import FileStorage, FileStorageConfig
 from role_play.common.exceptions import StorageError
 
 import sys
@@ -25,7 +25,8 @@ class TestChatLoggerStorageIntegration:
     async def test_complete_chat_session_lifecycle(self):
         """Test a complete chat session with real file storage."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            storage = FileStorage(temp_dir)
+            config = FileStorageConfig(type="file", base_dir=temp_dir)
+            storage = FileStorage(config)
             chat_logger = ChatLogger(storage)
             
             user_id = "test_user_001"
@@ -95,7 +96,8 @@ class TestChatLoggerStorageIntegration:
     async def test_multiple_concurrent_users(self):
         """Test concurrent chat sessions from different users."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            storage = FileStorage(temp_dir)
+            config = FileStorageConfig(type="file", base_dir=temp_dir)
+            storage = FileStorage(config)
             chat_logger = ChatLogger(storage)
             
             async def create_user_session(user_num):
@@ -153,7 +155,8 @@ class TestChatLoggerStorageIntegration:
     async def test_file_locking_sequential_writes(self):
         """Test file locking with sequential writes to same session."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            storage = FileStorage(temp_dir)
+            config = FileStorageConfig(type="file", base_dir=temp_dir)
+            storage = FileStorage(config)
             chat_logger = ChatLogger(storage)
             
             user_id = "concurrent_user"
@@ -213,7 +216,8 @@ class TestChatLoggerStorageIntegration:
     async def test_storage_path_security(self):
         """Test that storage paths are properly secured."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            storage = FileStorage(temp_dir)
+            config = FileStorageConfig(type="file", base_dir=temp_dir)
+            storage = FileStorage(config)
             chat_logger = ChatLogger(storage)
             
             # Try to create session with malicious user_id
@@ -252,7 +256,8 @@ class TestChatLoggerStorageIntegration:
     async def test_session_export_integration(self):
         """Test session export with real storage data."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            storage = FileStorage(temp_dir)
+            config = FileStorageConfig(type="file", base_dir=temp_dir)
+            storage = FileStorage(config)
             chat_logger = ChatLogger(storage)
             
             user_id = "export_test_user"
@@ -312,7 +317,8 @@ class TestChatLoggerStorageIntegration:
     async def test_list_sessions_across_storage(self):
         """Test listing sessions with real storage backend."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            storage = FileStorage(temp_dir)
+            config = FileStorageConfig(type="file", base_dir=temp_dir)
+            storage = FileStorage(config)
             chat_logger = ChatLogger(storage)
             
             user_id = "multi_session_user"
@@ -360,7 +366,8 @@ class TestChatLoggerStorageIntegration:
     async def test_storage_error_handling(self):
         """Test error handling with storage failures."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            storage = FileStorage(temp_dir)
+            config = FileStorageConfig(type="file", base_dir=temp_dir)
+            storage = FileStorage(config)
             chat_logger = ChatLogger(storage)
             
             user_id = "error_test_user"
@@ -391,7 +398,8 @@ class TestChatLoggerPerformance:
     async def test_large_session_performance(self):
         """Test performance with large chat sessions."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            storage = FileStorage(temp_dir)
+            config = FileStorageConfig(type="file", base_dir=temp_dir)
+            storage = FileStorage(config)
             chat_logger = ChatLogger(storage)
             
             user_id = "perf_test_user"

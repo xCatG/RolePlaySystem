@@ -51,7 +51,7 @@ def create_storage_backend(
     if config.type == "file":
         if not isinstance(config, FileStorageConfig):
             raise StorageError("Invalid configuration type for file storage")
-        return FileStorage(storage_dir=config.base_dir)
+        return FileStorage(config)
     
     elif config.type == "gcs":
         if not isinstance(config, GCSStorageConfig):

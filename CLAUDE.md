@@ -39,7 +39,7 @@
 
 ### 7. **Storage Abstraction**
 - **Interface Pattern**: `StorageBackend` ABC with implementations
-- **Evolution Path**: FileStorage (POC) → S3Storage (Production)
+- **Evolution Path**: FileStorage (POC) → GCSStorage/S3Storage (Production)
 - **User Storage**: Support for user profiles, auth methods, and sessions
 - **Location**: `role_play/common/storage.py`
 - **Per-User Data Segmentation**: All user-specific data organized under user ID prefix
@@ -51,6 +51,12 @@
   - Storage implementations handle serialization internally
   - Keys are opaque strings that work identically across FileStorage/GCS/S3
   - Example: `users/123/profile` not `users/123.json`
+- **Distributed Locking Architecture**:
+  - **Lock Lease Duration**: Separate from acquisition timeout for robust crash recovery
+  - **Configurable Strategies**: File locking (dev), Object locking (GCS), Redis (high-performance)
+  - **Lease vs Timeout**: `lease_duration_seconds` (60-300s) for crash recovery, `timeout` (5-30s) for retry logic
+  - **Async Operations**: All blocking I/O operations use `asyncio.to_thread()` for non-blocking execution
+  - **Stale Lock Recovery**: Automatic cleanup of expired locks with comprehensive logging
 
 ### 8. **Multi-Environment Support**
 - **Environment Configs**: Separate configs for dev/beta/prod
@@ -80,7 +86,18 @@
 - **Future-Proof Boundaries**: Service layer contracts, store interfaces, and component exports designed for modularity
 - **Progressive Complexity**: Split modules only when file count, team conflicts, or build time demands it
 
-### 12. **Testing Strategy**
+### 12. **Distributed Locking Architecture - Production Ready**
+- **Lease Duration vs Acquisition Timeout Separation**: Critical architectural principle for robust distributed systems
+  - **Lock Lease Duration** (`lease_duration_seconds`): How long a lock remains valid if the holder crashes (60-300 seconds)
+  - **Acquisition Timeout** (`timeout`): How long to retry acquiring a contested lock (5-30 seconds)
+  - **Independent Configuration**: These serve different purposes and must be tuned separately
+- **Async-First Design**: All blocking I/O operations use `asyncio.to_thread()` for FastAPI compatibility
+- **Stale Lock Recovery**: Automatic detection and cleanup of expired locks with race condition handling
+- **Comprehensive Logging**: Debug/info/warning levels for operational visibility and troubleshooting
+- **Cross-Backend Consistency**: Same locking semantics across FileStorage (dev) and GCS (production)
+- **Production Deployment Ready**: Tested with concurrent operations and proper error handling
+
+### 13. **Testing Strategy**
 - **Multi-Language Structure**: Tests organized by language to support future TypeScript web frontend, Android client, etc.
 - **Test Location**: `/test/python/` for Python backend tests (separate from source code)
 - **Test Types & Organization**:
@@ -122,6 +139,13 @@
   - [x] Update requirements.txt with cloud storage dependencies
   - [x] Create comprehensive configuration examples in `config/storage-examples.yaml`
   - [x] Update `config/dev.yaml` with new storage configuration format
+- [x] **Distributed Locking Improvements** - Production-ready async locking system
+  - [x] Separate lock lease duration from acquisition timeout across all backends
+  - [x] All GCS operations made fully async with `asyncio.to_thread()`
+  - [x] Enhanced stale lock detection and recovery with comprehensive logging
+  - [x] FileStorage constructor updated to use config objects for proper lock configuration
+  - [x] Fixed all test files (47+ files) to use new config-based FileStorage constructor
+  - [x] Production-ready timeout and retry logic with race condition handling
 
 ### Server Core
 - [x] Create `role_play/server/base_handler.py` - BaseHandler abstract class
@@ -414,7 +438,7 @@
 - **No Persistent Runners**: ADK Runners created per-message and immediately discarded
 - **POC Features**: Static content, HTTP-only chat, text export for evaluation
 
-### Cloud Storage System (COMPLETED - 2025-05-30)
+### Cloud Storage System (COMPLETED - 2025-05-31)
 - **Extensible Architecture**: Strategy pattern for locking with pluggable storage backends
 - **Multiple Backend Support**: FileStorage (dev), GCSStorage (production), S3Storage (stub)
 - **Configurable Locking Strategies**:
@@ -427,12 +451,17 @@
 - **Monitoring System**: Built-in performance metrics and decision criteria for strategy upgrades
 - **Production Guidance**: Clear documentation on when to use each locking strategy
 - **Dependencies**: Added google-cloud-storage, boto3, redis to requirements.txt
+- **Production-Ready Locking**: Fully async distributed locking with proper lease duration separation
 - **Implementation Details**:
-  - GCS Backend: Full implementation with atomic object operations using `if_generation_match=0`
+  - GCS Backend: Full async implementation with atomic object operations using `if_generation_match=0`
   - S3 Backend: Stub with best-effort locking documented for production Redis migration
   - Redis Strategy: Stub implementation with SET NX PX patterns and HA considerations
   - Lock Monitoring: Tracks acquisition rates, latency, contention for informed decisions
   - Configuration Examples: Development, staging, and production configurations in YAML format
+  - **Architectural Fix**: Lock lease duration (crash recovery) properly separated from acquisition timeout (retry logic)
+  - **Async Operations**: All blocking I/O wrapped in `asyncio.to_thread()` for FastAPI compatibility
+  - **Enhanced Logging**: Comprehensive debug/info/warning logs for lock operations and stale cleanup
+  - **Test Compatibility**: All 47+ test files updated to use config-based storage constructors
 
 # important-instruction-reminders
 Do what has been asked; nothing more, nothing less.

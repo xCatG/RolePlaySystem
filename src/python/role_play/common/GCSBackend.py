@@ -4,6 +4,7 @@ import json
 import time
 import uuid
 import asyncio
+import logging
 from contextlib import asynccontextmanager
 from typing import Any, Dict, List, Optional, AsyncGenerator
 
@@ -18,6 +19,8 @@ try:
     GCS_AVAILABLE = True
 except ImportError:
     GCS_AVAILABLE = False
+
+logger = logging.getLogger(__name__)
 
 
 class GCSStorageBackend(StorageBackend):
@@ -105,16 +108,23 @@ class GCSStorageBackend(StorageBackend):
         acquired = False
         start_time = time.time()
         
+        lock_data_str = json.dumps(lock_data)
+        
         for attempt in range(self.config.lock.retry_attempts):
+            # Check overall timeout before each attempt
+            if time.time() - start_time >= timeout:
+                break
+                
             try:
                 # Try to create lock object atomically (if_generation_match=0 means object must not exist)
                 await asyncio.to_thread(
                     lock_blob.upload_from_string,
-                    json.dumps(lock_data),
+                    lock_data_str,
                     content_type='application/json',
                     if_generation_match=0
                 )
                 acquired = True
+                logger.debug(f"GCS lock acquired for {resource_path} on attempt {attempt + 1}")
                 break
                 
             except Conflict:
@@ -122,23 +132,54 @@ class GCSStorageBackend(StorageBackend):
                 try:
                     existing_lock_text = await asyncio.to_thread(lock_blob.download_as_text)
                     existing_lock_data = json.loads(existing_lock_text)
+                    
                     if existing_lock_data.get("expires_at", 0) < time.time():
                         # Lock is expired, try to delete it and retry
+                        logger.info(
+                            f"Stale GCS lock detected for {resource_path}. "
+                            f"Owner: {existing_lock_data.get('owner')}. Attempting to delete."
+                        )
                         try:
                             await asyncio.to_thread(lock_blob.delete)
+                            logger.info(f"Stale GCS lock for {resource_path} deleted. Retrying acquisition.")
+                            # Continue to next attempt to re-acquire immediately
                         except NotFound:
-                            pass  # Already deleted, continue to retry
+                            logger.info(
+                                f"Stale GCS lock for {resource_path} already deleted by another process. "
+                                f"Retrying acquisition."
+                            )
+                        except Exception as e_del:
+                            logger.warning(
+                                f"Failed to delete stale GCS lock for {resource_path}: {e_del}. "
+                                f"Will retry acquisition."
+                            )
                     else:
-                        # Lock is still valid, wait before retry
+                        # Lock exists and is not expired
+                        logger.debug(
+                            f"GCS lock for {resource_path} is held by {existing_lock_data.get('owner')}. "
+                            f"Waiting before retry (attempt {attempt + 1}/{self.config.lock.retry_attempts})"
+                        )
                         if time.time() - start_time >= timeout:
                             break
                         await asyncio.sleep(self.config.lock.retry_delay_seconds)
                         
-                except (NotFound, json.JSONDecodeError):
-                    # Lock object is malformed or deleted, retry
-                    pass
+                except NotFound:
+                    # Lock was deleted between Conflict and download_as_text, good to retry
+                    logger.info(f"GCS lock for {resource_path} disappeared during conflict check. Retrying acquisition.")
+                except json.JSONDecodeError:
+                    logger.warning(f"GCS lock file for {resource_path} is corrupted. Attempting to delete and retry.")
+                    try:
+                        await asyncio.to_thread(lock_blob.delete)
+                    except Exception:
+                        pass  # Best effort
+                except Exception as e_conflict_check:
+                    logger.error(f"Error checking existing GCS lock for {resource_path}: {e_conflict_check}")
+                    if time.time() - start_time >= timeout:
+                        break
+                    await asyncio.sleep(self.config.lock.retry_delay_seconds)
             
             except Exception as e:
+                logger.error(f"Unexpected error acquiring GCS lock for {resource_path}: {e}")
                 raise LockAcquisitionError(f"Failed to acquire lock for {resource_path}: {e}")
         
         if not acquired:
@@ -150,10 +191,15 @@ class GCSStorageBackend(StorageBackend):
             yield
         finally:
             # Release the lock
+            # Note: We delete without checking ownership since if_generation_match=0 during
+            # acquisition ensures only one process should believe it holds this lock
             try:
                 await asyncio.to_thread(lock_blob.delete)
+                logger.debug(f"GCS lock released for {resource_path}")
             except NotFound:
-                pass  # Lock was already released or expired
+                logger.debug(f"GCS lock for {resource_path} was already released or expired")
+            except Exception as e:
+                logger.warning(f"Error releasing GCS lock for {resource_path}: {e}")
 
     async def read(self, path: str) -> str:
         """Read text data from GCS."""
@@ -323,7 +369,7 @@ class GCSStorageBackend(StorageBackend):
         if await self.exists(user_path):
             raise StorageError(f"User {user.id} already exists")
         
-        with self.lock(user_path):
+        async with self.lock(user_path):
             await self._write_json(user_path, user.model_dump())
         
         return user
@@ -337,7 +383,7 @@ class GCSStorageBackend(StorageBackend):
         
         user.updated_at = utc_now()
         
-        with self.lock(user_path):
+        async with self.lock(user_path):
             await self._write_json(user_path, user.model_dump())
         
         return user
@@ -388,7 +434,7 @@ class GCSStorageBackend(StorageBackend):
         if await self.exists(auth_path):
             raise StorageError(f"Auth method {auth_method.id} already exists")
         
-        with self.lock(auth_path):
+        async with self.lock(auth_path):
             await self._write_json(auth_path, auth_method.model_dump())
         
         return auth_method
@@ -400,7 +446,7 @@ class GCSStorageBackend(StorageBackend):
         if not await self.exists(auth_path):
             raise StorageError(f"Auth method {auth_method.id} not found")
         
-        with self.lock(auth_path):
+        async with self.lock(auth_path):
             await self._write_json(auth_path, auth_method.model_dump())
         
         return auth_method
@@ -423,7 +469,7 @@ class GCSStorageBackend(StorageBackend):
         if await self.exists(session_path):
             raise StorageError(f"Session {session.session_id} already exists")
         
-        with self.lock(session_path):
+        async with self.lock(session_path):
             await self._write_json(session_path, session.model_dump())
         
         return session
@@ -443,7 +489,7 @@ class GCSStorageBackend(StorageBackend):
         if not await self.exists(session_path):
             raise StorageError(f"Session {session.session_id} not found")
         
-        with self.lock(session_path):
+        async with self.lock(session_path):
             await self._write_json(session_path, session.model_dump())
         
         return session
@@ -457,7 +503,7 @@ class GCSStorageBackend(StorageBackend):
         """Store arbitrary data."""
         data_path = f"data/{key}"
         
-        with self.lock(data_path):
+        async with self.lock(data_path):
             await self._write_json(data_path, {"data": data})
 
     async def get_data(self, key: str) -> Optional[Any]:

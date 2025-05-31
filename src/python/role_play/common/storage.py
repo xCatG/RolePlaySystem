@@ -297,8 +297,9 @@ class FileStorage(StorageBackend):
     data segmentation. Suitable for development and single-server deployments.
     """
 
-    def __init__(self, storage_dir: str = "data"):
-        self.storage_dir = Path(storage_dir).resolve()
+    def __init__(self, config: FileStorageConfig):
+        self.config = config
+        self.storage_dir = Path(config.base_dir).resolve()
         self.storage_dir.mkdir(exist_ok=True)
         
         # Create lock directory
@@ -355,7 +356,7 @@ class FileStorage(StorageBackend):
                 
             except FileExistsError:
                 # Lock file already exists, check if it's stale
-                if await self._is_stale_lock(lock_path, timeout):
+                if await self._is_stale_lock(lock_path, self.config.lock.lease_duration_seconds):
                     # Try to remove stale lock and retry immediately
                     try:
                         await aiofiles.os.remove(str(lock_path))
@@ -388,13 +389,13 @@ class FileStorage(StorageBackend):
                 # Ignore other release errors to prevent masking original exceptions
                 pass
 
-    async def _is_stale_lock(self, lock_path: Path, max_age_seconds: float = 300.0) -> bool:
+    async def _is_stale_lock(self, lock_path: Path, lease_duration_seconds: float) -> bool:
         """
         Check if a lock file is stale (from a dead process or too old).
         
         Args:
             lock_path: Path to the lock file
-            max_age_seconds: Maximum age for a lock before considering it stale
+            lease_duration_seconds: Maximum lease duration for a lock before considering it stale
             
         Returns:
             True if the lock appears to be stale and should be removed
@@ -410,7 +411,7 @@ class FileStorage(StorageBackend):
             
             # Check age-based staleness first (simpler and cross-platform)
             current_time = asyncio.get_event_loop().time()
-            if current_time - lock_timestamp > max_age_seconds:
+            if current_time - lock_timestamp > lease_duration_seconds:
                 return True
             
             # Check if process is still running (if PID is available)

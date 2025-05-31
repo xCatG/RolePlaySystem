@@ -13,7 +13,7 @@ class TestWorkingStorageFactory:
     def test_create_file_storage_dev(self):
         """Test creating file storage in dev environment."""
         from role_play.common.storage_factory import create_storage_backend, Environment
-        from role_play.common.storage import FileStorageConfig, LockConfig, FileStorage
+        from role_play.common.storage import FileStorage, FileStorageConfig, LockConfig
         import tempfile
         
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -44,7 +44,7 @@ class TestWorkingStorageFactory:
     def test_environment_restriction_works(self):
         """Test that environment restrictions are enforced."""
         from role_play.common.storage_factory import create_storage_backend, Environment
-        from role_play.common.storage import FileStorageConfig, LockConfig
+        from role_play.common.storage import FileStorage, FileStorageConfig, LockConfig
         from role_play.common.exceptions import StorageError
         
         config = FileStorageConfig(
@@ -160,7 +160,7 @@ class TestWorkingConfigValidation:
     def test_valid_file_config(self):
         """Test valid file config passes validation."""
         from role_play.common.storage_factory import validate_storage_config  
-        from role_play.common.storage import FileStorageConfig, LockConfig
+        from role_play.common.storage import FileStorage, FileStorageConfig, LockConfig
         
         config = FileStorageConfig(
             base_dir="/tmp",

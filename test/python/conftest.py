@@ -14,7 +14,7 @@ import pytest_asyncio
 import sys
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src" / "python"))
 
-from role_play.common.storage import FileStorage
+from role_play.common.storage import FileStorage, FileStorageConfig
 from role_play.common.auth import AuthManager
 
 
@@ -37,7 +37,8 @@ def temp_dir() -> Generator[Path, None, None]:
 @pytest.fixture
 async def file_storage(temp_dir: Path) -> FileStorage:
     """Create a FileStorage instance for testing."""
-    return FileStorage(str(temp_dir))
+    config = FileStorageConfig(type="file", base_dir=str(temp_dir))
+    return FileStorage(config)
 
 
 @pytest.fixture

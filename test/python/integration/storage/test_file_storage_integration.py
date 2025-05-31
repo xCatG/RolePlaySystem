@@ -5,7 +5,7 @@ import tempfile
 import uuid
 from pathlib import Path
 
-from role_play.common.storage import FileStorage
+from role_play.common.storage import FileStorage, FileStorageConfig
 from role_play.common.models import User, UserAuthMethod, SessionData, UserRole, AuthProvider
 from role_play.common.exceptions import StorageError
 from role_play.common.time_utils import utc_now
@@ -25,7 +25,8 @@ class TestFileStorageUserIntegration:
     async def test_complete_user_lifecycle(self):
         """Test full user lifecycle: create, read, update, delete."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            storage = FileStorage(temp_dir)
+            config = FileStorageConfig(type="file", base_dir=temp_dir)
+            storage = FileStorage(config)
             
             # Create user with unique ID to avoid conflicts between test runs
             unique_id = f"lifecycle-{uuid.uuid4().hex[:8]}"
@@ -74,7 +75,8 @@ class TestFileStorageUserIntegration:
     async def test_multiple_users_isolation(self):
         """Test that multiple users don't interfere with each other."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            storage = FileStorage(temp_dir)
+            config = FileStorageConfig(type="file", base_dir=temp_dir)
+            storage = FileStorage(config)
             
             # Create multiple users
             user1 = UserFactory.create(id="user1", username="user_one")
@@ -105,7 +107,8 @@ class TestFileStorageUserIntegration:
     async def test_username_uniqueness_not_enforced(self):
         """Test that storage doesn't enforce username uniqueness (business logic responsibility)."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            storage = FileStorage(temp_dir)
+            config = FileStorageConfig(type="file", base_dir=temp_dir)
+            storage = FileStorage(config)
             
             # Create two users with same username but different IDs
             user1 = UserFactory.create(id="user1", username="duplicate")
@@ -130,7 +133,8 @@ class TestFileStorageAuthMethodIntegration:
     async def test_complete_auth_method_lifecycle(self):
         """Test full auth method lifecycle."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            storage = FileStorage(temp_dir)
+            config = FileStorageConfig(type="file", base_dir=temp_dir)
+            storage = FileStorage(config)
             
             # Create user first with unique ID
             unique_user_id = f"auth-user-{uuid.uuid4().hex[:8]}"
@@ -182,7 +186,8 @@ class TestFileStorageAuthMethodIntegration:
     async def test_multiple_auth_methods_per_user(self):
         """Test user can have multiple auth methods."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            storage = FileStorage(temp_dir)
+            config = FileStorageConfig(type="file", base_dir=temp_dir)
+            storage = FileStorage(config)
             
             # Create user
             user = UserFactory.create(id="multi-auth-user")
@@ -218,7 +223,8 @@ class TestFileStorageAuthMethodIntegration:
     async def test_auth_methods_isolated_by_user(self):
         """Test that auth methods are properly isolated by user."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            storage = FileStorage(temp_dir)
+            config = FileStorageConfig(type="file", base_dir=temp_dir)
+            storage = FileStorage(config)
             
             # Create two users
             user1 = UserFactory.create(id="user1", username="user_one")
@@ -251,7 +257,8 @@ class TestFileStorageSessionIntegration:
     async def test_complete_session_lifecycle(self):
         """Test full session lifecycle."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            storage = FileStorage(temp_dir)
+            config = FileStorageConfig(type="file", base_dir=temp_dir)
+            storage = FileStorage(config)
             
             # Create user first with unique IDs
             unique_user_id = f"session-user-{uuid.uuid4().hex[:8]}"
@@ -303,7 +310,8 @@ class TestFileStorageCompleteWorkflows:
     async def test_complete_user_setup_workflow(self):
         """Test complete workflow: user + auth method + session."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            storage = FileStorage(temp_dir)
+            config = FileStorageConfig(type="file", base_dir=temp_dir)
+            storage = FileStorage(config)
             
             # Use test data builder for complete scenario
             user, auth_method, session = TestDataBuilder.create_complete_user_scenario(
@@ -340,13 +348,15 @@ class TestFileStorageCompleteWorkflows:
         """Test that data persists when creating new FileStorage instances."""
         with tempfile.TemporaryDirectory() as temp_dir:
             # Create and use first storage instance
-            storage1 = FileStorage(temp_dir)
+            config1 = FileStorageConfig(type="file", base_dir=temp_dir)
+            storage1 = FileStorage(config1)
             user = UserFactory.create(id="persistent-user", username="persistent")
             await storage1.create_user(user)
             await storage1.store_data("test_key", {"persisted": "data"})
             
             # Create new storage instance pointing to same directory
-            storage2 = FileStorage(temp_dir)
+            config2 = FileStorageConfig(type="file", base_dir=temp_dir)
+            storage2 = FileStorage(config2)
             
             # Data should be accessible from new instance
             retrieved_user = await storage2.get_user("persistent-user")
@@ -366,7 +376,8 @@ class TestFileStoragePerformance:
     async def test_large_number_of_users(self):
         """Test storage with large number of users."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            storage = FileStorage(temp_dir)
+            config = FileStorageConfig(type="file", base_dir=temp_dir)
+            storage = FileStorage(config)
             
             # Create many users
             user_count = 100
