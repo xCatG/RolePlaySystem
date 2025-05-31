@@ -3,8 +3,9 @@
 import json
 import tempfile
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, List, Optional, Generator
 from unittest.mock import AsyncMock, MagicMock
+from contextlib import contextmanager
 
 from role_play.common.storage import StorageBackend
 
@@ -51,6 +52,45 @@ class MockStorageBackend(StorageBackend):
         self.auth_methods = {}
         self.sessions = {}
         self.data = {}
+        self.storage = {}  # For file-like operations
+    
+    @contextmanager
+    def lock(self, resource_path: str, timeout: float = 5.0) -> Generator[None, None, None]:
+        """Mock lock that does nothing."""
+        yield
+    
+    async def read(self, path: str) -> str:
+        """Read text data from mock storage."""
+        if path not in self.storage:
+            from role_play.common.exceptions import StorageError
+            raise StorageError(f"Path not found: {path}")
+        return self.storage[path]
+    
+    async def write(self, path: str, data: str) -> None:
+        """Write text data to mock storage."""
+        self.storage[path] = data
+    
+    async def append(self, path: str, data: str) -> None:
+        """Append text data to mock storage."""
+        if path not in self.storage:
+            self.storage[path] = data
+        else:
+            self.storage[path] += data
+    
+    async def exists(self, path: str) -> bool:
+        """Check if path exists in mock storage."""
+        return path in self.storage
+    
+    async def delete(self, path: str) -> bool:
+        """Delete path from mock storage."""
+        if path in self.storage:
+            del self.storage[path]
+            return True
+        return False
+    
+    async def list_keys(self, prefix: str) -> List[str]:
+        """List all keys with the given prefix."""
+        return [key for key in self.storage.keys() if key.startswith(prefix)]
     
     async def get_user(self, user_id: str):
         return self.users.get(user_id)
