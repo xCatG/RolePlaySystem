@@ -142,8 +142,8 @@
 </template>
 
 <script>
-import axios from 'axios'
 import Chat from './components/Chat.vue'
+import { authApi } from './services/authApi'
 
 export default {
   name: 'App',
@@ -185,13 +185,13 @@ export default {
       this.success = ''
       
       try {
-        const response = await axios.post('http://localhost:8000/auth/login', {
+        const response = await authApi.login({
           email: this.loginForm.email,
           password: this.loginForm.password
         })
         
-        this.token = response.data.access_token
-        this.user = response.data.user
+        this.token = response.access_token
+        this.user = response.user
         localStorage.setItem('token', this.token)
         
         this.success = 'Login successful!'
@@ -210,14 +210,14 @@ export default {
       this.success = ''
       
       try {
-        const response = await axios.post('http://localhost:8000/auth/register', {
+        const response = await authApi.register({
           username: this.registerForm.username,
           email: this.registerForm.email,
           password: this.registerForm.password
         })
         
-        this.token = response.data.access_token
-        this.user = response.data.user
+        this.token = response.access_token
+        this.user = response.user
         localStorage.setItem('token', this.token)
         
         this.success = 'Registration successful!'
@@ -232,12 +232,8 @@ export default {
     
     async getCurrentUser() {
       try {
-        const response = await axios.get('http://localhost:8000/auth/me', {
-          headers: {
-            'Authorization': `Bearer ${this.token}`
-          }
-        })
-        this.user = response.data.user
+        const response = await authApi.getCurrentUser(this.token)
+        this.user = response.user
       } catch (error) {
         // Token is invalid, remove it
         this.logout()

@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { apiUrl, getAuthHeaders } from './apiConfig';
 import type { 
   ScenarioInfo,
   ScenarioListResponse,
@@ -12,24 +13,20 @@ import type {
   ChatMessageResponse
 } from '../types/chat';
 
-const API_BASE_URL = 'http://localhost:8000';
-
-const getAuthHeaders = (): Record<string, string> => {
-  const token = localStorage.getItem('token');
-  return token ? { Authorization: `Bearer ${token}` } : {};
-};
-
 export const chatApi = {
   async getScenarios(): Promise<ScenarioInfo[]> {
-    const response = await axios.get<ScenarioListResponse>(`${API_BASE_URL}/chat/content/scenarios`, {
-      headers: getAuthHeaders()
-    });
+    const response = await axios.get<ScenarioListResponse>(
+      apiUrl('/chat/content/scenarios'), 
+      {
+        headers: getAuthHeaders()
+      }
+    );
     return response.data.scenarios;
   },
 
   async getCharacters(scenarioId: string): Promise<CharacterInfo[]> {
     const response = await axios.get<CharacterListResponse>(
-      `${API_BASE_URL}/chat/content/scenarios/${scenarioId}/characters`, 
+      apiUrl(`/chat/content/scenarios/${scenarioId}/characters`), 
       {
         headers: getAuthHeaders()
       }
@@ -39,7 +36,7 @@ export const chatApi = {
 
   async createSession(request: CreateSessionRequest): Promise<CreateSessionResponse> {
     const response = await axios.post<CreateSessionResponse>(
-      `${API_BASE_URL}/chat/session`, 
+      apiUrl('/chat/session'), 
       request, 
       {
         headers: getAuthHeaders()
@@ -49,15 +46,18 @@ export const chatApi = {
   },
 
   async getSessions(): Promise<SessionInfo[]> {
-    const response = await axios.get<SessionListResponse>(`${API_BASE_URL}/chat/sessions`, {
-      headers: getAuthHeaders()
-    });
+    const response = await axios.get<SessionListResponse>(
+      apiUrl('/chat/sessions'), 
+      {
+        headers: getAuthHeaders()
+      }
+    );
     return response.data.sessions;
   },
 
   async sendMessage(sessionId: string, request: ChatMessageRequest): Promise<ChatMessageResponse> {
     const response = await axios.post<ChatMessageResponse>(
-      `${API_BASE_URL}/chat/session/${sessionId}/message`, 
+      apiUrl(`/chat/session/${sessionId}/message`), 
       request, 
       {
         headers: getAuthHeaders()
@@ -68,7 +68,7 @@ export const chatApi = {
 
   async exportSession(sessionId: string): Promise<string> {
     const response = await axios.get<string>(
-      `${API_BASE_URL}/chat/session/${sessionId}/export-text`, 
+      apiUrl(`/chat/session/${sessionId}/export-text`), 
       {
         headers: getAuthHeaders()
       }

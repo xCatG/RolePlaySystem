@@ -29,7 +29,7 @@ Check if the service is running.
 
 ### Authentication Endpoints
 
-#### POST /auth/register
+#### POST /api/auth/register
 Register a new user account.
 
 **Request Body**
@@ -56,7 +56,7 @@ Register a new user account.
 - 400: Invalid email format or weak password
 - 409: Email already registered
 
-#### POST /auth/login
+#### POST /api/auth/login
 Login with email and password.
 
 **Request Body**
@@ -85,7 +85,7 @@ Login with email and password.
 - 401: Invalid credentials
 - 404: User not found
 
-#### GET /auth/me
+#### GET /api/auth/me
 Get current user information. **Requires authentication.**
 
 **Response** (200 OK)
@@ -105,7 +105,7 @@ Get current user information. **Requires authentication.**
 
 ### Chat Endpoints
 
-#### GET /chat/content/scenarios
+#### GET /api/chat/content/scenarios
 Get all available roleplay scenarios. **Requires authentication.**
 
 **Response** (200 OK)
@@ -123,7 +123,7 @@ Get all available roleplay scenarios. **Requires authentication.**
 }
 ```
 
-#### GET /chat/content/scenarios/{scenario_id}/characters
+#### GET /api/chat/content/scenarios/{scenario_id}/characters
 Get available characters for a specific scenario. **Requires authentication.**
 
 **Response** (200 OK)
@@ -143,7 +143,7 @@ Get available characters for a specific scenario. **Requires authentication.**
 **Errors**
 - 404: Scenario not found
 
-#### POST /chat/session
+#### POST /api/chat/session
 Create a new roleplay session. **Requires authentication.**
 
 **Request Body**
@@ -170,7 +170,7 @@ Create a new roleplay session. **Requires authentication.**
 - 400: Invalid scenario or character ID
 - 404: Scenario or character not found
 
-#### GET /chat/sessions
+#### GET /api/chat/sessions
 List all sessions for the current user. **Requires authentication.**
 
 **Query Parameters**
@@ -193,7 +193,7 @@ List all sessions for the current user. **Requires authentication.**
 }
 ```
 
-#### POST /chat/session/{session_id}/message
+#### POST /api/chat/session/{session_id}/message
 Send a message in an active session. **Requires authentication.**
 
 **Request Body**
@@ -217,7 +217,7 @@ Send a message in an active session. **Requires authentication.**
 - 404: Session not found
 - 400: Session already ended
 
-#### POST /chat/session/{session_id}/end
+#### POST /api/chat/session/{session_id}/end
 End an active session. **Requires authentication.**
 
 **Response** (200 OK)
@@ -232,7 +232,7 @@ End an active session. **Requires authentication.**
 - 404: Session not found
 - 400: Session already ended
 
-#### GET /chat/session/{session_id}/export-text
+#### GET /api/chat/session/{session_id}/export-text
 Export session as plain text. **Requires authentication.**
 
 **Response** (200 OK)
@@ -263,7 +263,7 @@ Total messages: 15
 
 ### Evaluation Endpoints
 
-#### GET /evaluation/sessions
+#### GET /api/evaluation/sessions
 List sessions available for evaluation. **Requires authentication (USER or higher).**
 
 **Response** (200 OK)
@@ -283,7 +283,7 @@ List sessions available for evaluation. **Requires authentication (USER or highe
 }
 ```
 
-#### GET /evaluation/session/{session_id}/download
+#### GET /api/evaluation/session/{session_id}/download
 Download session transcript as text file. **Requires authentication (USER or higher).**
 
 **Response** (200 OK)

@@ -25,9 +25,23 @@ jwt_algorithm: "HS256"
 jwt_expire_hours: "${JWT_EXPIRE_HOURS:24}"
 
 # Storage settings (new configurable format)
+# To use GCS in dev: STORAGE_TYPE=gcs GCS_BUCKET=your-bucket GCS_PREFIX=dev/
 storage:
   type: "${STORAGE_TYPE:file}"
+  # File storage settings
   base_dir: "${STORAGE_PATH:./data}"
+  # GCS storage settings (only used if type is 'gcs')
+  bucket: "${GCS_BUCKET:}"
+  prefix: "${GCS_PREFIX:dev/}"
+  project_id: "${GCP_PROJECT_ID:}"
+  credentials_file: "${GCP_CREDENTIALS_FILE:}"
+  # S3 storage settings (only used if type is 's3')
+  s3_bucket: "${S3_BUCKET:}"
+  s3_prefix: "${S3_PREFIX:dev/}"
+  aws_region: "${AWS_REGION:us-east-1}"
+  aws_access_key_id: "${AWS_ACCESS_KEY_ID:}"
+  aws_secret_access_key: "${AWS_SECRET_ACCESS_KEY:}"
+  # Lock configuration
   lock:
     strategy: "${LOCK_STRATEGY:file}"
     lease_duration_seconds: "${LOCK_LEASE_DURATION:60}"
