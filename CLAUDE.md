@@ -2,6 +2,50 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Common Development Tasks
+
+### Backend Development
+```bash
+# Setup
+python3 -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+pip install -r src/python/requirements.txt
+
+# Run server
+python src/python/run_server.py
+
+# Testing
+pytest test/python/                              # Run all tests
+pytest test/python/unit/                         # Unit tests only
+pytest test/python/ --cov=src/python/role_play   # With coverage
+pytest -m "not slow"                             # Skip slow tests
+
+# Linting (when implemented)
+# ruff check src/python/
+# mypy src/python/
+```
+
+### Frontend Development
+```bash
+cd src/ts/role_play/ui
+npm install
+npm run dev   # Development server with hot reload
+npm run build # Production build
+```
+
+### Environment Configuration
+- Development: `ENV=dev` (default)
+- Beta: `ENV=beta`  
+- Production: `ENV=prod`
+- Config files: `config/{env}.yaml`
+- Required env vars: `JWT_SECRET_KEY`, `STORAGE_PATH`
+
+## Key Architecture Files
+- API Documentation: `/API.md`
+- Deployment Guide: `/DEPLOYMENT.md`
+- Environment Setup: `/ENVIRONMENTS.md`
+- Test Data: `/data/scenarios.json`
+
 # RolePlay System - Architecture Design Summary
 
 ## Design Decisions
@@ -467,17 +511,20 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   - **Enhanced Logging**: Comprehensive debug/info/warning logs for lock operations and stale cleanup
   - **Test Compatibility**: All 47+ test files updated to use config-based storage constructors
 
-# important-instruction-reminders
-Do what has been asked; nothing more, nothing less.
-NEVER create files unless they're absolutely necessary for achieving your goal.
-ALWAYS prefer editing an existing file to creating a new one.
-NEVER proactively create documentation files (*.md) or README files. Only create documentation files if explicitly requested by the User.
-Please clean up any files that you've created for testing or debugging purposes after they're no longer needed.
-ALWAYS sync the data type for Frontend (ts) with backend (python pydantic) with making changes to keep them in sync
+## Important Instructions for Claude Code
 
-## Datetime Handling Guidelines (Python)
-Always use **UTC** for any persisted datetime. Never store user-local or client-generated times.
-**DO NOT mix** timezone-aware and naive datetimes. Use `datetime.now(timezone.utc)`. Persist datetime values as ISO 8601 UTC Strings! 
-However, it is acceptable to use datetime.utcnow().isoformat() ONLY when saving a timestamp as a string immediately (e.g, "created_at" or "update_at")
-All datetime parsing and formatting will ASSUME UTC.
-Client-side code may only convert UTC to local time for display purpose. No timestamp creation or modification should be on client. 
+### General Guidelines
+- **Do what has been asked; nothing more, nothing less**
+- **NEVER create files unless absolutely necessary** - Always prefer editing existing files
+- **NEVER proactively create documentation files** (*.md) unless explicitly requested
+- **Clean up any temporary files** created for testing or debugging
+- **Always sync TypeScript types with Python Pydantic models** when making changes
+
+### Datetime Handling (Critical)
+- **Always use UTC** for persisted datetime values
+- **Never store user-local or client-generated times**
+- **Use timezone-aware datetime**: `datetime.now(timezone.utc)`
+- **Persist as ISO 8601 UTC strings**
+- **Exception**: `datetime.utcnow().isoformat()` is acceptable ONLY when immediately saving as string (e.g., "created_at")
+- **All parsing/formatting assumes UTC**
+- **Client-side may only convert UTC to local for display** 
