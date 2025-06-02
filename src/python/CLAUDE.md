@@ -1,0 +1,140 @@
+# Python Implementation Guidelines
+
+## Handler Architecture
+
+### Stateless Design
+- **New instance per request**: Handlers instantiated via dependency injection
+- **No instance variables**: Never store state in handler attributes
+- **Request lifecycle**: HTTP handler lives for one request, WebSocket for connection duration
+
+```python
+# GOOD - Stateless handler
+class ChatHandler(BaseHandler):
+    def __init__(self, auth_manager: AuthManager, chat_logger: ChatLogger):
+        self.auth_manager = auth_manager  # Injected dependencies only
+        self.chat_logger = chat_logger
+
+# BAD - Stateful handler
+class ChatHandler(BaseHandler):
+    def __init__(self):
+        self.sessions = {}  # NEVER do this!
+```
+
+## Dependency Injection
+
+### Singleton Services
+Use `@lru_cache` for services that should be shared across requests:
+
+```python
+# dependencies.py
+from functools import lru_cache
+
+@lru_cache
+def get_content_loader() -> ContentLoader:
+    """Singleton content loader - loads once, reused across requests"""
+    return ContentLoader()
+
+@lru_cache
+def get_chat_logger(storage: StorageBackend = Depends(get_storage)) -> ChatLogger:
+    """Singleton chat logger with injected storage"""
+    return ChatLogger(storage)
+```
+
+### Factory Functions
+Pure functions that create new instances:
+
+```python
+def get_storage() -> StorageBackend:
+    """Factory - creates new storage instance per request"""
+    storage_path = os.environ.get("STORAGE_PATH", "./storage")
+    config = StorageConfig(type="file", path=storage_path)
+    return FileStorage(config)
+```
+
+## Async Operations
+
+### Use asyncio.to_thread for Blocking I/O
+```python
+async def read_file(self, path: str) -> str:
+    """Wrap blocking I/O in asyncio.to_thread for FastAPI"""
+    return await asyncio.to_thread(self._blocking_read, path)
+
+def _blocking_read(self, path: str) -> str:
+    """Actual blocking I/O operation"""
+    with open(path, 'r') as f:
+        return f.read()
+```
+
+## Storage Patterns
+
+### Key Conventions
+- **No file extensions**: `users/123/profile` not `users/123.json`
+- **User data prefix**: `users/{user_id}/...`
+- **Opaque strings**: Keys work identically across FileStorage/GCS/S3
+
+### Distributed Locking
+```python
+# Separate lease duration from acquisition timeout
+lock_config = LockConfig(
+    strategy="file",
+    lease_duration_seconds=300,  # Lock valid for 5 min if holder crashes
+    timeout=30                   # Try acquiring for 30 seconds
+)
+
+async with storage.lock("resource", timeout=30):
+    # Critical section
+    pass
+```
+
+## Chat System Implementation
+
+### Session Lifecycle
+1. **Create**: ChatLogger creates JSONL, ADK stores metadata
+2. **Message**: Log → Create Runner → Process → Log response → Discard Runner
+3. **End**: Log session_end, remove from ADK memory
+4. **Export**: Read JSONL directly, format as text
+
+### File Locking for JSONL
+```python
+# ChatLogger uses FileLock for concurrent access
+with FileLock(f"{log_path}.lock", timeout=5):
+    with open(log_path, 'a') as f:
+        f.write(json.dumps(event) + '\n')
+```
+
+### ADK Integration
+- **Per-message Runners**: Create new Runner for each message
+- **No persistent state**: Runners immediately discarded after use
+- **Separation of concerns**: ADK for runtime, ChatLogger for persistence
+
+## Authentication Patterns
+
+### RoleChecker Dependency (Preferred)
+```python
+# Modern pattern using Depends()
+@router.get("/admin/users")
+async def list_users(
+    user: User = Depends(RoleChecker(min_role=UserRole.ADMIN))
+):
+    return {"users": []}
+```
+
+### Role Hierarchy
+```python
+ADMIN > SCRIPTER > USER > GUEST
+```
+
+## Common Pitfalls
+
+1. **Global State**: Never use global variables, use dependency injection
+2. **Blocking I/O**: Always wrap in `asyncio.to_thread()` for FastAPI
+3. **File Extensions in Keys**: Storage keys should be extension-free
+4. **Persistent Runners**: ADK Runners must be created per-message
+5. **Handler State**: Handlers must remain stateless
+
+## Performance Considerations
+
+- **Singleton Services**: Use `@lru_cache` for expensive initializations
+- **Concurrent JSONL**: Use FileLock with 5-second timeout
+- **Lock Tuning**: Lease duration (60-300s) vs acquisition timeout (5-30s)
+- **Async Everything**: All I/O operations should be async
