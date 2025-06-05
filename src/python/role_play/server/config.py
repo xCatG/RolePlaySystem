@@ -80,7 +80,7 @@ class ServerConfig(BaseModel):
 
     # Language configuration
     supported_languages: List[str] = Field(
-        default=["en", "zh-tw", "ja"],
+        default=["en", "zh-TW", "ja"],
         description="List of supported language codes for scenarios and characters"
     )
 

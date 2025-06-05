@@ -29,7 +29,7 @@ class TestChatHandlerSystemPrompt:
         """Sample Traditional Chinese character data."""
         return {
             "id": "patient_zh_tw", 
-            "language": "zh-tw",
+            "language": "zh-TW",
             "name": "李小姐 - 患者",
             "description": "繁體中文患者",
             "system_prompt": "你是李小姐，一位65歲患有慢性背痛的女性。你對新症狀感到焦慮，需要安慰。"

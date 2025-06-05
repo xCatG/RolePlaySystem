@@ -119,7 +119,7 @@ class ContentLoader:
             ValueError: If any scenario or character has unsupported language
         """
         # Validate scenarios
-        for scenario in self._data.get("scenarios", []):
+        for scenario in data.get("scenarios", []):
             scenario_lang = scenario.get("language", "en")
             # Normalize language code for consistency
             if scenario_lang == "zh_tw":
@@ -132,7 +132,7 @@ class ContentLoader:
                 )
         
         # Validate characters
-        for character in self._data.get("characters", []):
+        for character in data.get("characters", []):
             character_lang = character.get("language", "en")
             # Normalize language code for consistency
             if character_lang == "zh_tw":

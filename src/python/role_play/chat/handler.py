@@ -75,7 +75,7 @@ class ChatHandler(BaseHandler):
         character_language = character.get("language", "en")
         language_names = {
             "en": "English",
-            "zh-tw": "Traditional Chinese",
+            "zh-TW": "Traditional Chinese",
             "ja": "Japanese"
         }
         language_name = language_names.get(character_language, "English")

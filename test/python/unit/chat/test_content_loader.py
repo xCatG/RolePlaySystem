@@ -96,8 +96,8 @@ def test_nonexistent_ids():
 # Language support tests
 def test_language_support_initialization():
     """Test ContentLoader initialization with supported languages."""
-    loader = ContentLoader(supported_languages=["en", "zh-tw", "ja"])
-    assert loader.supported_languages == ["en", "zh-tw", "ja"]
+    loader = ContentLoader(supported_languages=["en", "zh-TW", "ja"])
+    assert loader.supported_languages == ["en", "zh-TW", "ja"]
     
     # Test default language support
     loader_default = ContentLoader()
