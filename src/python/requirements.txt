@@ -9,8 +9,10 @@ fastapi
 uvicorn[standard]
 httpx
 pyjwt
-passlib
+passlib[bcrypt]
+bcrypt
 google-cloud-storage
 boto3
 redis
 aiofiles
+importlib_resources>=5.0;python_version<'3.9'

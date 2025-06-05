@@ -7,364 +7,373 @@ This guide covers deploying the Role Play System to Google Cloud Platform (GCP) 
 1. **Google Cloud Project** with billing enabled
 2. **gcloud CLI** installed and authenticated
 3. **Docker** installed locally
-4. **Service Account** with appropriate permissions
-5. **Google Cloud Storage buckets** created for each environment
+4. **Node.js 18+** for frontend build
+5. **Make** command available (for automation)
+6. **Git** for version tagging
+
+## Quick Start with Makefile
+
+The project includes a comprehensive Makefile that automates most deployment tasks. For most use cases, you should use these commands instead of manual deployment.
+
+### View Available Commands
+```bash
+make help
+```
+
+### Deploy to Environment
+```bash
+# Deploy to beta
+make deploy ENV=beta
+
+# Deploy to production
+make deploy ENV=prod
+
+# Deploy a specific image tag
+make deploy-image ENV=prod IMAGE_TAG=v1.2.3
+```
+
+### Local Development
+```bash
+# Run locally with Docker
+make run-local-docker
+
+# Build Docker image only
+make build-docker
+```
+
+## Configuration Setup
+
+### 1. Create `.env.mk` File
+
+First, create a `.env.mk` file (git-ignored) with your GCP project IDs:
+
+```bash
+# .env.mk
+GCP_PROJECT_ID_PROD=your-actual-prod-project-id
+GCP_PROJECT_ID_BETA=your-actual-beta-project-id
+GCP_PROJECT_ID_DEV=your-actual-dev-project-id
+```
+
+### 2. Set Up GCP Infrastructure
+
+The Makefile can automatically create most GCP resources:
+
+```bash
+# Set up beta environment
+make setup-gcp-infra ENV=beta
+
+# Set up production environment
+make setup-gcp-infra ENV=prod
+```
+
+This will attempt to:
+- Enable required APIs (Cloud Run, Artifact Registry, Secret Manager, etc.)
+- Create GCS buckets for app data and log exports
+- Create Artifact Registry repository
+- Create service account
+- Create Secret Manager container for JWT key
+
+**Note**: You still need to manually add the JWT secret value:
+
+```bash
+# Generate a secure secret
+echo -n "$(openssl rand -base64 32)" | gcloud secrets versions add rps-jwt-secret \
+    --data-file=- \
+    --project=YOUR_PROJECT_ID
+```
 
 ## Architecture Overview
 
 The deployment uses:
-- **Cloud Run** for the containerized FastAPI application
+- **Cloud Run** for the containerized FastAPI + Vue.js application
 - **Google Cloud Storage (GCS)** for data persistence
-- **Cloud Build** for CI/CD
+- **Artifact Registry** for Docker images
 - **Secret Manager** for sensitive configuration
 - **Cloud Logging** for centralized logs
-- **Application Default Credentials (ADC)** for authentication
-
-## Environment Setup
-
-### 1. Create GCS Buckets
-
-```bash
-# Beta environment
-gsutil mb -p YOUR_PROJECT_ID -c STANDARD -l us-central1 gs://roleplay-beta-storage/
-
-# Production environment
-gsutil mb -p YOUR_PROJECT_ID -c STANDARD -l us-central1 gs://roleplay-prod-storage/
-```
-
-### 2. Set up Secret Manager
-
-```bash
-# Create JWT secret
-echo -n "your-secure-jwt-secret-here" | gcloud secrets create jwt-secret-key \
-    --data-file=- \
-    --replication-policy="automatic"
-
-# Grant Cloud Run access to the secret
-gcloud secrets add-iam-policy-binding jwt-secret-key \
-    --member="serviceAccount:YOUR_PROJECT_NUMBER-compute@developer.gserviceaccount.com" \
-    --role="roles/secretmanager.secretAccessor"
-```
-
-### 3. Create Service Account (if not using default)
-
-```bash
-# Create service account
-gcloud iam service-accounts create roleplay-service \
-    --display-name="Role Play Service Account"
-
-# Grant necessary permissions
-gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
-    --member="serviceAccount:roleplay-service@YOUR_PROJECT_ID.iam.gserviceaccount.com" \
-    --role="roles/storage.objectAdmin"
-
-gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
-    --member="serviceAccount:roleplay-service@YOUR_PROJECT_ID.iam.gserviceaccount.com" \
-    --role="roles/logging.logWriter"
-```
+- **Service Accounts** for secure access
 
 ## Docker Configuration
 
-### Dockerfile
+The project uses a multi-stage Dockerfile that:
+1. Builds the Vue.js frontend
+2. Sets up the Python backend
+3. Serves the frontend as static files
 
-```dockerfile
-FROM python:3.11-slim
-
-WORKDIR /app
-
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    gcc \
-    && rm -rf /var/lib/apt/lists/*
-
-# Copy requirements
-COPY src/python/requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Copy application code
-COPY src/python/ ./src/python/
-COPY data/ ./data/
-COPY config/ ./config/
-
-# Set Python path
-ENV PYTHONPATH=/app/src/python
-
-# Run the application
-CMD ["python", "src/python/run_server.py"]
+To build locally:
+```bash
+make build-docker
 ```
 
-### .dockerignore
+## Deployment Process
 
-```
-.git/
-.gitignore
-*.pyc
-__pycache__/
-.pytest_cache/
-.coverage
-htmlcov/
-venv/
-.env
-.env.local
-*.log
-test/
-docs/
-README.md
-DEPLOYMENT.md
-```
+### Standard Deployment Flow
 
-## Build and Deploy
+1. **Ensure configuration is set**:
+   ```bash
+   make list-config ENV=beta
+   ```
 
-### 1. Build Container Image
+2. **Build and deploy**:
+   ```bash
+   make deploy ENV=beta
+   ```
+
+   This will:
+   - Build the Docker image with current git version
+   - Push to Artifact Registry
+   - Deploy to Cloud Run with appropriate settings
+
+### Manual Deployment (Advanced)
+
+If you need to deploy manually, the Makefile executes commands similar to:
 
 ```bash
-# Build locally
-docker build -t gcr.io/YOUR_PROJECT_ID/roleplay-api:latest .
+# Build
+docker build -t {region}-docker.pkg.dev/{project}/rps-images/rps-api:{tag} .
 
-# Or use Cloud Build
-gcloud builds submit --tag gcr.io/YOUR_PROJECT_ID/roleplay-api:latest .
-```
+# Push
+docker push {region}-docker.pkg.dev/{project}/rps-images/rps-api:{tag}
 
-### 2. Deploy to Cloud Run
-
-#### Beta Deployment
-
-```bash
-gcloud run deploy roleplay-api-beta \
-    --image gcr.io/YOUR_PROJECT_ID/roleplay-api:latest \
-    --platform managed \
-    --region us-central1 \
-    --allow-unauthenticated \
-    --set-env-vars="ENV=beta" \
-    --set-env-vars="CONFIG_FILE=/app/config/beta.yaml" \
-    --set-env-vars="GCP_PROJECT_ID=YOUR_PROJECT_ID" \
-    --set-env-vars="GCS_BUCKET=roleplay-beta-storage" \
-    --set-env-vars="GCS_PREFIX=beta/" \
-    --set-env-vars="FRONTEND_URL=https://beta-roleplay.example.com" \
-    --set-secrets="JWT_SECRET_KEY=jwt-secret-key:latest" \
-    --service-account=roleplay-service@YOUR_PROJECT_ID.iam.gserviceaccount.com \
-    --memory=1Gi \
-    --cpu=1 \
-    --min-instances=1 \
-    --max-instances=10 \
-    --concurrency=100
-```
-
-#### Production Deployment
-
-```bash
-gcloud run deploy roleplay-api-prod \
-    --image gcr.io/YOUR_PROJECT_ID/roleplay-api:latest \
-    --platform managed \
-    --region us-central1 \
-    --allow-unauthenticated \
-    --set-env-vars="ENV=prod" \
-    --set-env-vars="CONFIG_FILE=/app/config/prod.yaml" \
-    --set-env-vars="GCP_PROJECT_ID=YOUR_PROJECT_ID" \
-    --set-env-vars="GCS_BUCKET=roleplay-prod-storage" \
-    --set-env-vars="GCS_PREFIX=prod/" \
-    --set-env-vars="FRONTEND_URL=https://roleplay.example.com" \
-    --set-env-vars="LOG_LEVEL=WARNING" \
-    --set-secrets="JWT_SECRET_KEY=jwt-secret-key:latest" \
-    --service-account=roleplay-service@YOUR_PROJECT_ID.iam.gserviceaccount.com \
-    --memory=2Gi \
-    --cpu=2 \
-    --min-instances=2 \
-    --max-instances=100 \
-    --concurrency=200
+# Deploy
+gcloud run deploy rps-api-{env} \
+    --image={image} \
+    --region=us-central1 \
+    --set-env-vars="ENV={env},GCS_BUCKET={bucket},..." \
+    --set-secrets="JWT_SECRET_KEY={secret-name}:latest" \
+    --service-account={service-account} \
+    ...
 ```
 
 ## Environment Variables
 
-### Required Variables
+The Makefile automatically sets these environment variables based on ENV:
 
-| Variable | Description | Example |
-|----------|-------------|---------|
-| `ENV` | Environment name | `beta` or `prod` |
-| `CONFIG_FILE` | Path to config file | `/app/config/beta.yaml` |
-| `GCP_PROJECT_ID` | Google Cloud project ID | `my-project-123` |
-| `JWT_SECRET_KEY` | Secret for JWT signing | (use Secret Manager) |
+| Variable | Description | Makefile Sets |
+|----------|-------------|---------------|
+| `ENV` | Environment name | ✓ |
+| `CONFIG_FILE` | Path to config file | ✓ |
+| `GCP_PROJECT_ID` | Google Cloud project ID | ✓ |
+| `GCS_BUCKET` | Storage bucket name | ✓ |
+| `GCS_PREFIX` | Storage prefix | ✓ |
+| `LOG_LEVEL` | Logging level | ✓ |
+| `CORS_ALLOWED_ORIGINS` | CORS origins | ✓ |
+| `JWT_SECRET_KEY` | From Secret Manager | ✓ |
 
-### Optional Variables
+## Storage Configuration
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `GCS_BUCKET` | Storage bucket name | `roleplay-{env}-storage` |
-| `GCS_PREFIX` | Storage prefix | `{env}/` |
-| `FRONTEND_URL` | Frontend URL for CORS | Environment specific |
-| `LOG_LEVEL` | Logging level | `INFO` (beta), `WARNING` (prod) |
-| `JWT_EXPIRE_HOURS` | JWT token expiration | `72` (beta), `168` (prod) |
-| `LOCK_LEASE_DURATION` | Lock duration in seconds | `45` (beta), `30` (prod) |
+Each environment uses different GCS buckets:
+- **Dev**: `rps-app-data-dev` with prefix `dev/`
+- **Beta**: `rps-app-data-beta` with prefix `beta/`
+- **Prod**: `rps-app-data-prod` with prefix `prod/`
 
-## CI/CD with Cloud Build
-
-### cloudbuild.yaml
-
-```yaml
-steps:
-  # Build the container image
-  - name: 'gcr.io/cloud-builders/docker'
-    args: ['build', '-t', 'gcr.io/$PROJECT_ID/roleplay-api:$COMMIT_SHA', '.']
-  
-  # Push to Container Registry
-  - name: 'gcr.io/cloud-builders/docker'
-    args: ['push', 'gcr.io/$PROJECT_ID/roleplay-api:$COMMIT_SHA']
-  
-  # Deploy to beta (only on main branch)
-  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
-    entrypoint: gcloud
-    args:
-      - 'run'
-      - 'deploy'
-      - 'roleplay-api-beta'
-      - '--image=gcr.io/$PROJECT_ID/roleplay-api:$COMMIT_SHA'
-      - '--region=us-central1'
-      - '--platform=managed'
-    condition: '$BRANCH_NAME == "main"'
-
-# Store image in Artifact Registry
-images:
-  - 'gcr.io/$PROJECT_ID/roleplay-api:$COMMIT_SHA'
-
-options:
-  logging: CLOUD_LOGGING_ONLY
-```
-
-### Set up Build Trigger
-
-```bash
-gcloud builds triggers create cloud-source-repositories \
-    --repo=roleplay-system \
-    --branch-pattern="^main$" \
-    --build-config=cloudbuild.yaml \
-    --description="Deploy to beta on push to main"
-```
+Log exports (optional) go to separate buckets:
+- **Dev**: `rps-log-exports-dev`
+- **Beta**: `rps-log-exports-beta`
+- **Prod**: `rps-log-exports-prod`
 
 ## Monitoring and Logging
 
 ### View Logs
-
 ```bash
-# Beta logs
-gcloud logging read "resource.type=cloud_run_revision AND resource.labels.service_name=roleplay-api-beta" \
-    --limit 50 \
-    --format json
+# Using Makefile
+make logs ENV=beta
 
-# Production logs
-gcloud logging read "resource.type=cloud_run_revision AND resource.labels.service_name=roleplay-api-prod" \
-    --limit 50 \
-    --format json
+# Or manually
+gcloud logging read "resource.type=cloud_run_revision AND resource.labels.service_name=rps-api-beta" \
+    --limit=50 --project=YOUR_PROJECT_ID
 ```
 
-### Set up Alerts
+### Health Checks
 
-```bash
-# Create alert policy for high error rate
-gcloud alpha monitoring policies create \
-    --notification-channels=YOUR_CHANNEL_ID \
-    --display-name="High Error Rate - Role Play API" \
-    --condition-display-name="Error rate > 1%" \
-    --condition-filter='resource.type="cloud_run_revision" AND metric.type="run.googleapis.com/request_count" AND metric.label.response_code_class="5xx"'
-```
-
-## Health Checks
-
-The application exposes health check endpoints:
-
+The application exposes:
 - `/health` - Basic health check
-- `/metrics` - Prometheus-compatible metrics (when enabled)
+- `/api/v1/*` - API endpoints
 
-Cloud Run automatically uses these for traffic routing and autoscaling.
+## Version Management
+
+### Tag a Release
+```bash
+make tag-git-release NEW_GIT_TAG=v1.2.3
+```
+
+### Deploy Specific Version
+```bash
+make deploy-image ENV=prod IMAGE_TAG=v1.2.3
+```
 
 ## Troubleshooting
 
 ### Common Issues
 
-1. **Storage Access Denied**
-   - Verify service account has `roles/storage.objectAdmin` on the bucket
-   - Check bucket exists and is in the correct project
+1. **GCP Project ID not set**
+   - Create `.env.mk` with your project IDs
+   - Or export them: `export GCP_PROJECT_ID_BETA=your-project`
 
-2. **JWT Secret Not Found**
-   - Ensure secret exists in Secret Manager
-   - Verify service account has access to the secret
+2. **Permission Denied**
+   - Ensure you're authenticated: `gcloud auth login`
+   - Check service account permissions
 
-3. **High Latency**
-   - Check lock contention metrics
-   - Consider migrating to Redis locking if object locks are slow
-   - Review Cloud Run concurrency settings
+3. **Build Failures**
+   - Check Node.js version for frontend build
+   - Ensure all dependencies are installed
 
-4. **Memory Issues**
-   - Increase memory allocation in Cloud Run
-   - Check for memory leaks in long-running connections
+4. **Secret Not Found**
+   - Create JWT secret in Secret Manager
+   - Grant service account access to secret
 
 ### Debug Commands
 
 ```bash
-# Check service status
-gcloud run services describe roleplay-api-beta --region=us-central1
+# Check current configuration
+make list-config ENV=beta
 
-# View recent logs
-gcloud run services logs read roleplay-api-beta --region=us-central1
+# Test locally before deploying
+make run-local-docker
 
-# Test endpoint
-curl https://roleplay-api-beta-xxxxx-uc.a.run.app/health
-
-# Check storage bucket
-gsutil ls -la gs://roleplay-beta-storage/
+# View service details
+gcloud run services describe rps-api-beta --region=us-central1
 ```
 
-## Rollback Procedure
+## CI/CD with Cloud Build
 
-```bash
-# List revisions
-gcloud run revisions list --service=roleplay-api-prod --region=us-central1
+For automated deployments, create a Cloud Build trigger:
 
-# Rollback to previous revision
-gcloud run services update-traffic roleplay-api-prod \
-    --region=us-central1 \
-    --to-revisions=roleplay-api-prod-00001-abc=100
+### cloudbuild.yaml
+```yaml
+steps:
+  # Build the container image
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-t', 'us-central1-docker.pkg.dev/$PROJECT_ID/rps-images/rps-api:$COMMIT_SHA', '.']
+  
+  # Push to Artifact Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'us-central1-docker.pkg.dev/$PROJECT_ID/rps-images/rps-api:$COMMIT_SHA']
+  
+  # Deploy to beta (only on main branch)
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: make
+    args: ['deploy-image', 'ENV=beta', 'IMAGE_TAG=$COMMIT_SHA']
+    env:
+      - 'GCP_PROJECT_ID_BETA=$PROJECT_ID'
+
+images:
+  - 'us-central1-docker.pkg.dev/$PROJECT_ID/rps-images/rps-api:$COMMIT_SHA'
+
+options:
+  logging: CLOUD_LOGGING_ONLY
 ```
 
 ## Cost Optimization
 
-1. **Set minimum instances appropriately**
-   - Beta: 1 instance (accept cold starts)
-   - Production: 2+ instances (avoid cold starts)
-
-2. **Use appropriate CPU/memory allocation**
-   - Start small and scale based on metrics
-   - Monitor CPU and memory usage
-
-3. **Configure autoscaling**
-   - Set reasonable max instances
-   - Adjust concurrency based on load testing
-
-4. **Storage costs**
-   - Implement lifecycle policies for old chat logs
-   - Consider archival storage for historical data
+The Makefile sets appropriate defaults:
+- **Dev/Beta**: 0 minimum instances (allows cold starts)
+- **Prod**: 1 minimum instance (avoids cold starts)
+- **Concurrency**: 80 requests per instance
+- **Auto-scaling**: 10 max instances (beta), 100 max (prod)
 
 ## Security Best Practices
 
-1. **Never commit secrets**
-   - Use Secret Manager for all sensitive data
-   - Rotate JWT secrets regularly
+1. **Use `.env.mk` for project IDs only** - never commit secrets
+2. **JWT secrets in Secret Manager** - rotated regularly
+3. **Separate service accounts** per environment
+4. **Least privilege access** - only required permissions
 
-2. **Least privilege access**
-   - Service accounts should have minimal required permissions
-   - Use separate service accounts for different environments
+## Manual GCP Setup Reference
 
-3. **Network security**
-   - Consider using Cloud Armor for DDoS protection
-   - Implement rate limiting in production
+If `make setup-gcp-infra` fails, manually create resources:
 
-4. **Regular updates**
-   - Keep dependencies updated
-   - Monitor security advisories
+### Enable APIs
+```bash
+gcloud services enable \
+    run.googleapis.com \
+    artifactregistry.googleapis.com \
+    secretmanager.googleapis.com \
+    storage.googleapis.com \
+    --project=YOUR_PROJECT_ID
+```
+
+### Create Resources
+```bash
+# Artifact Registry
+gcloud artifacts repositories create rps-images \
+    --repository-format=docker \
+    --location=us-central1 \
+    --project=YOUR_PROJECT_ID
+
+# Service Account
+gcloud iam service-accounts create sa-rps \
+    --display-name="RPS Application Service Account" \
+    --project=YOUR_PROJECT_ID
+
+# GCS Buckets
+gsutil mb -p YOUR_PROJECT_ID -l us-central1 gs://rps-app-data-{env}/
+gsutil mb -p YOUR_PROJECT_ID -l us-central1 gs://rps-log-exports-{env}/
+
+# Grant permissions
+gsutil iam ch serviceAccount:sa-rps@YOUR_PROJECT_ID.iam.gserviceaccount.com:objectAdmin \
+    gs://rps-app-data-{env}/
+```
 
 ## Next Steps
 
-1. **Set up monitoring dashboards** in Cloud Console
-2. **Configure alerting** for critical metrics
-3. **Implement automated testing** before deployment
-4. **Set up staging environment** for pre-production testing
-5. **Document runbooks** for common operational tasks
+1. Set up `.env.mk` with your GCP project IDs
+2. Run `make setup-gcp-infra ENV=beta` to create infrastructure
+3. Add JWT secret to Secret Manager
+4. Deploy with `make deploy ENV=beta`
+5. Set up custom domain (see below)
+6. Set up monitoring dashboards in Cloud Console
+7. Configure alerting for critical metrics
+
+## Custom Domain Setup
+
+After deploying to Cloud Run, you'll need to set up custom domains for a professional appearance.
+
+### 1. Configure DNS Records
+
+Add CNAME records at your DNS provider (e.g., cPanel, Cloudflare):
+
+```
+# Beta environment
+beta.rps.cattail-sw.com  CNAME  rps-api-beta-xxxxx.us-west1.run.app
+
+# Production environment  
+rps.cattail-sw.com       CNAME  rps-api-prod-xxxxx.us-west1.run.app
+```
+
+**Note**: If your DNS provider doesn't support NS records for subdomain delegation (common with cPanel), use CNAME records directly as shown above.
+
+### 2. Configure Cloud Run Domain Mapping
+
+Map your custom domain to the Cloud Run service:
+
+```bash
+# For beta
+gcloud run domain-mappings create \
+    --service=rps-api-beta \
+    --domain=beta.rps.cattail-sw.com \
+    --region=us-west1 \
+    --project=rps-beta-461718
+
+# For production
+gcloud run domain-mappings create \
+    --service=rps-api-prod \
+    --domain=rps.cattail-sw.com \
+    --region=us-west1 \
+    --project=YOUR_PROD_PROJECT_ID
+```
+
+### 3. Verify Domain Ownership
+
+Follow the verification steps provided by Cloud Run. This typically involves adding a TXT record to your DNS.
+
+### 4. SSL Certificates
+
+Cloud Run automatically provisions and manages SSL certificates for your custom domains. No additional configuration needed!
+
+### 5. Update CORS Settings
+
+The Makefile already includes the correct CORS settings:
+- Beta: `https://beta.rps.cattail-sw.com`
+- Production: `https://rps.cattail-sw.com`
+
+These will be applied when you deploy.

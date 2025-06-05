@@ -1,33 +1,53 @@
 """Content loader for static roleplay scenarios and characters."""
 from typing import List, Dict, Optional
 import json
-from pathlib import Path
+import sys
+
+# Handle resource loading for Python 3.9+ and older versions
+if sys.version_info >= (3, 9):
+    from importlib import resources
+else:
+    import importlib_resources as resources
+
 
 class ContentLoader:
-    """Load roleplay scenarios and characters from static JSON file."""
+    """Load roleplay scenarios and characters from packaged resources."""
     
-    def __init__(self, data_file: str = "data/scenarios.json"):
-        """Initialize content loader with data file path.
+    def __init__(self, resource_name: str = "scenarios.json"):
+        """Initialize content loader with resource name.
         
         Args:
-            data_file: Path to the JSON file containing scenarios and characters
+            resource_name: Name of the JSON resource file
         """
-        self.data_file = Path(data_file)
+        self.resource_name = resource_name
         self._data = None
     
     def load_data(self) -> Dict:
-        """Load data from JSON file, caching the result.
+        """Load data from packaged resource, caching the result.
         
         Returns:
             Dictionary containing scenarios and characters
             
         Raises:
-            FileNotFoundError: If data file doesn't exist
-            JSONDecodeError: If data file contains invalid JSON
+            FileNotFoundError: If resource doesn't exist
+            JSONDecodeError: If resource contains invalid JSON
         """
         if self._data is None:
-            with open(self.data_file) as f:
-                self._data = json.load(f)
+            # Load resource from the package
+            try:
+                # For Python 3.9+
+                if sys.version_info >= (3, 9):
+                    files = resources.files('role_play.resources')
+                    resource = files / self.resource_name
+                    with resource.open('r', encoding='utf-8') as f:
+                        self._data = json.load(f)
+                else:
+                    # For older Python versions (using importlib_resources backport)
+                    with resources.open_text('role_play.resources', self.resource_name) as f:
+                        self._data = json.load(f)
+            except Exception as e:
+                raise FileNotFoundError(f"Could not load resource '{self.resource_name}': {e}")
+        
         return self._data
     
     def get_scenarios(self) -> List[Dict]:

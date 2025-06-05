@@ -17,9 +17,16 @@ cd src/ts/role_play/ui && npm install && npm run dev
 
 **Environment**: `ENV=dev|beta|prod`, configs in `config/{env}.yaml`
 **Required**: `JWT_SECRET_KEY`, `STORAGE_PATH`
-**Key Files**: `/API.md`, `/DEPLOYMENT.md`, `/ENVIRONMENTS.md`, `/data/scenarios.json`
+**Key Files**: `/API.md`, `/DEPLOYMENT.md`, `/ENVIRONMENTS.md`
+**Resources**: `/src/python/role_play/resources/scenarios.json`
 
 ## Architecture Summary
+
+### Storage Configuration (Dev Environment)
+- **Flexible Storage**: Dev supports file (default), GCS, or S3 via `STORAGE_TYPE` env var
+- **Quick Switch**: `STORAGE_TYPE=gcs GCS_BUCKET=my-bucket python run_server.py`
+- **Lock Strategies**: file (local), object (cloud atomic), redis (distributed)
+- **See**: `/STORAGE_CONFIG.md` for detailed setup instructions
 
 ### Core Design Principles
 1. **Layered Architecture**: App layer (chat/evaluator/scripter) → Base layer (server/common), no circular dependencies
@@ -62,7 +69,43 @@ cd src/ts/role_play/ui && npm install && npm run dev
 
 ## TODO List
 
-### Pending
+### Deployment Tasks (Beta Environment)
+- [x] Update base_server.py to serve Vue.js frontend static files
+- [x] Add health check endpoint (/health) to base_server.py
+- [x] Create Dockerfile with multi-stage build (Vue.js + FastAPI)
+- [x] Create/update Makefile with deployment targets
+- [x] Add structured JSON logging for Cloud Logging
+- [x] Create .env.mk template for GCP project IDs
+- [x] Add run-local-docker target to Makefile
+- [x] Update frontend to use /api prefix for all API calls
+- [x] Set up GCP infrastructure for beta (buckets, service accounts, secrets)
+- [x] Deploy to Cloud Run beta environment
+- [x] Test beta deployment end-to-end
+
+### Deployment & Configuration Improvements
+- [ ] Fix GCS bucket naming inconsistency (DEPLOYMENT.md uses `rps-app-data-{env}` but configs use `roleplay-{env}-storage`)
+- [ ] Update API version path - remove `/api/v1/*` reference or implement versioning consistently
+- [ ] Create environment-specific service accounts (`sa-rps-beta`, `sa-rps-prod`) instead of generic `sa-rps`
+- [ ] Reduce GCS permissions from `objectAdmin` to least privilege (`objectUser` or separate creator/viewer roles)
+- [ ] Make GCP region configurable in Makefile (currently hardcoded to us-west1)
+- [ ] Document git version tagging strategy in DEPLOYMENT.md
+- [ ] Add `make list-config` output example to deployment docs
+- [ ] Explicitly state JWT secret name (`rps-jwt-secret`) in manual deploy examples
+
+### Custom Domain Setup (Completed for Beta)
+- [x] Configure CNAME records in DNS provider (cPanel)
+  - Beta: `beta.rps.cattail-sw.com` → `rps-api-beta-493431680508.us-west1.run.app`
+  - Prod: `rps.cattail-sw.com` → `rps-api-prod-xxxxx.us-west1.run.app`
+- [x] Configure Cloud Run domain mapping for SSL certificates
+- [x] Update CORS settings in Makefile to use custom domains
+
+### Future Deployment Tasks
+- [ ] CI/CD: Cloud Build pipeline (main → beta, tags → prod)
+- [ ] Database migrations: Alembic setup when adding database
+- [ ] Monitoring: Cloud Monitoring dashboards and alerts
+- [ ] Tracing: OpenTelemetry + Cloud Trace integration
+
+### Pending Development
 - [ ] WebSocket: `server/websocket.py` connection manager
 - [ ] Auth Module: handler.py, models.py, oauth_client.py
 - [ ] Scripter: Complete module implementation
