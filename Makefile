@@ -57,7 +57,7 @@ ifeq ($(ENV),prod)
 	CONFIG_FILE_PATH_IN_CONTAINER = /app/config/prod.yaml
 	CLOUD_RUN_MIN_INSTANCES = 1
 	LOG_LEVEL_CONFIG = "WARNING"
-	CORS_ORIGINS_CONFIG = "https://rps.cattail-sw.com" # Replace with actual prod frontend URL
+	CORS_ORIGINS_CONFIG = "https://rps.cattail-sw.com"
 	SERVICE_ACCOUNT_EMAIL = sa-$(SERVICE_NAME)@$(GCP_PROJECT_ID_PROD).iam.gserviceaccount.com
 else ifeq ($(ENV),beta)
 	TARGET_GCP_PROJECT_ID = $(GCP_PROJECT_ID_BETA)
@@ -68,7 +68,7 @@ else ifeq ($(ENV),beta)
 	CONFIG_FILE_PATH_IN_CONTAINER = /app/config/beta.yaml
 	CLOUD_RUN_MIN_INSTANCES = 0
 	LOG_LEVEL_CONFIG = "INFO"
-	CORS_ORIGINS_CONFIG = "https://beta.rps.cattail-sw.com" # Replace with actual beta frontend URL
+	CORS_ORIGINS_CONFIG = "https://beta.rps.cattail-sw.com"
 	SERVICE_ACCOUNT_EMAIL = sa-$(SERVICE_NAME)@$(GCP_PROJECT_ID_BETA).iam.gserviceaccount.com
 else # dev (local setup, or deploying a dev instance to cloud)
 	TARGET_GCP_PROJECT_ID = $(GCP_PROJECT_ID_DEV)

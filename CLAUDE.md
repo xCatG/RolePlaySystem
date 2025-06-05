@@ -78,9 +78,26 @@ cd src/ts/role_play/ui && npm install && npm run dev
 - [x] Create .env.mk template for GCP project IDs
 - [x] Add run-local-docker target to Makefile
 - [x] Update frontend to use /api prefix for all API calls
-- [ ] Set up GCP infrastructure for beta (buckets, service accounts, secrets)
-- [ ] Deploy to Cloud Run beta environment
-- [ ] Test beta deployment end-to-end
+- [x] Set up GCP infrastructure for beta (buckets, service accounts, secrets)
+- [x] Deploy to Cloud Run beta environment
+- [x] Test beta deployment end-to-end
+
+### Deployment & Configuration Improvements
+- [ ] Fix GCS bucket naming inconsistency (DEPLOYMENT.md uses `rps-app-data-{env}` but configs use `roleplay-{env}-storage`)
+- [ ] Update API version path - remove `/api/v1/*` reference or implement versioning consistently
+- [ ] Create environment-specific service accounts (`sa-rps-beta`, `sa-rps-prod`) instead of generic `sa-rps`
+- [ ] Reduce GCS permissions from `objectAdmin` to least privilege (`objectUser` or separate creator/viewer roles)
+- [ ] Make GCP region configurable in Makefile (currently hardcoded to us-west1)
+- [ ] Document git version tagging strategy in DEPLOYMENT.md
+- [ ] Add `make list-config` output example to deployment docs
+- [ ] Explicitly state JWT secret name (`rps-jwt-secret`) in manual deploy examples
+
+### Custom Domain Setup (Completed for Beta)
+- [x] Configure CNAME records in DNS provider (cPanel)
+  - Beta: `beta.rps.cattail-sw.com` → `rps-api-beta-493431680508.us-west1.run.app`
+  - Prod: `rps.cattail-sw.com` → `rps-api-prod-xxxxx.us-west1.run.app`
+- [x] Configure Cloud Run domain mapping for SSL certificates
+- [x] Update CORS settings in Makefile to use custom domains
 
 ### Future Deployment Tasks
 - [ ] CI/CD: Cloud Build pipeline (main → beta, tags → prod)

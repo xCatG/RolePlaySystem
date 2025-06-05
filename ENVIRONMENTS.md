@@ -80,6 +80,7 @@ STORAGE_TYPE=gcs GCS_BUCKET=my-dev-bucket python src/python/run_server.py
 - Restricted CORS to beta frontend URL
 - Medium JWT expiration (3 days)
 - Cloud-only storage (no file system option)
+- Custom domain: `https://beta.rps.cattail-sw.com`
 
 **Required Environment Variables**:
 ```bash
@@ -89,19 +90,28 @@ GCP_PROJECT_ID=<your-project-id>
 
 **Optional Overrides**:
 ```bash
-GCS_BUCKET=roleplay-beta-storage  # Default
+GCS_BUCKET=rps-app-data-beta      # Default (created by Makefile)
 GCS_PREFIX=beta/                   # Default
-FRONTEND_URL=https://beta.example.com
+FRONTEND_URL=https://beta.rps.cattail-sw.com
 LOG_LEVEL=INFO                     # Default
 ```
 
 **Deployment**:
 ```bash
-# Deploy to Cloud Run
-gcloud run deploy roleplay-api-beta \
+# Using Makefile (recommended)
+make deploy ENV=beta
+
+# Or manual deployment
+gcloud run deploy rps-api-beta \
     --set-env-vars="ENV=beta" \
     --set-env-vars="CONFIG_FILE=/app/config/beta.yaml" \
     --set-secrets="JWT_SECRET_KEY=rps-jwt-secret:latest"
+
+# Set up custom domain
+gcloud run domain-mappings create \
+    --service=rps-api-beta \
+    --domain=beta.rps.cattail-sw.com \
+    --region=us-west1
 ```
 
 ## Production Environment
@@ -118,6 +128,7 @@ gcloud run deploy roleplay-api-beta \
 - Long JWT expiration (7 days)
 - Rate limiting enabled
 - Higher performance settings
+- Custom domain: `https://rps.cattail-sw.com`
 
 **Required Environment Variables**:
 ```bash
@@ -127,22 +138,31 @@ GCP_PROJECT_ID=<your-project-id>
 
 **Optional Overrides**:
 ```bash
-GCS_BUCKET=roleplay-prod-storage   # Default
-GCS_PREFIX=prod/                    # Default
-FRONTEND_URL=https://roleplay.example.com
-LOG_LEVEL=WARNING                   # Default
+GCS_BUCKET=rps-app-data-prod      # Default (created by Makefile)
+GCS_PREFIX=prod/                   # Default
+FRONTEND_URL=https://rps.cattail-sw.com
+LOG_LEVEL=WARNING                  # Default
 RATE_LIMIT_ENABLED=true            # Default
 REQUEST_TIMEOUT=30                 # Default (seconds)
 ```
 
 **Deployment**:
 ```bash
-# Deploy to Cloud Run
-gcloud run deploy roleplay-api-prod \
+# Using Makefile (recommended)
+make deploy ENV=prod
+
+# Or manual deployment
+gcloud run deploy rps-api-prod \
     --set-env-vars="ENV=prod" \
     --set-env-vars="CONFIG_FILE=/app/config/prod.yaml" \
     --set-secrets="JWT_SECRET_KEY=rps-jwt-secret:latest" \
     --min-instances=2
+
+# Set up custom domain
+gcloud run domain-mappings create \
+    --service=rps-api-prod \
+    --domain=rps.cattail-sw.com \
+    --region=us-west1
 ```
 
 ## Storage Configuration by Environment
@@ -360,3 +380,38 @@ gcloud auth application-default print-access-token
 5. **Use environment-specific service accounts**
 6. **Keep dev/beta/prod data completely separated**
 7. **Document all environment-specific features**
+
+## Custom Domain Configuration
+
+### DNS Setup
+
+For custom domains, add CNAME records at your DNS provider:
+
+| Environment | Domain | CNAME Target            |
+|-------|--------|-------------------------|
+| Beta | `beta.rps.cattail-sw.com` | `ghs.googlehosted.com.` |
+| Prod | `rps.cattail-sw.com` | `ghs.googlehosted.com.` |
+
+**Note**: If your DNS provider (like cPanel) doesn't support NS records for subdomain delegation, use CNAME records directly as shown above.
+
+### Cloud Run Domain Mapping
+
+After DNS configuration, set up domain mapping in Cloud Run:
+
+```bash
+# Beta
+gcloud run domain-mappings create \
+    --service=rps-api-beta \
+    --domain=beta.rps.cattail-sw.com \
+    --region=us-west1 \
+    --project=rps-beta-461718
+
+# Production
+gcloud run domain-mappings create \
+    --service=rps-api-prod \
+    --domain=rps.cattail-sw.com \
+    --region=us-west1 \
+    --project=YOUR_PROD_PROJECT_ID
+```
+
+Cloud Run automatically provisions and manages SSL certificates for custom domains.

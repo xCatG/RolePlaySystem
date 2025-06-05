@@ -320,5 +320,60 @@ gsutil iam ch serviceAccount:sa-rps@YOUR_PROJECT_ID.iam.gserviceaccount.com:obje
 2. Run `make setup-gcp-infra ENV=beta` to create infrastructure
 3. Add JWT secret to Secret Manager
 4. Deploy with `make deploy ENV=beta`
-5. Set up monitoring dashboards in Cloud Console
-6. Configure alerting for critical metrics
+5. Set up custom domain (see below)
+6. Set up monitoring dashboards in Cloud Console
+7. Configure alerting for critical metrics
+
+## Custom Domain Setup
+
+After deploying to Cloud Run, you'll need to set up custom domains for a professional appearance.
+
+### 1. Configure DNS Records
+
+Add CNAME records at your DNS provider (e.g., cPanel, Cloudflare):
+
+```
+# Beta environment
+beta.rps.cattail-sw.com  CNAME  rps-api-beta-xxxxx.us-west1.run.app
+
+# Production environment  
+rps.cattail-sw.com       CNAME  rps-api-prod-xxxxx.us-west1.run.app
+```
+
+**Note**: If your DNS provider doesn't support NS records for subdomain delegation (common with cPanel), use CNAME records directly as shown above.
+
+### 2. Configure Cloud Run Domain Mapping
+
+Map your custom domain to the Cloud Run service:
+
+```bash
+# For beta
+gcloud run domain-mappings create \
+    --service=rps-api-beta \
+    --domain=beta.rps.cattail-sw.com \
+    --region=us-west1 \
+    --project=rps-beta-461718
+
+# For production
+gcloud run domain-mappings create \
+    --service=rps-api-prod \
+    --domain=rps.cattail-sw.com \
+    --region=us-west1 \
+    --project=YOUR_PROD_PROJECT_ID
+```
+
+### 3. Verify Domain Ownership
+
+Follow the verification steps provided by Cloud Run. This typically involves adding a TXT record to your DNS.
+
+### 4. SSL Certificates
+
+Cloud Run automatically provisions and manages SSL certificates for your custom domains. No additional configuration needed!
+
+### 5. Update CORS Settings
+
+The Makefile already includes the correct CORS settings:
+- Beta: `https://beta.rps.cattail-sw.com`
+- Production: `https://rps.cattail-sw.com`
+
+These will be applied when you deploy.
