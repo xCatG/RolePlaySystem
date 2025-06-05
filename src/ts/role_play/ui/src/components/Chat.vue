@@ -32,6 +32,14 @@
         <input v-model="participantName" type="text" placeholder="Enter your name" />
       </div>
 
+      <div v-if="selectedCharacterId" class="form-group">
+        <label>Chat Mode:</label>
+        <select v-model="chatMode">
+          <option value="standard">Standard Chat</option>
+          <option value="visual-novel">Visual Novel</option>
+        </select>
+      </div>
+
       <button 
         @click="startSession" 
         :disabled="!canStartSession"
@@ -52,11 +60,19 @@
       </div>
     </div>
 
-    <ChatWindow 
-      v-else 
-      :session="activeSession"
-      @close="closeSession"
-    />
+    <div v-else>
+      <VisualNovelChat
+        v-if="chatMode === 'visual-novel'"
+        :session="activeSession"
+        @close="closeSession"
+      />
+      
+      <ChatWindow
+        v-else
+        :session="activeSession"
+        @close="closeSession"
+      />
+    </div>
   </div>
 </template>
 
@@ -64,12 +80,14 @@
 import { defineComponent, ref, computed, onMounted } from 'vue';
 import { chatApi } from '../services/chatApi';
 import ChatWindow from './ChatWindow.vue';
+import VisualNovelChat from './visualNovel/VisualNovelChat.vue';
 import type { ScenarioInfo, CharacterInfo, SessionInfo, CreateSessionResponse } from '../types/chat';
 
 export default defineComponent({
   name: 'Chat',
   components: {
-    ChatWindow
+    ChatWindow,
+    VisualNovelChat
   },
   setup() {
     const scenarios = ref<ScenarioInfo[]>([]);
@@ -78,6 +96,7 @@ export default defineComponent({
     const selectedScenarioId = ref('');
     const selectedCharacterId = ref('');
     const participantName = ref('');
+    const chatMode = ref<'standard' | 'visual-novel'>('standard');
     const activeSession = ref<SessionInfo | null>(null);
     const loading = ref(false);
     const error = ref('');
@@ -176,6 +195,7 @@ export default defineComponent({
       selectedScenarioId,
       selectedCharacterId,
       participantName,
+      chatMode,
       activeSession,
       loading,
       error,
