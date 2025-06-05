@@ -12,7 +12,7 @@ def test_content_loader_loads_scenarios():
     assert isinstance(scenarios, list)
     assert len(scenarios) > 0
     assert all('id' in s for s in scenarios)
-    assert all('title' in s for s in scenarios)
+    assert all('name' in s for s in scenarios)  # Fixed: changed from 'title' to 'name'
 
 
 def test_content_loader_loads_characters():
@@ -51,9 +51,9 @@ def test_content_loader_caching():
     loader = ContentLoader()
     
     # First load
-    data1 = loader.load_data()
+    data1 = loader.load_data("en")
     # Second load should return cached data
-    data2 = loader.load_data()
+    data2 = loader.load_data("en")
     
     # Should be the same object (cached)
     assert data1 is data2
@@ -106,7 +106,7 @@ def test_language_support_initialization():
 
 def test_get_scenarios_by_language():
     """Test filtering scenarios by language."""
-    loader = ContentLoader(supported_languages=["en", "zh-tw", "ja"])
+    loader = ContentLoader(supported_languages=["en", "zh-TW", "ja"])
     
     # Test getting scenarios by language
     # This assumes the actual scenarios.json has language fields
@@ -123,7 +123,7 @@ def test_get_scenarios_by_language():
 
 def test_get_characters_by_language():
     """Test filtering characters by language."""
-    loader = ContentLoader(supported_languages=["en", "zh-tw", "ja"])
+    loader = ContentLoader(supported_languages=["en", "zh-TW", "ja"])
     
     # Test getting characters by language
     try:
@@ -141,11 +141,11 @@ def test_language_validation_with_supported_languages():
     """Test that ContentLoader validates languages when configured."""
     # This test will pass if all scenarios/characters in the actual resource file
     # have supported languages or default to "en"
-    loader = ContentLoader(supported_languages=["en", "zh-tw", "ja"])
+    loader = ContentLoader(supported_languages=["en", "zh-TW", "ja"])
     
     try:
         # Should not raise if all languages are supported
-        data = loader.load_data()
+        data = loader.load_data("en")
         assert "scenarios" in data
         assert "characters" in data
     except FileNotFoundError:

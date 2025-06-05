@@ -1,12 +1,12 @@
 <template>
   <div class="chat-container">
     <div v-if="!activeSession" class="session-setup">
-      <h2>Start a New Roleplay Session</h2>
+      <h2>{{ $t('chat.startSession') }}</h2>
       
       <div class="form-group">
-        <label>Select Scenario:</label>
+        <label>{{ $t('chat.selectScenario') }}:</label>
         <select v-model="selectedScenarioId" @change="onScenarioChange">
-          <option value="">-- Choose a scenario --</option>
+          <option value="">-- {{ $t('chat.selectScenario') }} --</option>
           <option v-for="scenario in scenarios" :key="scenario.id" :value="scenario.id">
             {{ scenario.name }}
           </option>
@@ -18,9 +18,9 @@
       </div>
 
       <div v-if="characters.length > 0" class="form-group">
-        <label>Select Character:</label>
+        <label>{{ $t('chat.selectCharacter') }}:</label>
         <select v-model="selectedCharacterId">
-          <option value="">-- Choose a character --</option>
+          <option value="">-- {{ $t('chat.selectCharacter') }} --</option>
           <option v-for="character in characters" :key="character.id" :value="character.id">
             {{ character.name }}
           </option>
@@ -28,8 +28,8 @@
       </div>
 
       <div v-if="selectedCharacterId" class="form-group">
-        <label>Your Name:</label>
-        <input v-model="participantName" type="text" placeholder="Enter your name" />
+        <label>{{ $t('auth.username') }}:</label>
+        <input v-model="participantName" type="text" :placeholder="$t('auth.username')" />
       </div>
 
       <button 
@@ -37,7 +37,7 @@
         :disabled="!canStartSession"
         class="primary-button"
       >
-        Start Session
+        {{ $t('chat.startSession') }}
       </button>
 
       <div v-if="sessions.length > 0" class="existing-sessions">
@@ -50,6 +50,9 @@
           </li>
         </ul>
       </div>
+      
+      <!-- Error message with internationalization -->
+      <div v-if="error" class="error-message">{{ error }}</div>
     </div>
 
     <ChatWindow 
@@ -62,6 +65,7 @@
 
 <script lang="ts">
 import { defineComponent, ref, computed, onMounted } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { chatApi } from '../services/chatApi';
 import ChatWindow from './ChatWindow.vue';
 import type { ScenarioInfo, CharacterInfo, SessionInfo, CreateSessionResponse } from '../types/chat';
@@ -72,6 +76,8 @@ export default defineComponent({
     ChatWindow
   },
   setup() {
+    const { locale, t } = useI18n();
+    
     const scenarios = ref<ScenarioInfo[]>([]);
     const characters = ref<CharacterInfo[]>([]);
     const sessions = ref<SessionInfo[]>([]);
@@ -81,6 +87,8 @@ export default defineComponent({
     const activeSession = ref<SessionInfo | null>(null);
     const loading = ref(false);
     const error = ref('');
+
+    const currentLanguage = computed(() => locale.value);
 
     const selectedScenario = computed(() => 
       scenarios.value.find(s => s.id === selectedScenarioId.value)
@@ -95,14 +103,15 @@ export default defineComponent({
     const loadInitialData = async () => {
       try {
         loading.value = true;
+        error.value = '';
         const [scenariosData, sessionsData] = await Promise.all([
-          chatApi.getScenarios(),
+          chatApi.getScenarios(currentLanguage.value),
           chatApi.getSessions()
         ]);
         scenarios.value = scenariosData;
         sessions.value = sessionsData;
       } catch (err) {
-        error.value = 'Failed to load data';
+        error.value = t('errors.loadScenariosFailed');
         console.error(err);
       } finally {
         loading.value = false;
@@ -115,9 +124,10 @@ export default defineComponent({
       
       if (selectedScenarioId.value) {
         try {
-          characters.value = await chatApi.getCharacters(selectedScenarioId.value);
+          error.value = '';
+          characters.value = await chatApi.getCharacters(selectedScenarioId.value, currentLanguage.value);
         } catch (err) {
-          error.value = 'Failed to load characters';
+          error.value = t('errors.loadCharactersFailed');
           console.error(err);
         }
       }
@@ -126,6 +136,7 @@ export default defineComponent({
     const startSession = async () => {
       try {
         loading.value = true;
+        error.value = '';
         const createResponse = await chatApi.createSession({
           scenario_id: selectedScenarioId.value,
           character_id: selectedCharacterId.value,
@@ -145,7 +156,7 @@ export default defineComponent({
         
         activeSession.value = sessionInfo;
       } catch (err) {
-        error.value = 'Failed to create session';
+        error.value = t('errors.createSessionFailed');
         console.error(err);
       } finally {
         loading.value = false;
@@ -163,6 +174,17 @@ export default defineComponent({
 
     const getSessionLabel = (session: SessionInfo) => {
       return `${session.participant_name} - ${session.scenario_name} (${new Date(session.created_at).toLocaleDateString()})`;
+    };
+
+    // Handle language changes from parent
+    const handleLanguageChange = async () => {
+      // Clear current selections
+      selectedScenarioId.value = '';
+      selectedCharacterId.value = '';
+      characters.value = [];
+      
+      // Reload content for new language
+      await loadInitialData();
     };
 
     onMounted(() => {
@@ -185,7 +207,8 @@ export default defineComponent({
       startSession,
       loadSession,
       closeSession,
-      getSessionLabel
+      getSessionLabel,
+      handleLanguageChange
     };
   }
 });
@@ -278,5 +301,14 @@ export default defineComponent({
 
 .session-link:hover {
   color: #0056b3;
+}
+
+.error-message {
+  background: #f8d7da;
+  color: #721c24;
+  padding: 12px 16px;
+  border-radius: 6px;
+  margin-top: 20px;
+  border: 1px solid #f5c6cb;
 }
 </style>

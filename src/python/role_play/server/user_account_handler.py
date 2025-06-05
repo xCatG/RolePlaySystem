@@ -7,7 +7,7 @@ from typing import Annotated
 from .base_handler import BaseHandler
 from .dependencies import get_auth_manager, get_current_user
 from ..common.auth import AuthManager
-from ..common.models import User, UserRole, AuthProvider
+from ..common.models import User, UserRole, AuthProvider, UpdateLanguageRequest, UpdateLanguageResponse
 from ..common.exceptions import AuthenticationError, StorageError
 
 
@@ -165,6 +165,59 @@ class UserAccountHandler(BaseHandler):
                     UserResponse: Current user's profile data
                 """
                 return UserResponse(user=current_user)
+            
+            @self._router.patch("/language", response_model=UpdateLanguageResponse)
+            async def update_language_preference(
+                request: UpdateLanguageRequest,
+                current_user: Annotated[User, Depends(get_current_user)],
+                auth_manager: Annotated[AuthManager, Depends(get_auth_manager)]
+            ):
+                """
+                Update user's language preference.
+                
+                Args:
+                    request: Language update request
+                    current_user: Current authenticated user
+                    auth_manager: AuthManager dependency
+                    
+                Returns:
+                    UpdateLanguageResponse: Confirmation of language update
+                    
+                Raises:
+                    HTTPException: If update fails
+                """
+                try:
+                    # Update user's language preference
+                    updated_user = User(
+                        id=current_user.id,
+                        username=current_user.username,
+                        email=current_user.email,
+                        role=current_user.role,
+                        preferred_language=request.language,
+                        created_at=current_user.created_at,
+                        updated_at=current_user.updated_at,
+                        is_active=current_user.is_active
+                    )
+                    
+                    # Save updated user
+                    await auth_manager.storage.save_user(updated_user)
+                    
+                    return UpdateLanguageResponse(
+                        success=True,
+                        language=request.language,
+                        message=f"Language preference updated to {request.language}"
+                    )
+                    
+                except StorageError as e:
+                    raise HTTPException(
+                        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                        detail="Failed to update language preference due to storage error"
+                    )
+                except ValueError as e:
+                    raise HTTPException(
+                        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                        detail=str(e)
+                    )
         
         return self._router
     

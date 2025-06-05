@@ -68,5 +68,5 @@ enabled_handlers:
 # Language configuration
 supported_languages:
   - "en"
-  - "zh-tw"
+  - "zh-TW"
   - "ja"

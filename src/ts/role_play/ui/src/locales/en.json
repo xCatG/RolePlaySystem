@@ -1,0 +1,47 @@
+{
+  "auth": {
+    "login": "Login",
+    "register": "Register",
+    "email": "Email",
+    "password": "Password",
+    "username": "Username",
+    "logout": "Logout",
+    "loginSuccess": "Login successful!",
+    "registerSuccess": "Registration successful!",
+    "logoutSuccess": "Logged out successfully",
+    "loggingIn": "Logging in...",
+    "registering": "Registering...",
+    "loginFailed": "Login failed",
+    "registerFailed": "Registration failed"
+  },
+  "nav": {
+    "title": "Role Play System",
+    "languageSwitch": "Language"
+  },
+  "chat": {
+    "selectScenario": "Select Scenario",
+    "selectCharacter": "Select Character",
+    "startSession": "Start Session",
+    "endSession": "End Session",
+    "typeMessage": "Type your message...",
+    "send": "Send",
+    "noScenarios": "No scenarios available",
+    "noCharacters": "No characters available",
+    "sessionEnded": "Session ended",
+    "exportText": "Export as Text"
+  },
+  "warnings": {
+    "languageSwitch": "Switching language will hide scenarios in the current language until you switch back. Continue?",
+    "confirm": "Confirm",
+    "cancel": "Cancel"
+  },
+  "errors": {
+    "loadScenariosFailed": "Failed to load scenarios",
+    "loadCharactersFailed": "Failed to load characters",
+    "createSessionFailed": "Failed to create session",
+    "sendMessageFailed": "Failed to send message",
+    "endSessionFailed": "Failed to end session",
+    "updateLanguageFailed": "Failed to update language preference",
+    "networkError": "Network error occurred"
+  }
+}
