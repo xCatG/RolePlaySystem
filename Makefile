@@ -9,7 +9,7 @@ DEFAULT_ENV ?= dev
 ENV ?= $(DEFAULT_ENV)
 
 # GCP Region for deployments
-GCP_REGION ?= us-central1
+GCP_REGION ?= us-west1
 
 # Docker Image Configuration
 # ARTIFACT_REGISTRY_REPO: Name of your Artifact Registry repository.
@@ -31,13 +31,14 @@ BACKEND_DIR = src/python
 # These MUST be set in your environment (e.g., export GCP_PROJECT_ID_PROD="your-id")
 # or in an uncommitted .env.mk file (see .PHONY: load-env-mk)
 # Fallback to a placeholder to avoid errors if not set, but deployments will fail.
-GCP_PROJECT_ID_PROD ?= "placeholder-prod-project-id"
-GCP_PROJECT_ID_BETA ?= "placeholder-beta-project-id"
-GCP_PROJECT_ID_DEV  ?= "placeholder-dev-project-id"
+GCP_PROJECT_ID_PROD ?= placeholder-prod-project-id
+GCP_PROJECT_ID_BETA ?= placeholder-beta-project-id
+GCP_PROJECT_ID_DEV ?= placeholder-dev-project-id
 
 TARGET_GCP_PROJECT_ID = ""
 CLOUD_RUN_SERVICE_NAME = ""
 GCS_BUCKET_APP_DATA = ""
+GCS_PREFIX_APP_DATA = ""
 GCS_BUCKET_LOG_EXPORTS = "" # Optional
 CONFIG_FILE_PATH_IN_CONTAINER = ""
 CLOUD_RUN_MIN_INSTANCES = 0
@@ -45,31 +46,35 @@ CLOUD_RUN_MAX_INSTANCES = 10
 LOG_LEVEL_CONFIG = "INFO"
 CORS_ORIGINS_CONFIG = "http://localhost:3000,http://localhost:5173" # Default for local dev
 SERVICE_ACCOUNT_EMAIL = "" # Expected to be set per environment
+API_BASE_URL_FOR_APP = "/api" # Default API prefix for the application
 
 ifeq ($(ENV),prod)
 	TARGET_GCP_PROJECT_ID = $(GCP_PROJECT_ID_PROD)
 	CLOUD_RUN_SERVICE_NAME = $(SERVICE_NAME)-api-prod
 	GCS_BUCKET_APP_DATA = $(SERVICE_NAME)-app-data-prod
+	GCS_PREFIX_APP_DATA = prod/
 	GCS_BUCKET_LOG_EXPORTS = $(SERVICE_NAME)-log-exports-prod
 	CONFIG_FILE_PATH_IN_CONTAINER = /app/config/prod.yaml
 	CLOUD_RUN_MIN_INSTANCES = 1
 	LOG_LEVEL_CONFIG = "WARNING"
-	CORS_ORIGINS_CONFIG = "https://prod.yourdomain.com" # Replace with actual prod frontend URL
+	CORS_ORIGINS_CONFIG = "https://rps.cattail-sw.com" # Replace with actual prod frontend URL
 	SERVICE_ACCOUNT_EMAIL = sa-$(SERVICE_NAME)@$(GCP_PROJECT_ID_PROD).iam.gserviceaccount.com
 else ifeq ($(ENV),beta)
 	TARGET_GCP_PROJECT_ID = $(GCP_PROJECT_ID_BETA)
 	CLOUD_RUN_SERVICE_NAME = $(SERVICE_NAME)-api-beta
 	GCS_BUCKET_APP_DATA = $(SERVICE_NAME)-app-data-beta
+	GCS_PREFIX_APP_DATA = beta/
 	GCS_BUCKET_LOG_EXPORTS = $(SERVICE_NAME)-log-exports-beta
 	CONFIG_FILE_PATH_IN_CONTAINER = /app/config/beta.yaml
 	CLOUD_RUN_MIN_INSTANCES = 0
 	LOG_LEVEL_CONFIG = "INFO"
-	CORS_ORIGINS_CONFIG = "https://beta.yourdomain.com" # Replace with actual beta frontend URL
+	CORS_ORIGINS_CONFIG = "https://beta.rps.cattail-sw.com" # Replace with actual beta frontend URL
 	SERVICE_ACCOUNT_EMAIL = sa-$(SERVICE_NAME)@$(GCP_PROJECT_ID_BETA).iam.gserviceaccount.com
 else # dev (local setup, or deploying a dev instance to cloud)
 	TARGET_GCP_PROJECT_ID = $(GCP_PROJECT_ID_DEV)
 	CLOUD_RUN_SERVICE_NAME = $(SERVICE_NAME)-api-dev
 	GCS_BUCKET_APP_DATA = $(SERVICE_NAME)-app-data-dev
+	GCS_PREFIX_APP_DATA = dev/
 	GCS_BUCKET_LOG_EXPORTS = $(SERVICE_NAME)-log-exports-dev
 	CONFIG_FILE_PATH_IN_CONTAINER = /app/config/dev.yaml
 	CLOUD_RUN_MIN_INSTANCES = 0
@@ -78,8 +83,14 @@ else # dev (local setup, or deploying a dev instance to cloud)
 	SERVICE_ACCOUNT_EMAIL = sa-$(SERVICE_NAME)@$(GCP_PROJECT_ID_DEV).iam.gserviceaccount.com
 endif
 
+# ADK Model configuration (using Vertex AI for cloud environments)
+ADK_MODEL ?= gemini-2.0-flash
+
 # JWT Secret name in Secret Manager (consistent across environments, values differ)
-JWT_SECRET_NAME_IN_SM = $(SERVICE_NAME)-jwt-signing-key
+# Note: The secret NAME in Secret Manager is different from the ENV VAR name
+# Secret Manager name: rps-jwt-secret
+# Environment variable: JWT_SECRET_KEY
+JWT_SECRET_NAME_IN_SM = $(SERVICE_NAME)-jwt-secret
 
 # --- Helper Commands ---
 .PHONY: help
@@ -98,9 +109,9 @@ help:
 	@echo "    NEW_GIT_TAG         : Version for 'make tag-git-release' (e.g., v1.2.3)."
 	@echo "------------------------------------------------------------------------------------"
 	@echo "  MAIN TARGETS:"
-	@echo "    make build-docker         Build the Docker image tagged with $(IMAGE_TAG)."
-	@echo "    make push-docker          Push image $(IMAGE_TAG) to Artifact Registry for current ENV's project."
-	@echo "    make deploy               Build, push, and deploy image $(IMAGE_TAG) to Cloud Run for current ENV."
+	@echo "    make build-docker         Build the Docker image tagged with current IMAGE_TAG."
+	@echo "    make push-docker          Push current IMAGE_TAG to Artifact Registry for current ENV's project."
+	@echo "    make deploy               Build, push, and deploy current IMAGE_TAG to Cloud Run for current ENV."
 	@echo "    make deploy-image IMAGE_TAG=<tag> Deploy a specific existing image tag to Cloud Run for current ENV."
 	@echo "    make run-local-docker     Build and run the container locally for testing."
 	@echo "------------------------------------------------------------------------------------"
@@ -117,9 +128,12 @@ help:
 
 # Attempt to load .env.mk for local overrides of GCP_PROJECT_ID_* etc.
 # This file should be in .gitignore
+-include .env.mk
+
 .PHONY: load-env-mk
 load-env-mk:
-	$(eval -include .env.mk)
+	@# This target is now just a dependency placeholder
+	@# The actual include happens at the top level above
 
 # Call load-env-mk before most targets that need these variables.
 # This ensures .env.mk is sourced if present.
@@ -141,10 +155,12 @@ list-config:
 	@echo "IMAGE_NAME_BASE (for push):   $(IMAGE_NAME_BASE)"
 	@echo "IMAGE_TAG (for build/push):   $(IMAGE_TAG)"
 	@echo "GCS_BUCKET_APP_DATA:          $(GCS_BUCKET_APP_DATA)"
+	@echo "GCS_PREFIX_APP_DATA:          $(GCS_PREFIX_APP_DATA)"
 	@echo "GCS_BUCKET_LOG_EXPORTS:       $(GCS_BUCKET_LOG_EXPORTS)"
 	@echo "CONFIG_FILE_PATH_IN_CONTAINER:$(CONFIG_FILE_PATH_IN_CONTAINER)"
 	@echo "JWT_SECRET_NAME_IN_SM:        $(JWT_SECRET_NAME_IN_SM)"
 	@echo "SERVICE_ACCOUNT_EMAIL:        $(SERVICE_ACCOUNT_EMAIL)"
+	@echo "API_BASE_URL_FOR_APP:         $(API_BASE_URL_FOR_APP)"
 	@echo "-------------------------------------------"
 	@if [ "$(TARGET_GCP_PROJECT_ID)" = "placeholder-prod-project-id" ] || \
 	   [ "$(TARGET_GCP_PROJECT_ID)" = "placeholder-beta-project-id" ] || \
@@ -158,14 +174,26 @@ list-config:
 .PHONY: build-docker
 build-docker:
 	@make list-config
-	@echo "Building Docker image $(IMAGE_NAME_BASE):$(IMAGE_TAG)..."
-	@docker build -t $(IMAGE_NAME_BASE):$(IMAGE_TAG) -f Dockerfile .
-	@echo "Docker image $(IMAGE_NAME_BASE):$(IMAGE_TAG) built."
+	@# Determine build tag based on whether TARGET_GCP_PROJECT_ID is a placeholder
+	@if echo "$(TARGET_GCP_PROJECT_ID)" | grep -q "placeholder"; then \
+		echo "Building Docker image rps-local:$(IMAGE_TAG) (local only - no GCP project set)..."; \
+		docker build -t rps-local:$(IMAGE_TAG) -f Dockerfile .; \
+	else \
+		echo "Building Docker image $(IMAGE_NAME_BASE):$(IMAGE_TAG)..."; \
+		docker build -t $(IMAGE_NAME_BASE):$(IMAGE_TAG) -f Dockerfile .; \
+	fi
+	@echo "Docker image built."
 
 # --- Push Target ---
 .PHONY: push-docker
 push-docker: build-docker
 	@make list-config
+	@# Check if we're using a placeholder project ID
+	@if echo "$(TARGET_GCP_PROJECT_ID)" | grep -q "placeholder"; then \
+		echo "ERROR: Cannot push to Artifact Registry with placeholder project ID."; \
+		echo "Please set GCP_PROJECT_ID_$(shell echo $(ENV) | tr '[:lower:]' '[:upper:]') in .env.mk or environment."; \
+		exit 1; \
+	fi
 	@echo "Authenticating Docker with Artifact Registry for $(GCP_REGION)..."
 	@gcloud auth configure-docker $(GCP_REGION)-docker.pkg.dev --project=$(TARGET_GCP_PROJECT_ID)
 	@echo "Pushing Docker image $(IMAGE_NAME_BASE):$(IMAGE_TAG) to Artifact Registry..."
@@ -173,38 +201,37 @@ push-docker: build-docker
 	@echo "Docker image pushed."
 
 # --- Deploy Targets ---
+# Comma-separated list of environment variables for Cloud Run
+CLOUD_RUN_ENV_VARS_LIST = \
+	ENV=$(ENV),\
+	GCP_PROJECT_ID=$(TARGET_GCP_PROJECT_ID),\
+	GCS_BUCKET=$(GCS_BUCKET_APP_DATA),\
+	GCS_PREFIX=$(GCS_PREFIX_APP_DATA),\
+	CONFIG_FILE=$(CONFIG_FILE_PATH_IN_CONTAINER),\
+	LOG_LEVEL=$(LOG_LEVEL_CONFIG),\
+	CORS_ALLOWED_ORIGINS='$(CORS_ORIGINS_CONFIG)',\
+	PYTHONUNBUFFERED=1,\
+	GIT_VERSION=$(IMAGE_TAG),\
+	SERVICE_NAME=$(SERVICE_NAME),\
+	API_BASE_URL=$(API_BASE_URL_FOR_APP),\
+	GOOGLE_GENAI_USE_VERTEXAI=TRUE,\
+	GOOGLE_CLOUD_PROJECT=$(TARGET_GCP_PROJECT_ID),\
+	GOOGLE_CLOUD_LOCATION=us-central1,\
+	ADK_MODEL=$(ADK_MODEL)
+
 .PHONY: deploy
 deploy: push-docker
-	@make list-config
-	@echo "Deploying $(CLOUD_RUN_SERVICE_NAME) to Cloud Run in $(GCP_REGION) from image $(IMAGE_NAME_BASE):$(IMAGE_TAG)..."
-	@gcloud run deploy $(CLOUD_RUN_SERVICE_NAME) \
-		--image $(IMAGE_NAME_BASE):$(IMAGE_TAG) \
-		--platform managed \
-		--region $(GCP_REGION) \
-		--allow-unauthenticated \
-		--port 8080 \
-		--service-account=$(SERVICE_ACCOUNT_EMAIL) \
-		--set-env-vars="ENV=$(ENV)" \
-		--set-env-vars="GCP_PROJECT_ID=$(TARGET_GCP_PROJECT_ID)" \
-		--set-env-vars="GCS_BUCKET=$(GCS_BUCKET_APP_DATA)" \
-		--set-env-vars="GCS_PREFIX=$(ENV)/" \
-		--set-env-vars="CONFIG_FILE=$(CONFIG_FILE_PATH_IN_CONTAINER)" \
-		--set-env-vars="LOG_LEVEL=$(LOG_LEVEL_CONFIG)" \
-		--set-env-vars="CORS_ALLOWED_ORIGINS=$(CORS_ORIGINS_CONFIG)" \
-		--set-env-vars="PYTHONUNBUFFERED=1" \
-		--set-env-vars="GIT_VERSION=$(GIT_VERSION)" \
-		--set-env-vars="SERVICE_NAME=$(SERVICE_NAME)" \
-		--set-secrets="JWT_SECRET_KEY=$(JWT_SECRET_NAME_IN_SM):latest" \
-		--min-instances=$(CLOUD_RUN_MIN_INSTANCES) \
-		--max-instances=$(CLOUD_RUN_MAX_INSTANCES) \
-		--concurrency=80 \
-		--project=$(TARGET_GCP_PROJECT_ID)
-	@echo "Deployment of $(CLOUD_RUN_SERVICE_NAME) complete."
-	@echo "Service URL: $$(gcloud run services describe $(CLOUD_RUN_SERVICE_NAME) --platform managed --region $(GCP_REGION) --project=$(TARGET_GCP_PROJECT_ID) --format 'value(status.url)')"
+	@make deploy-image IMAGE_TAG=$(IMAGE_TAG) # Calls deploy-image with the current default IMAGE_TAG
 
 .PHONY: deploy-image
-deploy-image: # Expects ENV and IMAGE_TAG (for the specific image) to be set
-	@make list-config # IMAGE_TAG will be shown as the one passed on cmd line
+deploy-image: load-env-mk # Added dependency
+	@make list-config # IMAGE_TAG will be shown as the one passed on cmd line or default
+	@# Check if we're using a placeholder project ID
+	@if echo "$(TARGET_GCP_PROJECT_ID)" | grep -q "placeholder"; then \
+		echo "ERROR: Cannot deploy with placeholder project ID."; \
+		echo "Please set GCP_PROJECT_ID_$(shell echo $(ENV) | tr '[:lower:]' '[:upper:]') in .env.mk or environment."; \
+		exit 1; \
+	fi
 	@echo "Deploying $(CLOUD_RUN_SERVICE_NAME) to Cloud Run in $(GCP_REGION) from existing image $(IMAGE_NAME_BASE):$(IMAGE_TAG)..."
 	@gcloud run deploy $(CLOUD_RUN_SERVICE_NAME) \
 		--image $(IMAGE_NAME_BASE):$(IMAGE_TAG) \
@@ -213,16 +240,7 @@ deploy-image: # Expects ENV and IMAGE_TAG (for the specific image) to be set
 		--allow-unauthenticated \
 		--port 8080 \
 		--service-account=$(SERVICE_ACCOUNT_EMAIL) \
-		--set-env-vars="ENV=$(ENV)" \
-		--set-env-vars="GCP_PROJECT_ID=$(TARGET_GCP_PROJECT_ID)" \
-		--set-env-vars="GCS_BUCKET=$(GCS_BUCKET_APP_DATA)" \
-		--set-env-vars="GCS_PREFIX=$(ENV)/" \
-		--set-env-vars="CONFIG_FILE=$(CONFIG_FILE_PATH_IN_CONTAINER)" \
-		--set-env-vars="LOG_LEVEL=$(LOG_LEVEL_CONFIG)" \
-		--set-env-vars="CORS_ALLOWED_ORIGINS=$(CORS_ORIGINS_CONFIG)" \
-		--set-env-vars="PYTHONUNBUFFERED=1" \
-		--set-env-vars="GIT_VERSION=$(IMAGE_TAG)" \
-		--set-env-vars="SERVICE_NAME=$(SERVICE_NAME)" \
+		--set-env-vars="$(CLOUD_RUN_ENV_VARS_LIST)" \
 		--set-secrets="JWT_SECRET_KEY=$(JWT_SECRET_NAME_IN_SM):latest" \
 		--min-instances=$(CLOUD_RUN_MIN_INSTANCES) \
 		--max-instances=$(CLOUD_RUN_MAX_INSTANCES) \
@@ -234,22 +252,28 @@ deploy-image: # Expects ENV and IMAGE_TAG (for the specific image) to be set
 # --- Local Development ---
 .PHONY: run-local-docker
 run-local-docker: build-docker
-	@echo "Running Docker container $(IMAGE_NAME_BASE):$(IMAGE_TAG) locally..."
+	@echo "Running Docker container locally..."
 	@echo "Access at http://localhost:8080"
-	@docker run -it --rm -p 8080:8080 \
+	@# Determine which image to run based on whether we have a real project ID
+	@if echo "$(TARGET_GCP_PROJECT_ID)" | grep -q "placeholder"; then \
+		IMAGE_TO_RUN="rps-local:$(IMAGE_TAG)"; \
+	else \
+		IMAGE_TO_RUN="$(IMAGE_NAME_BASE):$(IMAGE_TAG)"; \
+	fi; \
+	docker run -it --rm -p 8080:8080 \
 		-e ENV=dev \
 		-e GCP_PROJECT_ID=$(GCP_PROJECT_ID_DEV) \
 		-e GCS_BUCKET=$(SERVICE_NAME)-app-data-dev \
 		-e GCS_PREFIX=dev/ \
 		-e CONFIG_FILE=/app/config/dev.yaml \
 		-e LOG_LEVEL=DEBUG \
-		-e CORS_ALLOWED_ORIGINS="http://localhost:5173,http://localhost:3000" \
+		-e CORS_ALLOWED_ORIGINS="http://localhost:5173,http://localhost:3000,http://localhost:8080" \
 		-e JWT_SECRET_KEY="development-secret-key-do-not-use-in-production" \
 		-e PYTHONUNBUFFERED=1 \
 		-e GIT_VERSION=$(GIT_VERSION) \
 		-e SERVICE_NAME=$(SERVICE_NAME) \
 		-e PORT=8080 \
-		$(IMAGE_NAME_BASE):$(IMAGE_TAG)
+		$$IMAGE_TO_RUN
 
 # --- Release Management ---
 .PHONY: tag-git-release
@@ -267,13 +291,19 @@ endif
 
 # --- GCP Setup ---
 .PHONY: setup-gcp-infra
-setup-gcp-infra: # Expects ENV to be set to determine TARGET_GCP_PROJECT_ID etc.
+setup-gcp-infra: load-env-mk # Added load-env-mk dependency
 	@make list-config
-	@echo "--- Attempting to setup GCP infrastructure for ENV=$(ENV) in project $(TARGET_GCP_PROJECT_ID) ---"
+	@# Check if we're using a placeholder project ID
+	@if echo "$(TARGET_GCP_PROJECT_ID)" | grep -q "placeholder"; then \
+		echo "ERROR: Cannot setup GCP infrastructure with placeholder project ID."; \
+		echo "Please set GCP_PROJECT_ID_$(shell echo $(ENV) | tr '[:lower:]' '[:upper:]') in .env.mk or environment."; \
+		exit 1; \
+	fi
+	@echo "--- Setting up GCP infrastructure for ENV=$(ENV) in project $(TARGET_GCP_PROJECT_ID) ---"
 	@echo "This is best-effort. Manual verification in GCP Console is recommended."
 	@echo ""
 	@echo "Ensuring necessary APIs are enabled..."
-	@gcloud services enable run.googleapis.com artifactregistry.googleapis.com secretmanager.googleapis.com storage.googleapis.com iam.googleapis.com cloudbuild.googleapis.com --project=$(TARGET_GCP_PROJECT_ID) || echo "Failed to enable some APIs or already enabled."
+	@gcloud services enable run.googleapis.com artifactregistry.googleapis.com secretmanager.googleapis.com storage.googleapis.com iam.googleapis.com cloudbuild.googleapis.com aiplatform.googleapis.com --project=$(TARGET_GCP_PROJECT_ID) || echo "Failed to enable some APIs or already enabled."
 	@echo ""
 	@echo "Creating GCS bucket for App Data: gs://$(GCS_BUCKET_APP_DATA)..."
 	@gsutil mb -p $(TARGET_GCP_PROJECT_ID) -l $(GCP_REGION) gs://$(GCS_BUCKET_APP_DATA) || echo "Bucket already exists or failed to create."
@@ -284,14 +314,16 @@ setup-gcp-infra: # Expects ENV to be set to determine TARGET_GCP_PROJECT_ID etc.
 	@gcloud artifacts repositories create $(ARTIFACT_REGISTRY_REPO) --project=$(TARGET_GCP_PROJECT_ID) \
 		--repository-format=docker --location=$(GCP_REGION) --description="Docker images for $(SERVICE_NAME)" || echo "Repository already exists or failed to create."
 	@echo ""
-	@echo "Creating Service Account '$(SERVICE_ACCOUNT_EMAIL)'..."
-	@gcloud iam service-accounts create sa-$(SERVICE_NAME) --display-name="$(SERVICE_NAME) Application Service Account" --project=$(TARGET_GCP_PROJECT_ID) || echo "Service account sa-$(SERVICE_NAME) already exists or failed to create."
+	@SA_NAME=sa-$(SERVICE_NAME); \
+	echo "Creating Service Account '$$SA_NAME' (full email: $(SERVICE_ACCOUNT_EMAIL))..."; \
+	gcloud iam service-accounts create $$SA_NAME --display-name="$(SERVICE_NAME) Application Service Account" --project=$(TARGET_GCP_PROJECT_ID) || echo "Service account $$SA_NAME already exists or failed to create."
 	@echo ""
 	@echo "Creating Secret Manager secret container for JWT key: '$(JWT_SECRET_NAME_IN_SM)'..."
 	@gcloud secrets create $(JWT_SECRET_NAME_IN_SM) --project=$(TARGET_GCP_PROJECT_ID) \
-		--replication-policy="automatic" --description="JWT signing key for $(SERVICE_NAME) $(ENV) environment" || echo "Secret container already exists or failed to create."
-	@echo "IMPORTANT: You must add the actual secret value (version) to '$(JWT_SECRET_NAME_IN_SM)' manually or via script."
-	@echo "Example: echo -n \"your-secure-random-string\" | gcloud secrets versions add $(JWT_SECRET_NAME_IN_SM) --data-file=- --project=$(TARGET_GCP_PROJECT_ID)"
+		--replication-policy="automatic" || echo "Secret container already exists or failed to create."
+	@echo ""
+	@echo "IMPORTANT: You must add the actual secret value (version) to '$(JWT_SECRET_NAME_IN_SM)' manually:"
+	@echo "  echo -n \"\$$(openssl rand -base64 32)\" | gcloud secrets versions add $(JWT_SECRET_NAME_IN_SM) --data-file=- --project=$(TARGET_GCP_PROJECT_ID)"
 	@echo ""
 	@echo "Granting Service Account '$(SERVICE_ACCOUNT_EMAIL)' access to the JWT secret..."
 	@gcloud secrets add-iam-policy-binding $(JWT_SECRET_NAME_IN_SM) --project=$(TARGET_GCP_PROJECT_ID) \
@@ -301,7 +333,12 @@ setup-gcp-infra: # Expects ENV to be set to determine TARGET_GCP_PROJECT_ID etc.
 	@gsutil iam ch serviceAccount:$(SERVICE_ACCOUNT_EMAIL):objectAdmin gs://$(GCS_BUCKET_APP_DATA) || echo "Failed to grant GCS app data bucket access."
 	@gsutil iam ch serviceAccount:$(SERVICE_ACCOUNT_EMAIL):objectAdmin gs://$(GCS_BUCKET_LOG_EXPORTS) || echo "Failed to grant GCS log exports bucket access."
 	@echo ""
-	@echo "--- GCP Infrastructure setup attempt for ENV=$(ENV) complete. Please verify. ---"
+	@echo "Granting Service Account '$(SERVICE_ACCOUNT_EMAIL)' Vertex AI access..."
+	@gcloud projects add-iam-policy-binding $(TARGET_GCP_PROJECT_ID) \
+		--member="serviceAccount:$(SERVICE_ACCOUNT_EMAIL)" \
+		--role="roles/aiplatform.user" || echo "Failed to grant Vertex AI access or already granted."
+	@echo ""
+	@echo "--- GCP Infrastructure setup for ENV=$(ENV) complete. Please verify in Console. ---"
 
 # --- Utilities ---
 .PHONY: logs
@@ -313,3 +350,11 @@ logs:
 
 # Default target
 .DEFAULT_GOAL := help
+
+# Example .env.mk file (DO NOT COMMIT THIS FILE - add to .gitignore)
+# Create this file in your project root to set your actual GCP Project IDs.
+#
+# GCP_PROJECT_ID_PROD=your-actual-prod-project-id
+# GCP_PROJECT_ID_BETA=your-actual-beta-project-id
+# GCP_PROJECT_ID_DEV=your-actual-dev-project-id
+# SERVICE_NAME=rps # Can also be set here if you don't want to pass it on cmd line

@@ -82,13 +82,14 @@ def _validate_configuration(config) -> None:
         config: Server configuration to validate
         
     Raises:
-        FileNotFoundError: If storage path doesn't exist
-        NotADirectoryError: If storage path is not a directory
-        PermissionError: If storage path is not readable/writable
-        ValueError: If storage type is unsupported
+        FileNotFoundError: If storage path doesn't exist (for file storage)
+        NotADirectoryError: If storage path is not a directory (for file storage)
+        PermissionError: If storage path is not readable/writable (for file storage)
+        ValueError: If required environment variables are missing
     """
     import os
     
+    # Only validate file paths for file storage
     if config.storage_type == "file":
         # Validate storage path exists
         if not os.path.exists(config.storage_path):
@@ -104,7 +105,13 @@ def _validate_configuration(config) -> None:
             raise PermissionError(
                 f"Storage path '{config.storage_path}' is not readable/writable."
             )
-    elif config.storage_type != "file":
+    elif config.storage_type == "gcs":
+        # For GCS, just validate that required env vars are present
+        if not os.getenv("GCP_PROJECT_ID"):
+            raise ValueError("GCP_PROJECT_ID environment variable is required for GCS storage")
+        if not os.getenv("GCS_BUCKET"):
+            raise ValueError("GCS_BUCKET environment variable is required for GCS storage")
+    elif config.storage_type not in ["file", "gcs", "s3"]:
         raise ValueError(f"Unsupported storage type: {config.storage_type}")
     
     # Validate JWT secret in production

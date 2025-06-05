@@ -101,7 +101,7 @@ LOG_LEVEL=INFO                     # Default
 gcloud run deploy roleplay-api-beta \
     --set-env-vars="ENV=beta" \
     --set-env-vars="CONFIG_FILE=/app/config/beta.yaml" \
-    --set-secrets="JWT_SECRET_KEY=jwt-secret-key:latest"
+    --set-secrets="JWT_SECRET_KEY=rps-jwt-secret:latest"
 ```
 
 ## Production Environment
@@ -141,7 +141,7 @@ REQUEST_TIMEOUT=30                 # Default (seconds)
 gcloud run deploy roleplay-api-prod \
     --set-env-vars="ENV=prod" \
     --set-env-vars="CONFIG_FILE=/app/config/prod.yaml" \
-    --set-secrets="JWT_SECRET_KEY=jwt-secret-key:latest" \
+    --set-secrets="JWT_SECRET_KEY=rps-jwt-secret:latest" \
     --min-instances=2
 ```
 

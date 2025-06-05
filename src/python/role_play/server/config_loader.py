@@ -192,7 +192,18 @@ class ConfigLoader:
         
         # Determine and validate environment
         if environment is None:
-            environment = os.getenv("ENVIRONMENT", "dev")
+            # Check CONFIG_FILE first, then ENV, then ENVIRONMENT, then default to dev
+            config_file = os.getenv("CONFIG_FILE")
+            if config_file:
+                # Extract environment from config file path (e.g., /app/config/beta.yaml -> beta)
+                import re
+                match = re.search(r'/(\w+)\.yaml$', config_file)
+                if match:
+                    environment = match.group(1)
+                else:
+                    environment = "dev"
+            else:
+                environment = os.getenv("ENV", os.getenv("ENVIRONMENT", "dev"))
         
         try:
             env_enum = Environment(environment)
