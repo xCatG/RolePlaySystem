@@ -7,7 +7,7 @@
         
         <!-- Desktop Navigation -->
         <nav v-if="user" class="desktop-nav">
-          <LanguageSwitcher @language-changed="handleLanguageChange" />
+          <LanguageSwitcher :token="token" @language-changed="handleLanguageChange" />
           <div class="user-info">
             <span class="user-name">{{ user.username }}</span>
             <span class="user-role">{{ user.role }}</span>
@@ -158,8 +158,8 @@ export default {
     LanguageSwitcher
   },
   setup() {
-    const { t } = useI18n()
-    return { t }
+    const { t, locale } = useI18n()
+    return { t, locale }
   },
   data() {
     return {
@@ -224,7 +224,8 @@ export default {
         const response = await authApi.register({
           username: this.registerForm.username,
           email: this.registerForm.email,
-          password: this.registerForm.password
+          password: this.registerForm.password,
+          preferred_language: this.locale
         })
         
         this.token = response.access_token
@@ -264,9 +265,15 @@ export default {
       this.showMobileMenu = !this.showMobileMenu
     },
     
-    handleLanguageChange() {
+    handleLanguageChange(newLanguage) {
       // Close mobile menu if open
       this.showMobileMenu = false
+      
+      // Update user object with new language preference
+      if (this.user) {
+        this.user.preferred_language = newLanguage
+      }
+      
       // Trigger chat component to reload content
       if (this.$refs.chatComponent) {
         this.$refs.chatComponent.handleLanguageChange()

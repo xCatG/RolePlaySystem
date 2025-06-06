@@ -16,6 +16,7 @@ class RegisterRequest(BaseModel):
     username: str
     email: EmailStr
     password: str
+    preferred_language: str = "en"
 
 
 class LoginRequest(BaseModel):
@@ -70,11 +71,16 @@ class UserAccountHandler(BaseHandler):
                 Raises:
                     HTTPException: If registration fails
                 """
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.info(f"Registration request: username={request.username}, email={request.email}, language={request.preferred_language}")
+                
                 try:
                     user, token = await auth_manager.register_user(
                         username=request.username,
                         email=request.email,
-                        password=request.password
+                        password=request.password,
+                        preferred_language=request.preferred_language
                     )
                     
                     return AuthResponse(
@@ -200,7 +206,7 @@ class UserAccountHandler(BaseHandler):
                     )
                     
                     # Save updated user
-                    await auth_manager.storage.save_user(updated_user)
+                    await auth_manager.storage.update_user(updated_user)
                     
                     return UpdateLanguageResponse(
                         success=True,

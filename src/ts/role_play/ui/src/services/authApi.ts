@@ -10,6 +10,7 @@ export interface RegisterRequest {
   username: string;
   email: string;
   password: string;
+  preferred_language?: string;
 }
 
 export interface AuthResponse {
@@ -20,6 +21,7 @@ export interface AuthResponse {
     username: string;
     email: string;
     role: string;
+    preferred_language: string;
   };
 }
 
@@ -29,9 +31,20 @@ export interface UserResponse {
     username: string;
     email: string;
     role: string;
+    preferred_language: string;
     created_at: string;
     updated_at: string;
   };
+}
+
+export interface UpdateLanguageRequest {
+  language: string;
+}
+
+export interface UpdateLanguageResponse {
+  success: boolean;
+  language: string;
+  message: string;
 }
 
 export const authApi = {
@@ -57,6 +70,20 @@ export const authApi = {
       {
         headers: {
           Authorization: `Bearer ${token}`
+        }
+      }
+    );
+    return response.data;
+  },
+
+  async updateLanguagePreference(token: string, request: UpdateLanguageRequest): Promise<UpdateLanguageResponse> {
+    const response = await axios.patch<UpdateLanguageResponse>(
+      apiUrl('/auth/language'),
+      request,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
         }
       }
     );

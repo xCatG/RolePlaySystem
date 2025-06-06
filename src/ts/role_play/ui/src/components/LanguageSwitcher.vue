@@ -27,10 +27,14 @@
 import { ref, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import ConfirmModal from './ConfirmModal.vue'
-import { userApi } from '../services/userApi'
+import { authApi } from '../services/authApi'
 
 const emit = defineEmits<{
   'language-changed': [language: string]
+}>()
+
+const props = defineProps<{
+  token?: string
 }>()
 
 const { locale, t } = useI18n()
@@ -69,8 +73,10 @@ const confirmLanguageChange = async () => {
     // Store in localStorage
     localStorage.setItem('language', pendingLanguage.value)
     
-    // Update backend user preference
-    await userApi.updateLanguagePreference(pendingLanguage.value)
+    // Update backend user preference if logged in
+    if (props.token) {
+      await authApi.updateLanguagePreference(props.token, { language: pendingLanguage.value })
+    }
     
     // Emit event to trigger content reload
     emit('language-changed', pendingLanguage.value)
