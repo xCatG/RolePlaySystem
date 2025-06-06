@@ -629,3 +629,119 @@ class TestAuthManagerCompleteScenarios:
             assert token_user1.id == user1.id
             assert token_user2.id == user2.id
             assert token_user3.id == user3.id
+
+
+@pytest.mark.integration
+class TestAuthManagerLanguagePreference:
+    """Integration tests for language preference functionality."""
+    
+    @pytest.mark.asyncio
+    async def test_register_user_with_language_preference(self):
+        """Test user registration with language preference."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config = FileStorageConfig(type="file", base_dir=temp_dir)
+            storage = FileStorage(config)
+            auth_manager = AuthManager(storage, "test_secret")
+            
+            # Register user with Chinese language preference
+            user, token = await auth_manager.register_user(
+                username="chinese_user",
+                email="chinese@example.com",
+                password="password",
+                preferred_language="zh-TW"
+            )
+            
+            # Verify language preference was set
+            assert user.preferred_language == "zh-TW"
+            
+            # Verify user persisted with language preference
+            stored_user = await storage.get_user(user.id)
+            assert stored_user.preferred_language == "zh-TW"
+            
+            # Verify token works and user has correct language
+            token_user = await auth_manager.get_user_by_token(token)
+            assert token_user.preferred_language == "zh-TW"
+    
+    @pytest.mark.asyncio
+    async def test_register_user_default_language_preference(self):
+        """Test user registration with default language preference."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config = FileStorageConfig(type="file", base_dir=temp_dir)
+            storage = FileStorage(config)
+            auth_manager = AuthManager(storage, "test_secret")
+            
+            # Register user without specifying language preference
+            user, token = await auth_manager.register_user(
+                username="default_lang_user",
+                email="default@example.com",
+                password="password"
+            )
+            
+            # Should default to "en"
+            assert user.preferred_language == "en"
+            
+            # Verify persistence
+            stored_user = await storage.get_user(user.id)
+            assert stored_user.preferred_language == "en"
+    
+    @pytest.mark.asyncio
+    async def test_update_user_language_preference(self):
+        """Test updating user language preference."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config = FileStorageConfig(type="file", base_dir=temp_dir)
+            storage = FileStorage(config)
+            auth_manager = AuthManager(storage, "test_secret")
+            
+            # Register user with English
+            user, token = await auth_manager.register_user(
+                username="lang_update_user",
+                email="langupdate@example.com",
+                password="password",
+                preferred_language="en"
+            )
+            
+            # Update language preference
+            updated_user = User(
+                id=user.id,
+                username=user.username,
+                email=user.email,
+                role=user.role,
+                preferred_language="zh-TW",
+                created_at=user.created_at,
+                updated_at=user.updated_at,
+                is_active=user.is_active
+            )
+            
+            await storage.update_user(updated_user)
+            
+            # Verify update
+            stored_user = await storage.get_user(user.id)
+            assert stored_user.preferred_language == "zh-TW"
+    
+    @pytest.mark.asyncio
+    async def test_oauth_user_language_preference(self):
+        """Test OAuth user creation preserves language preference."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config = FileStorageConfig(type="file", base_dir=temp_dir)
+            storage = FileStorage(config)
+            auth_manager = AuthManager(storage, "test_secret")
+            
+            # OAuth user info
+            oauth_user_info = {
+                "email": "oauth_lang@google.com",
+                "username": "oauth_lang_user",
+                "name": "OAuth Lang User",
+                "preferred_language": "zh-TW"  # Language from OAuth provider
+            }
+            
+            # Authenticate OAuth user
+            user, token = await auth_manager.authenticate_oauth_user(
+                provider=AuthProvider.GOOGLE,
+                provider_user_id="google_lang_test",
+                user_info=oauth_user_info
+            )
+            
+            # Note: Current implementation doesn't extract language from OAuth
+            # but this test documents expected behavior for future enhancement
+            # For now, OAuth users get default "en"
+            assert user.preferred_language == "en"

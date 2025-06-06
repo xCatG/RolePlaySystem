@@ -65,6 +65,7 @@ class User(BaseModel):
     id: str
     email: str
     role: UserRole
+    preferred_language: str = "en"
     created_at: datetime
 ```
 
@@ -74,6 +75,7 @@ interface User {
   id: string;
   email: string;
   role: UserRole;
+  preferred_language: string;
   createdAt: string;  // ISO 8601 UTC
 }
 ```
@@ -235,4 +237,72 @@ export default {
 ### Type Checking
 ```bash
 npm run type-check  # Run TypeScript compiler without emit
+```
+
+## Internationalization (i18n)
+
+### Vue i18n Setup
+```typescript
+// main.ts
+import { createI18n } from 'vue-i18n'
+import en from './locales/en.json'
+import zhTW from './locales/zh-TW.json'
+
+const i18n = createI18n({
+  locale: 'en',
+  fallbackLocale: 'en',
+  messages: { en, 'zh-TW': zhTW }
+})
+```
+
+### Language Management
+```typescript
+// Language preference sync with backend
+async function updateLanguagePreference(language: string) {
+  // Update Vue i18n locale
+  i18n.global.locale.value = language
+  
+  // Persist to localStorage
+  localStorage.setItem('language', language)
+  
+  // Sync with backend if authenticated
+  if (authStore.token) {
+    await authApi.updateLanguagePreference(authStore.token, { language })
+    authStore.user.preferred_language = language
+  }
+}
+```
+
+### Component Localization
+```vue
+<template>
+  <div>
+    <h1>{{ $t('nav.title') }}</h1>
+    <p>{{ $t('chat.welcomeMessage') }}</p>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { useI18n } from 'vue-i18n'
+const { t, locale } = useI18n()
+</script>
+```
+
+### Language-Specific API Types
+```typescript
+// Language preference API types
+interface UpdateLanguageRequest {
+  language: string;  // IETF BCP 47 format: "en", "zh-TW"
+}
+
+interface UpdateLanguageResponse {
+  success: boolean;
+  language: string;
+  message: string;
+}
+
+// Content API with language support
+interface GetScenariosParams {
+  language?: string;  // Filter scenarios by language
+}
 ```

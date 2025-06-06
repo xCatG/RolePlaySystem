@@ -16,6 +16,7 @@ class UserFactory:
         username: Optional[str] = None,
         email: Optional[str] = None,
         role: UserRole = UserRole.USER,
+        preferred_language: str = "en",
         is_active: bool = True,
         **kwargs
     ) -> User:
@@ -26,6 +27,7 @@ class UserFactory:
             username=username or f"user_{uuid.uuid4().hex[:8]}",
             email=email or f"test_{uuid.uuid4().hex[:8]}@example.com",
             role=role,
+            preferred_language=preferred_language,
             created_at=kwargs.get("created_at", now),
             updated_at=kwargs.get("updated_at", now),
             is_active=is_active
