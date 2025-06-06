@@ -6,7 +6,8 @@ from functools import lru_cache
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from typing import Annotated, Set
-from google.adk.sessions import InMemorySessionService
+# Lazy import to avoid metadata service timeout during startup
+# from google.adk.sessions import InMemorySessionService
 
 from ..common.auth import AuthManager
 from ..common.storage import StorageBackend, FileStorage, FileStorageConfig, LockConfig
@@ -199,8 +200,10 @@ def get_chat_logger(
 
 
 @lru_cache(maxsize=None)
-def get_adk_session_service() -> InMemorySessionService:
+def get_adk_session_service():
     """
     Provides a singleton instance of ADK's InMemorySessionService.
+    Uses lazy import to avoid startup delays from metadata service timeouts.
     """
+    from google.adk.sessions import InMemorySessionService
     return InMemorySessionService()

@@ -1,14 +1,17 @@
 """Chat handler for roleplay conversations - Simplified & Stateless."""
-from typing import List, Annotated, Dict, Optional
+from typing import List, Annotated, Dict, Optional, TYPE_CHECKING
 from fastapi import HTTPException, Depends, APIRouter
 from fastapi.responses import PlainTextResponse
-from google.adk.runners import Runner
-from google.adk.agents import Agent
-from google.adk.sessions import InMemorySessionService
-from google.genai.types import Content, Part
 import logging
 import os
 from pathlib import Path
+
+# Lazy imports for google.adk to avoid startup delays from metadata service timeouts
+if TYPE_CHECKING:
+    from google.adk.runners import Runner
+    from google.adk.agents import Agent
+    from google.adk.sessions import InMemorySessionService
+    from google.genai.types import Content, Part
 
 from ..server.base_handler import BaseHandler
 from ..server.dependencies import (
@@ -38,6 +41,14 @@ logger = logging.getLogger(__name__)
 
 # Default model for ADK
 DEFAULT_MODEL = os.getenv("ADK_MODEL", "gemini-2.0-flash-lite-001")
+
+
+def _lazy_import_adk():
+    """Lazy import google.adk modules to avoid startup delays."""
+    from google.adk.runners import Runner
+    from google.adk.agents import Agent
+    from google.genai.types import Content, Part
+    return Runner, Agent, Content, Part
 
 class ChatHandler(BaseHandler):
     """Handler for chat-related endpoints - Simplified & Stateless."""
@@ -69,8 +80,10 @@ class ChatHandler(BaseHandler):
     def prefix(self) -> str:
         return "/chat"
 
-    def _create_roleplay_agent(self, character: Dict, scenario: Dict) -> Agent:
+    def _create_roleplay_agent(self, character: Dict, scenario: Dict):
         """Helper to create an ADK agent configured for a specific character and scenario."""
+        _, Agent, _, _ = _lazy_import_adk()
+        
         system_prompt = f"""{character.get("system_prompt", "You are a helpful assistant.")}
 
 **Current Scenario:**
@@ -140,7 +153,7 @@ class ChatHandler(BaseHandler):
         request: CreateSessionRequest,
         current_user: Annotated[User, Depends(require_user_or_higher)],
         chat_logger: Annotated[ChatLogger, Depends(get_chat_logger)],
-        adk_session_service: Annotated[InMemorySessionService, Depends(get_adk_session_service)],
+        adk_session_service: Annotated["InMemorySessionService", Depends(get_adk_session_service)],
         content_loader: Annotated[ContentLoader, Depends(get_content_loader)],
     ) -> CreateSessionResponse:
         """Create a new chat session (ADK session in memory, log via ChatLogger)."""
@@ -229,7 +242,7 @@ class ChatHandler(BaseHandler):
         request: ChatMessageRequest,
         current_user: Annotated[User, Depends(require_user_or_higher)],
         chat_logger: Annotated[ChatLogger, Depends(get_chat_logger)],
-        adk_session_service: Annotated[InMemorySessionService, Depends(get_adk_session_service)],
+        adk_session_service: Annotated["InMemorySessionService", Depends(get_adk_session_service)],
         content_loader: Annotated[ContentLoader, Depends(get_content_loader)],
     ) -> ChatMessageResponse:
         """Send a message, creating the Runner on-demand."""
@@ -257,6 +270,9 @@ class ChatHandler(BaseHandler):
                 raise HTTPException(status_code=500, detail="Failed to load session character/scenario configuration.")
 
             agent = self._create_roleplay_agent(character_dict, scenario_dict)
+            
+            # Lazy import of Runner and Content/Part
+            Runner, _, Content, Part = _lazy_import_adk()
             runner = Runner(
                 app_name="roleplay_chat", agent=agent, session_service=adk_session_service
             )
@@ -307,7 +323,7 @@ class ChatHandler(BaseHandler):
         session_id: str,
         current_user: Annotated[User, Depends(require_user_or_higher)],
         chat_logger: Annotated[ChatLogger, Depends(get_chat_logger)],
-        adk_session_service: Annotated[InMemorySessionService, Depends(get_adk_session_service)],
+        adk_session_service: Annotated["InMemorySessionService", Depends(get_adk_session_service)],
     ):
         """Ends a chat session, logging it and removing from ADK InMemory service."""
         try:
