@@ -41,7 +41,7 @@
       </button>
 
       <div v-if="sessions.length > 0" class="existing-sessions">
-        <h3>Or Continue an Existing Session:</h3>
+        <h3>{{ $t('chat.continueExistingSession') }}</h3>
         <ul>
           <li v-for="session in sessions" :key="session.session_id">
             <button @click="loadSession(session)" class="session-link">

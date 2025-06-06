@@ -28,7 +28,8 @@
     "noScenarios": "No scenarios available",
     "noCharacters": "No characters available",
     "sessionEnded": "Session ended",
-    "exportText": "Export as Text"
+    "exportText": "Export as Text",
+    "continueExistingSession": "Or Continue an Existing Session:"
   },
   "warnings": {
     "languageSwitch": "Switching language will hide scenarios in the current language until you switch back. Continue?",

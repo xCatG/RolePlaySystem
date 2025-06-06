@@ -28,7 +28,8 @@
     "noScenarios": "無可用情境",
     "noCharacters": "無可用角色",
     "sessionEnded": "對話已結束",
-    "exportText": "匯出為文字"
+    "exportText": "匯出為文字",
+    "continueExistingSession": "或繼續現有對話："
   },
   "warnings": {
     "languageSwitch": "切換語言將隱藏目前語言的情境，直到您切換回來。是否繼續？",
