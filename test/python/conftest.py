@@ -34,10 +34,25 @@ def temp_dir() -> Generator[Path, None, None]:
     shutil.rmtree(temp_path)
 
 
+@pytest.fixture(scope="class")
+def class_temp_dir() -> Generator[Path, None, None]:
+    """Create a temporary directory for class-scoped tests."""
+    temp_path = Path(tempfile.mkdtemp())
+    yield temp_path
+    shutil.rmtree(temp_path)
+
+
 @pytest.fixture
 async def file_storage(temp_dir: Path) -> FileStorage:
     """Create a FileStorage instance for testing."""
     config = FileStorageConfig(type="file", base_dir=str(temp_dir))
+    return FileStorage(config)
+
+
+@pytest.fixture(scope="class")
+async def class_file_storage(class_temp_dir: Path) -> FileStorage:
+    """Create a class-scoped FileStorage instance for integration tests."""
+    config = FileStorageConfig(type="file", base_dir=str(class_temp_dir))
     return FileStorage(config)
 
 
@@ -46,6 +61,16 @@ async def auth_manager(file_storage: FileStorage) -> AuthManager:
     """Create an AuthManager instance for testing."""
     return AuthManager(
         storage=file_storage,
+        jwt_secret_key="test_secret_key_for_testing_only",
+        access_token_expire_minutes=30
+    )
+
+
+@pytest.fixture(scope="class")
+async def class_auth_manager(class_file_storage: FileStorage) -> AuthManager:
+    """Create a class-scoped AuthManager instance for integration tests."""
+    return AuthManager(
+        storage=class_file_storage,
         jwt_secret_key="test_secret_key_for_testing_only",
         access_token_expire_minutes=30
     )

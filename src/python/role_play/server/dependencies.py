@@ -44,35 +44,11 @@ def get_storage_backend() -> StorageBackend:
         env_enum = Environment.DEV
         logger.warning(f"Unknown environment '{environment}', defaulting to DEV")
     
-    # Use new storage configuration if available
+    # Use storage configuration
     if config.storage:
         return create_storage_backend(config.storage, env_enum)
-    
-    # Fall back to legacy configuration for backward compatibility
-    if config.storage_type == "file":
-        # Validate storage path exists
-        if not os.path.exists(config.storage_path):
-            raise FileNotFoundError(
-                f"Storage path '{config.storage_path}' does not exist. "
-                "Please create the directory before starting the server."
-            )
-        if not os.path.isdir(config.storage_path):
-            raise NotADirectoryError(
-                f"Storage path '{config.storage_path}' is not a directory."
-            )
-        if not os.access(config.storage_path, os.R_OK | os.W_OK):
-            raise PermissionError(
-                f"Storage path '{config.storage_path}' is not readable/writable."
-            )
-        
-        # Create FileStorageConfig from legacy settings
-        storage_config = FileStorageConfig(
-            base_dir=config.storage_path,
-            lock=LockConfig(strategy="file")
-        )
-        return create_storage_backend(storage_config, env_enum)
     else:
-        raise ValueError(f"Unsupported storage type: {config.storage_type}")
+        raise ValueError("Storage configuration is required")
 
 
 def get_auth_manager(

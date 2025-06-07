@@ -49,9 +49,6 @@ storage:
     #
     # Monitor lock acquisition metrics (see storage_monitoring.py) to determine when to migrate.
 
-# Legacy storage settings (maintained for backward compatibility)
-storage_type: "gcs"
-storage_path: "gs://${GCS_BUCKET:roleplay-prod-storage}/${GCS_PREFIX:prod/}"
 
 # Handler configuration
 enabled_handlers:

@@ -25,16 +25,14 @@ export interface AuthResponse {
   };
 }
 
-export interface UserResponse {
-  user: {
-    id: string;
-    username: string;
-    email: string;
-    role: string;
-    preferred_language: string;
-    created_at: string;
-    updated_at: string;
-  };
+export interface User {
+  id: string;
+  username: string;
+  email: string;
+  role: string;
+  preferred_language: string;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface UpdateLanguageRequest {
@@ -64,8 +62,8 @@ export const authApi = {
     return response.data;
   },
 
-  async getCurrentUser(token: string): Promise<UserResponse> {
-    const response = await axios.get<UserResponse>(
+  async getCurrentUser(token: string): Promise<User> {
+    const response = await axios.get<User>(
       apiUrl('/auth/me'),
       {
         headers: {

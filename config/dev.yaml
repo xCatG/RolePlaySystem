@@ -53,9 +53,6 @@ storage:
     redis_password: "${REDIS_PASSWORD:}"
     redis_db: "${REDIS_DB:0}"
 
-# Legacy storage settings (maintained for backward compatibility)
-storage_type: "file"
-storage_path: "${STORAGE_PATH:./data}"
 
 # Handler configuration - map handler names to their import paths
 enabled_handlers:

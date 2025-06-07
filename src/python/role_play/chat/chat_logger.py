@@ -271,7 +271,7 @@ class ChatLogger:
         for msg in messages:
             speaker_map = {
                 "participant": session_info.get('participant_name', 'Participant'),
-                "character": session_info.get('character_name', 'Character').split(' - ')[0],
+                "character": session_info.get('character_name', 'Character'),
                 "system": "System"
             }
             speaker = speaker_map.get(msg.get("role", "unknown").lower(), msg.get("role", "Unknown"))

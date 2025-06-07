@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 import asyncio
 import aiofiles
 import aiofiles.os
+from pydantic import ValidationError
 
 from .exceptions import StorageError
 from .models import User, UserAuthMethod, SessionData
@@ -201,15 +202,45 @@ class StorageBackend(ABC):
         """Get user by ID."""
         pass  # pragma: no cover
 
-    @abstractmethod
     async def get_user_by_username(self, username: str) -> Optional[User]:
-        """Get user by username."""
-        pass  # pragma: no cover
+        """
+        Get user by username.
+        
+        Default implementation scans all users. Override in production backends
+        with index-based queries for better performance.
+        """
+        user_keys = await self.list_keys("users/")
+        
+        for key in user_keys:
+            if key.endswith("/profile"):
+                try:
+                    data = await self.read(key)
+                    user_data = json.loads(data)
+                    if user_data and user_data.get("username") == username:
+                        return User(**user_data)
+                except (json.JSONDecodeError, ValidationError):
+                    continue
+        return None
 
-    @abstractmethod
     async def get_user_by_email(self, email: str) -> Optional[User]:
-        """Get user by email."""
-        pass  # pragma: no cover
+        """
+        Get user by email.
+        
+        Default implementation scans all users. Override in production backends
+        with index-based queries for better performance.
+        """
+        user_keys = await self.list_keys("users/")
+        
+        for key in user_keys:
+            if key.endswith("/profile"):
+                try:
+                    data = await self.read(key)
+                    user_data = json.loads(data)
+                    if user_data and user_data.get("email") == email:
+                        return User(**user_data)
+                except (json.JSONDecodeError, ValidationError):
+                    continue
+        return None
 
     @abstractmethod
     async def create_user(self, user: User) -> User:
@@ -584,29 +615,6 @@ class FileStorage(StorageBackend):
             return User(**user_data)
         return None
 
-    async def get_user_by_username(self, username: str) -> Optional[User]:
-        """Get user by username."""
-        # This is inefficient for file storage, but works for development
-        user_keys = await self.list_keys("users/")
-        
-        for key in user_keys:
-            if key.endswith("/profile"):
-                user_data = await self._read_json(key)
-                if user_data and user_data.get("username") == username:
-                    return User(**user_data)
-        return None
-
-    async def get_user_by_email(self, email: str) -> Optional[User]:
-        """Get user by email."""
-        # This is inefficient for file storage, but works for development
-        user_keys = await self.list_keys("users/")
-        
-        for key in user_keys:
-            if key.endswith("/profile"):
-                user_data = await self._read_json(key)
-                if user_data and user_data.get("email") == email:
-                    return User(**user_data)
-        return None
 
     async def create_user(self, user: User) -> User:
         """Create a new user."""

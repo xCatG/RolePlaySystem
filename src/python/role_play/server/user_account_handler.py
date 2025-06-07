@@ -157,7 +157,7 @@ class UserAccountHandler(BaseHandler):
                         detail=str(e)
                     )
             
-            @self._router.get("/me", response_model=UserResponse)
+            @self._router.get("/me", response_model=User)
             async def get_current_user_profile(
                 current_user: Annotated[User, Depends(get_current_user)]
             ):
@@ -168,9 +168,9 @@ class UserAccountHandler(BaseHandler):
                     current_user: Current authenticated user from JWT token
                     
                 Returns:
-                    UserResponse: Current user's profile data
+                    User: Current user's profile data
                 """
-                return UserResponse(user=current_user)
+                return current_user
             
             @self._router.patch("/language", response_model=UpdateLanguageResponse)
             async def update_language_preference(
@@ -193,20 +193,11 @@ class UserAccountHandler(BaseHandler):
                     HTTPException: If update fails
                 """
                 try:
-                    # Update user's language preference
-                    updated_user = User(
-                        id=current_user.id,
-                        username=current_user.username,
-                        email=current_user.email,
-                        role=current_user.role,
-                        preferred_language=request.language,
-                        created_at=current_user.created_at,
-                        updated_at=current_user.updated_at,
-                        is_active=current_user.is_active
-                    )
+                    # Update user's language preference directly
+                    current_user.preferred_language = request.language
                     
-                    # Save updated user
-                    await auth_manager.storage.update_user(updated_user)
+                    # Save updated user (update_user handles updated_at timestamp)
+                    await auth_manager.storage.update_user(current_user)
                     
                     return UpdateLanguageResponse(
                         success=True,

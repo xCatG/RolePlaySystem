@@ -110,7 +110,7 @@ class AuthManager:
                 id=str(uuid.uuid4()),
                 user_id=user_id,
                 provider=AuthProvider.LOCAL,
-                provider_user_id=email or username,  # Use email if available, else username
+                provider_user_id=email if email else username,  # Use email if available, otherwise username
                 credentials={"password_hash": hashed_password},
                 created_at=utc_now(),
             )

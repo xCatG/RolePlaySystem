@@ -68,7 +68,7 @@ export interface ChatMessageResponse extends BaseResponse {
 
 // Frontend-only types (not in Python backend)
 export interface Message {
-  role: 'user' | 'assistant';
+  role: 'participant' | 'character' | 'system';
   content: string;
   timestamp: string;
 }
