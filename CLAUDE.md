@@ -164,6 +164,41 @@ cd src/ts/role_play/ui && npm install && npm run dev
 - **Cloud**: GCS (async atomic ops), S3/Redis (stubs), env restrictions
 - **Language Architecture**: Per-language content files, fallback filtering, UI/backend sync, caching
 
+## i18n/l10n Design Notes & Principles
+
+### Architecture Overview
+- **Language Isolation**: Content created in single language, no active translation
+- **IETF BCP 47 Format**: Consistent language codes (`en`, `zh-TW`, `ja`) throughout system
+- **User-Driven**: User's `preferred_language` drives all content selection and UI
+- **Modular Design**: Language support integrated into existing architecture without disruption
+
+### Frontend Implementation
+- **Vue i18n**: Centralized translation management with locale files
+- **Custom Components**: `ConfirmModal.vue` replaces browser dialogs for consistency
+- **Language Switcher**: Header component with confirmation flow
+- **State Management**: localStorage + backend sync for preference persistence
+- **Content Reload**: Efficient switching without full page reload
+
+### Backend Implementation
+- **Content Files**: Language-specific resources (`scenarios_zh-TW.json`)
+- **API Design**: Language parameter on content endpoints (`?language=zh-TW`)
+- **Fallback Strategy**: Falls back to filtering main content if language file missing
+- **Caching**: Per-language content caching for performance
+- **User Model**: `preferred_language` field with default `"en"`
+
+### Key Principles
+1. **Single Source of Truth**: User preference stored in backend, synced to frontend
+2. **Graceful Degradation**: Missing translations fall back to English
+3. **Performance First**: Language-specific caching, lazy loading
+4. **Future-Ready**: Architecture supports script creator vision (single-language content creation)
+5. **Security**: Server-side content filtering by language preference
+
+### Content Organization
+- **File Naming**: `{resource}_{language}.json` pattern (e.g., `scenarios_zh-TW.json`)
+- **Content Structure**: Each item tagged with `"language"` field
+- **Scenario Compatibility**: Characters properly linked to scenarios within same language
+- **System Prompts**: Localized instructions for role-play agents
+
 ## Critical Guidelines
 
 **General**:
