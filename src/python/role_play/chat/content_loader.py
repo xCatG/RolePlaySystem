@@ -94,7 +94,8 @@ class ContentLoader:
             if language != "en":
                 language_specific_file = f"scenarios_{language}.json"
                 try:
-                    self._data[language] = self._load_resource(language_specific_file)
+                    raw_data = self._load_resource(language_specific_file)
+                    self._data[language] = self._normalize_language_codes(raw_data)
                     self._validate_languages(self._data[language])
                     return self._data[language]
                 except FileNotFoundError:
@@ -104,13 +105,44 @@ class ContentLoader:
             # Load main scenarios.json if language-specific file doesn't exist
             # or if requesting English content
             if "main" not in self._data:
-                self._data["main"] = self._load_resource(self.resource_name)
+                raw_main_data = self._load_resource(self.resource_name)
+                self._data["main"] = self._normalize_language_codes(raw_main_data)
             
             # Filter by language
             self._data[language] = self._filter_by_language(self._data["main"], language)
             self._validate_languages(self._data[language])
         
         return self._data[language]
+    
+    def _normalize_language_codes(self, data: Dict) -> Dict:
+        """Normalize language codes for consistency.
+        
+        Args:
+            data: Dictionary containing scenarios and characters
+            
+        Returns:
+            Dictionary with normalized language codes
+        """
+        # Create a copy to avoid mutating the original data
+        normalized_data = {"scenarios": [], "characters": []}
+        
+        # Normalize scenarios
+        for scenario in data.get("scenarios", []):
+            scenario_copy = scenario.copy()
+            scenario_lang = scenario_copy.get("language", "en")
+            if scenario_lang == "zh_tw":
+                scenario_copy["language"] = "zh-TW"
+            normalized_data["scenarios"].append(scenario_copy)
+        
+        # Normalize characters
+        for character in data.get("characters", []):
+            character_copy = character.copy()
+            character_lang = character_copy.get("language", "en")
+            if character_lang == "zh_tw":
+                character_copy["language"] = "zh-TW"
+            normalized_data["characters"].append(character_copy)
+        
+        return normalized_data
     
     def _validate_languages(self, data: Dict) -> None:
         """Validate that all scenarios and characters use supported languages.
@@ -121,10 +153,6 @@ class ContentLoader:
         # Validate scenarios
         for scenario in data.get("scenarios", []):
             scenario_lang = scenario.get("language", "en")
-            # Normalize language code for consistency
-            if scenario_lang == "zh_tw":
-                scenario_lang = "zh-TW"
-                scenario["language"] = "zh-TW"  # Update the data
             if scenario_lang not in self.supported_languages:
                 raise ValueError(
                     f"Scenario '{scenario.get('id', 'unknown')}' has unsupported language '{scenario_lang}'. "
@@ -134,10 +162,6 @@ class ContentLoader:
         # Validate characters
         for character in data.get("characters", []):
             character_lang = character.get("language", "en")
-            # Normalize language code for consistency
-            if character_lang == "zh_tw":
-                character_lang = "zh-TW"
-                character["language"] = "zh-TW"  # Update the data
             if character_lang not in self.supported_languages:
                 raise ValueError(
                     f"Character '{character.get('id', 'unknown')}' has unsupported language '{character_lang}'. "

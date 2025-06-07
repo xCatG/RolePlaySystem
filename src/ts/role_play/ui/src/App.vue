@@ -250,8 +250,8 @@ export default {
     
     async getCurrentUser() {
       try {
-        const response = await authApi.getCurrentUser(this.token)
-        this.user = response.user
+        const user = await authApi.getCurrentUser(this.token)
+        this.user = user
       } catch (error) {
         // Token is invalid, remove it
         this.logout()
