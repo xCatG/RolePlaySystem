@@ -140,14 +140,19 @@
           <div v-if="error" class="error">{{ error }}</div>
           <div v-if="success" class="success">{{ success }}</div>
         </div>
+        
       </div>
     </main>
+    
+    <!-- Version Info always visible at bottom -->
+    <VersionInfo class="version-fixed" />
   </div>
 </template>
 
 <script>
 import Chat from './components/Chat.vue'
 import LanguageSwitcher from './components/LanguageSwitcher.vue'
+import VersionInfo from './components/VersionInfo.vue'
 import { authApi } from './services/authApi'
 import { useI18n } from 'vue-i18n'
 
@@ -155,7 +160,8 @@ export default {
   name: 'App',
   components: {
     Chat,
-    LanguageSwitcher
+    LanguageSwitcher,
+    VersionInfo
   },
   setup() {
     const { t, locale } = useI18n()
@@ -462,10 +468,12 @@ body {
 /* Auth Container */
 .auth-container {
   display: flex;
+  flex-direction: column;
   justify-content: center;
   align-items: center;
   min-height: calc(100vh - 104px);
   padding: 20px;
+  position: relative;
 }
 
 .auth-card {
@@ -475,6 +483,16 @@ body {
   padding: 40px;
   width: 100%;
   max-width: 400px;
+}
+
+.version-fixed {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(10px);
+  z-index: 10;
 }
 
 /* Tabs */

@@ -177,10 +177,10 @@ build-docker:
 	@# Determine build tag based on whether TARGET_GCP_PROJECT_ID is a placeholder
 	@if echo "$(TARGET_GCP_PROJECT_ID)" | grep -q "placeholder"; then \
 		echo "Building Docker image rps-local:$(IMAGE_TAG) (local only - no GCP project set)..."; \
-		docker build -t rps-local:$(IMAGE_TAG) -f Dockerfile .; \
+		docker build --build-arg GIT_VERSION=$(IMAGE_TAG) --build-arg BUILD_DATE="$$(date -u +%Y-%m-%dT%H:%M:%SZ)" -t rps-local:$(IMAGE_TAG) -f Dockerfile .; \
 	else \
 		echo "Building Docker image $(IMAGE_NAME_BASE):$(IMAGE_TAG)..."; \
-		docker build -t $(IMAGE_NAME_BASE):$(IMAGE_TAG) -f Dockerfile .; \
+		docker build --build-arg GIT_VERSION=$(IMAGE_TAG) --build-arg BUILD_DATE="$$(date -u +%Y-%m-%dT%H:%M:%SZ)" -t $(IMAGE_NAME_BASE):$(IMAGE_TAG) -f Dockerfile .; \
 	fi
 	@echo "Docker image built."
 

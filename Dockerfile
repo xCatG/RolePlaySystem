@@ -2,6 +2,10 @@
 # Use a specific Node.js version for reproducibility
 FROM node:18.18-slim as frontend-builder
 
+# Accept build arguments
+ARG GIT_VERSION=dev
+ARG BUILD_DATE
+
 # Set working directory for frontend
 WORKDIR /app/frontend
 
@@ -15,9 +19,9 @@ RUN npm ci --legacy-peer-deps
 # Copy the rest of the frontend source code
 COPY src/ts/role_play/ui/ ./
 
-# Build the frontend application
+# Build the frontend application with version info
 # Ensure your package.json's "build" script outputs to 'dist'
-RUN npm run build
+RUN VITE_APP_VERSION=${GIT_VERSION} VITE_BUILD_DATE=${BUILD_DATE} npm run build
 
 # Stage 2: Setup Python Backend and Serve Frontend
 # Use a specific Python version for reproducibility
