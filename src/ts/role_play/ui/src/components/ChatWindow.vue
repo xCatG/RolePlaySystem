@@ -18,7 +18,7 @@
         :class="['message', message.role]"
       >
         <div class="message-header">
-          <strong>{{ message.role === 'user' ? session.participant_name : 'Character' }}:</strong>
+          <strong>{{ message.role === 'user' ? session.participant_name : session.character_name }}:</strong>
           <span class="timestamp">{{ formatTimestamp(message.timestamp) }}</span>
         </div>
         <div class="message-content">{{ message.content }}</div>

@@ -3,16 +3,17 @@
     <!-- Navigation Header -->
     <header class="app-header">
       <div class="header-content">
-        <h1 class="app-title">Role Play System</h1>
+        <h1 class="app-title">{{ $t('nav.title') }}</h1>
         
         <!-- Desktop Navigation -->
         <nav v-if="user" class="desktop-nav">
+          <LanguageSwitcher :token="token" @language-changed="handleLanguageChange" />
           <div class="user-info">
             <span class="user-name">{{ user.username }}</span>
             <span class="user-role">{{ user.role }}</span>
           </div>
           <div class="nav-actions">
-            <button @click="logout" class="logout-btn">Logout</button>
+            <button @click="logout" class="logout-btn">{{ $t('auth.logout') }}</button>
           </div>
         </nav>
         
@@ -26,6 +27,9 @@
       
       <!-- Mobile Menu -->
       <div v-if="user && showMobileMenu" class="mobile-menu">
+        <div class="mobile-language-switcher">
+          <LanguageSwitcher @language-changed="handleLanguageChange" />
+        </div>
         <div class="mobile-user-info">
           <div class="user-details">
             <strong>{{ user.username }}</strong>
@@ -34,7 +38,7 @@
           </div>
         </div>
         <div class="mobile-actions">
-          <button @click="logout" class="mobile-logout-btn">Logout</button>
+          <button @click="logout" class="mobile-logout-btn">{{ $t('auth.logout') }}</button>
         </div>
       </div>
     </header>
@@ -44,7 +48,7 @@
       <!-- Logged in view -->
       <div v-if="user">
         <!-- Chat Component -->
-        <Chat />
+        <Chat ref="chatComponent" />
       </div>
     
       <!-- Login/Register view -->
@@ -56,21 +60,21 @@
               :class="{ active: activeTab === 'login' }"
               @click="activeTab = 'login'"
             >
-              Login
+              {{ $t('auth.login') }}
             </button>
             <button 
               class="tab" 
               :class="{ active: activeTab === 'register' }"
               @click="activeTab = 'register'"
             >
-              Register
+              {{ $t('auth.register') }}
             </button>
           </div>
 
           <!-- Login Form -->
           <form v-if="activeTab === 'login'" @submit.prevent="login">
             <div class="form-group">
-              <label for="login-email">Email:</label>
+              <label for="login-email">{{ $t('auth.email') }}:</label>
               <input 
                 id="login-email"
                 v-model="loginForm.email" 
@@ -80,7 +84,7 @@
               />
             </div>
             <div class="form-group">
-              <label for="login-password">Password:</label>
+              <label for="login-password">{{ $t('auth.password') }}:</label>
               <input 
                 id="login-password"
                 v-model="loginForm.password" 
@@ -90,14 +94,14 @@
               />
             </div>
             <button type="submit" :disabled="loading" class="auth-button">
-              {{ loading ? 'Logging in...' : 'Login' }}
+              {{ loading ? $t('auth.loggingIn') : $t('auth.login') }}
             </button>
           </form>
 
           <!-- Register Form -->
           <form v-if="activeTab === 'register'" @submit.prevent="register">
             <div class="form-group">
-              <label for="register-username">Username:</label>
+              <label for="register-username">{{ $t('auth.username') }}:</label>
               <input 
                 id="register-username"
                 v-model="registerForm.username" 
@@ -107,7 +111,7 @@
               />
             </div>
             <div class="form-group">
-              <label for="register-email">Email:</label>
+              <label for="register-email">{{ $t('auth.email') }}:</label>
               <input 
                 id="register-email"
                 v-model="registerForm.email" 
@@ -117,7 +121,7 @@
               />
             </div>
             <div class="form-group">
-              <label for="register-password">Password:</label>
+              <label for="register-password">{{ $t('auth.password') }}:</label>
               <input 
                 id="register-password"
                 v-model="registerForm.password" 
@@ -128,7 +132,7 @@
               />
             </div>
             <button type="submit" :disabled="loading" class="auth-button">
-              {{ loading ? 'Registering...' : 'Register' }}
+              {{ loading ? $t('auth.registering') : $t('auth.register') }}
             </button>
           </form>
 
@@ -143,12 +147,19 @@
 
 <script>
 import Chat from './components/Chat.vue'
+import LanguageSwitcher from './components/LanguageSwitcher.vue'
 import { authApi } from './services/authApi'
+import { useI18n } from 'vue-i18n'
 
 export default {
   name: 'App',
   components: {
-    Chat
+    Chat,
+    LanguageSwitcher
+  },
+  setup() {
+    const { t, locale } = useI18n()
+    return { t, locale }
   },
   data() {
     return {
@@ -194,11 +205,11 @@ export default {
         this.user = response.user
         localStorage.setItem('token', this.token)
         
-        this.success = 'Login successful!'
+        this.success = this.t('auth.loginSuccess')
         this.loginForm = { email: '', password: '' }
         
       } catch (error) {
-        this.error = error.response?.data?.detail || 'Login failed'
+        this.error = error.response?.data?.detail || this.t('auth.loginFailed')
       } finally {
         this.loading = false
       }
@@ -213,18 +224,19 @@ export default {
         const response = await authApi.register({
           username: this.registerForm.username,
           email: this.registerForm.email,
-          password: this.registerForm.password
+          password: this.registerForm.password,
+          preferred_language: this.locale
         })
         
         this.token = response.access_token
         this.user = response.user
         localStorage.setItem('token', this.token)
         
-        this.success = 'Registration successful!'
+        this.success = this.t('auth.registerSuccess')
         this.registerForm = { username: '', email: '', password: '' }
         
       } catch (error) {
-        this.error = error.response?.data?.detail || 'Registration failed'
+        this.error = error.response?.data?.detail || this.t('auth.registerFailed')
       } finally {
         this.loading = false
       }
@@ -245,12 +257,27 @@ export default {
       this.token = null
       this.showMobileMenu = false
       localStorage.removeItem('token')
-      this.success = 'Logged out successfully'
+      this.success = this.t('auth.logoutSuccess')
       this.error = ''
     },
     
     toggleMobileMenu() {
       this.showMobileMenu = !this.showMobileMenu
+    },
+    
+    handleLanguageChange(newLanguage) {
+      // Close mobile menu if open
+      this.showMobileMenu = false
+      
+      // Update user object with new language preference
+      if (this.user) {
+        this.user.preferred_language = newLanguage
+      }
+      
+      // Trigger chat component to reload content
+      if (this.$refs.chatComponent) {
+        this.$refs.chatComponent.handleLanguageChange()
+      }
     }
   }
 }
@@ -306,6 +333,10 @@ body {
   display: none;
   align-items: center;
   gap: 20px;
+}
+
+.desktop-nav > * {
+  flex-shrink: 0;
 }
 
 .user-info {
@@ -368,6 +399,12 @@ body {
   background: white;
   border-top: 1px solid #e9ecef;
   padding: 20px;
+}
+
+.mobile-language-switcher {
+  margin-bottom: 20px;
+  padding-bottom: 15px;
+  border-bottom: 1px solid #e9ecef;
 }
 
 .mobile-user-info {

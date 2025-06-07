@@ -1,6 +1,6 @@
 """Chat handler for roleplay conversations - Simplified & Stateless."""
 from typing import List, Annotated, Dict, Optional
-from fastapi import HTTPException, Depends, APIRouter
+from fastapi import HTTPException, Depends, APIRouter, Query
 from fastapi.responses import PlainTextResponse
 from google.adk.runners import Runner
 from google.adk.agents import Agent
@@ -71,6 +71,15 @@ class ChatHandler(BaseHandler):
 
     def _create_roleplay_agent(self, character: Dict, scenario: Dict) -> Agent:
         """Helper to create an ADK agent configured for a specific character and scenario."""
+        # Get language information
+        character_language = character.get("language", "en")
+        language_names = {
+            "en": "English",
+            "zh-TW": "Traditional Chinese",
+            "ja": "Japanese"
+        }
+        language_name = language_names.get(character_language, "English")
+        
         system_prompt = f"""{character.get("system_prompt", "You are a helpful assistant.")}
 
 **Current Scenario:**
@@ -79,12 +88,13 @@ class ChatHandler(BaseHandler):
 **Roleplay Instructions:**
 -   **Stay fully in character.** Do NOT break character or mention you are an AI.
 -   Respond naturally based on your character's personality and the scenario.
+-   **IMPORTANT: Respond in {language_name} language as specified by your character and scenario.**
 -   Engage with the user's messages within the roleplay context.
 """
         agent = Agent(
-            name=f"roleplay_{character['id']}_{scenario['id']}",
+            name=f"roleplay_{character.get('id', 'unknown')}_{scenario.get('id', 'unknown')}",
             model=DEFAULT_MODEL,
-            description=f"Roleplay agent for {character['name']} in {scenario['name']}",
+            description=f"Roleplay agent for {character.get('name', 'Unknown Character')} in {scenario.get('name', 'Unknown Scenario')}",
             instruction=system_prompt
         )
         return agent
@@ -93,10 +103,11 @@ class ChatHandler(BaseHandler):
         self,
         current_user: Annotated[User, Depends(require_user_or_higher)],
         content_loader: Annotated[ContentLoader, Depends(get_content_loader)],
+        language: str = Query("en", description="Language code for scenarios"),
     ) -> ScenarioListResponse:
-        """Get all available scenarios."""
+        """Get all available scenarios for the specified language."""
         try:
-            scenarios = content_loader.get_scenarios()
+            scenarios = content_loader.get_scenarios(language)
             scenario_infos = [
                 ScenarioInfo(
                     id=scenario["id"],
@@ -107,7 +118,7 @@ class ChatHandler(BaseHandler):
             ]
             return ScenarioListResponse(success=True, scenarios=scenario_infos)
         except Exception as e:
-            logger.error(f"Failed to get scenarios: {e}")
+            logger.error(f"Failed to get scenarios for language '{language}': {e}")
             raise HTTPException(status_code=500, detail="Failed to load scenarios")
 
     async def get_scenario_characters(
@@ -115,12 +126,13 @@ class ChatHandler(BaseHandler):
         scenario_id: str,
         current_user: Annotated[User, Depends(require_user_or_higher)],
         content_loader: Annotated[ContentLoader, Depends(get_content_loader)],
+        language: str = Query("en", description="Language code for characters"),
     ) -> CharacterListResponse:
-        """Get characters compatible with a scenario."""
+        """Get characters compatible with a scenario for the specified language."""
         try:
-            characters = content_loader.get_scenario_characters(scenario_id)
+            characters = content_loader.get_scenario_characters(scenario_id, language)
             if not characters:
-                scenario = content_loader.get_scenario_by_id(scenario_id)
+                scenario = content_loader.get_scenario_by_id(scenario_id, language)
                 if not scenario:
                     raise HTTPException(status_code=404, detail=f"Scenario with ID '{scenario_id}' not found.")
             
@@ -132,7 +144,7 @@ class ChatHandler(BaseHandler):
         except HTTPException:
             raise
         except Exception as e:
-            logger.error(f"Failed to get scenario characters for '{scenario_id}': {e}")
+            logger.error(f"Failed to get scenario characters for '{scenario_id}' in language '{language}': {e}")
             raise HTTPException(status_code=500, detail="Failed to load characters")
 
     async def create_session(
@@ -145,11 +157,14 @@ class ChatHandler(BaseHandler):
     ) -> CreateSessionResponse:
         """Create a new chat session (ADK session in memory, log via ChatLogger)."""
         try:
-            scenario = content_loader.get_scenario_by_id(request.scenario_id)
+            # Use user's preferred language for content loading
+            user_language = getattr(current_user, 'preferred_language', 'en')
+            
+            scenario = content_loader.get_scenario_by_id(request.scenario_id, user_language)
             if not scenario:
                 raise HTTPException(status_code=400, detail=f"Invalid scenario ID: {request.scenario_id}")
 
-            character = content_loader.get_character_by_id(request.character_id)
+            character = content_loader.get_character_by_id(request.character_id, user_language)
             if not character:
                 raise HTTPException(status_code=400, detail=f"Invalid character ID: {request.character_id}")
 
@@ -174,6 +189,7 @@ class ChatHandler(BaseHandler):
                 "scenario_name": scenario["name"],
                 "character_id": request.character_id,
                 "character_name": character["name"],
+                "language": user_language,
                 "message_count": 0,
                 "session_creation_time_iso": utc_now_isoformat()
             }
@@ -251,8 +267,14 @@ class ChatHandler(BaseHandler):
                 content=request.message, message_number=participant_msg_num
             )
 
-            character_dict = content_loader.get_character_by_id(adk_session.state.get("character_id"))
-            scenario_dict = content_loader.get_scenario_by_id(adk_session.state.get("scenario_id"))
+            character_dict = content_loader.get_character_by_id(
+                adk_session.state.get("character_id"), 
+                adk_session.state.get("language", "en")
+            )
+            scenario_dict = content_loader.get_scenario_by_id(
+                adk_session.state.get("scenario_id"),
+                adk_session.state.get("language", "en")
+            )
             if not character_dict or not scenario_dict:
                 raise HTTPException(status_code=500, detail="Failed to load session character/scenario configuration.")
 

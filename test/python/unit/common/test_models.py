@@ -62,6 +62,7 @@ class TestUser:
         assert user.username == "testuser"
         assert user.email is None
         assert user.role == UserRole.USER
+        assert user.preferred_language == "en"  # Default language
         assert user.is_active is True
         assert user.created_at == now
         assert user.updated_at == now
@@ -74,6 +75,7 @@ class TestUser:
             username="adminuser",
             email="admin@example.com",
             role=UserRole.ADMIN,
+            preferred_language="zh-TW",
             created_at=now,
             updated_at=now,
             is_active=False
@@ -83,6 +85,7 @@ class TestUser:
         assert user.username == "adminuser"
         assert user.email == "admin@example.com"
         assert user.role == UserRole.ADMIN
+        assert user.preferred_language == "zh-TW"
         assert user.is_active is False
     
     def test_user_validation_required_fields(self):
@@ -108,6 +111,7 @@ class TestUser:
         assert data["username"] == "serialtest"
         assert data["email"] == "serial@example.com"
         assert data["role"] == "user"
+        assert data["preferred_language"] == "en"
         assert data["is_active"] is True
 
 
@@ -299,3 +303,78 @@ class TestModelFactories:
         assert auth_method.provider_user_id == "google_123"
         assert auth_method.credentials["email"] == "test@example.com"
         assert auth_method.credentials["name"] == "Test User"
+
+
+class TestLanguageModels:
+    """Test language-related models."""
+    
+    def test_user_with_language_preference(self):
+        """Test User model with language preference."""
+        now = utc_now()
+        user = User(
+            id="test-lang-123",
+            username="multilang_user",
+            email="multilang@example.com",
+            role=UserRole.USER,
+            preferred_language="zh-TW",
+            created_at=now,
+            updated_at=now
+        )
+        
+        assert user.preferred_language == "zh-TW"
+        
+        # Test serialization includes language
+        data = user.model_dump()
+        assert data["preferred_language"] == "zh-TW"
+    
+    def test_update_language_request_validation(self):
+        """Test UpdateLanguageRequest model."""
+        from role_play.common.models import UpdateLanguageRequest
+        
+        # Valid language request
+        request = UpdateLanguageRequest(language="zh-TW")
+        assert request.language == "zh-TW"
+        
+        # Test serialization
+        data = request.model_dump()
+        assert data["language"] == "zh-TW"
+        
+        # Test validation of required field
+        with pytest.raises(ValidationError) as exc_info:
+            UpdateLanguageRequest()
+        
+        errors = exc_info.value.errors()
+        error_fields = {error["loc"][0] for error in errors if error["type"] == "missing"}
+        assert "language" in error_fields
+    
+    def test_update_language_response(self):
+        """Test UpdateLanguageResponse model."""
+        from role_play.common.models import UpdateLanguageResponse
+        
+        # Create response
+        response = UpdateLanguageResponse(
+            success=True,
+            language="zh-TW",
+            message="Language updated successfully"
+        )
+        
+        assert response.success is True
+        assert response.language == "zh-TW"
+        assert response.message == "Language updated successfully"
+        
+        # Test serialization
+        data = response.model_dump()
+        assert data["success"] is True
+        assert data["language"] == "zh-TW"
+        assert data["message"] == "Language updated successfully"
+    
+    def test_user_factory_with_language(self):
+        """Test UserFactory can create users with specific languages."""
+        # Test creating user with Chinese preference
+        user = UserFactory.create(preferred_language="zh-TW")
+        assert user.preferred_language == "zh-TW"
+        
+        # Test creating admin with Japanese preference
+        admin = UserFactory.create_admin(preferred_language="ja")
+        assert admin.role == UserRole.ADMIN
+        assert admin.preferred_language == "ja"

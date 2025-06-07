@@ -89,8 +89,8 @@ async with storage.lock("resource", timeout=30):
 ## Chat System Implementation
 
 ### Session Lifecycle
-1. **Create**: ChatLogger creates JSONL, ADK stores metadata
-2. **Message**: Log → Create Runner → Process → Log response → Discard Runner
+1. **Create**: ChatLogger creates JSONL, ADK stores metadata with user's preferred language
+2. **Message**: Log → Create Runner with language context → Process → Log response → Discard Runner
 3. **End**: Log session_end, remove from ADK memory
 4. **Export**: Read JSONL directly, format as text
 
@@ -106,6 +106,7 @@ with FileLock(f"{log_path}.lock", timeout=5):
 - **Per-message Runners**: Create new Runner for each message
 - **No persistent state**: Runners immediately discarded after use
 - **Separation of concerns**: ADK for runtime, ChatLogger for persistence
+- **Language Context**: Agent system prompts include language instructions
 
 ## Authentication Patterns
 
@@ -138,3 +139,62 @@ ADMIN > SCRIPTER > USER > GUEST
 - **Concurrent JSONL**: Use FileLock with 5-second timeout
 - **Lock Tuning**: Lease duration (60-300s) vs acquisition timeout (5-30s)
 - **Async Everything**: All I/O operations should be async
+
+## Language Support Implementation
+
+### ContentLoader Language Architecture
+```python
+# Language-aware content loading
+loader = ContentLoader(supported_languages=["en", "zh-TW", "ja"])
+
+# Per-language caching
+en_scenarios = loader.get_scenarios("en")
+zh_scenarios = loader.get_scenarios("zh-TW")
+
+# Language-specific resource files
+# scenarios.json (English default)
+# scenarios_zh-TW.json (Traditional Chinese)
+```
+
+### User Language Preferences
+```python
+# User model with language preference
+class User(BaseModel):
+    preferred_language: str = "en"  # IETF BCP 47 format
+    
+# Language preference API
+@router.patch("/auth/language")
+async def update_language_preference(
+    request: UpdateLanguageRequest,
+    current_user: User = Depends(get_current_user)
+):
+    # Update user language preference
+    pass
+```
+
+### Chat Handler Language Context
+```python
+# Session creation with user language
+async def create_session(request: CreateSessionRequest, current_user: User):
+    user_language = current_user.preferred_language
+    
+    # Load content in user's language
+    scenario = content_loader.get_scenario_by_id(request.scenario_id, user_language)
+    character = content_loader.get_character_by_id(request.character_id, user_language)
+    
+    # Agent with language-specific instructions
+    system_prompt = f"""
+    **IMPORTANT: Respond in {language_name} language as specified.**
+    {character.system_prompt}
+    """
+```
+
+### Language Validation Patterns
+```python
+# ContentLoader language validation
+def _validate_languages(self, data: Dict) -> None:
+    for scenario in data.get("scenarios", []):
+        scenario_lang = scenario.get("language", "en")
+        if scenario_lang not in self.supported_languages:
+            raise ValueError(f"Unsupported language '{scenario_lang}'")
+```

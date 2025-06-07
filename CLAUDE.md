@@ -18,7 +18,7 @@ cd src/ts/role_play/ui && npm install && npm run dev
 **Environment**: `ENV=dev|beta|prod`, configs in `config/{env}.yaml`
 **Required**: `JWT_SECRET_KEY`, `STORAGE_PATH`
 **Key Files**: `/API.md`, `/DEPLOYMENT.md`, `/ENVIRONMENTS.md`
-**Resources**: `/src/python/role_play/resources/scenarios.json`
+**Resources**: `/src/python/role_play/resources/scenarios.json`, `/scenarios_zh-TW.json`
 
 ## Architecture Summary
 
@@ -53,10 +53,12 @@ cd src/ts/role_play/ui && npm install && npm run dev
 - **Services**: Singleton ContentLoader/ChatLogger/InMemorySessionService
 - **Storage**: `users/{user_id}/chat_logs/{session_id}` JSONL
 - **Runners**: Created per-message, not persisted
+- **Language Support**: User preferred language drives content selection and agent instructions
 
 ### Frontend (Modular Monolith)
 - **Structure**: Single module with domain boundaries (auth/, chat/, evaluation/)
 - **Evolution**: Domain-based organization → mechanical module splitting when needed
+- **Internationalization**: Vue i18n with English/Traditional Chinese support, language switcher with confirmation
 
 ### Production Locking
 - **Critical**: Lease duration (60-300s crash recovery) ≠ acquisition timeout (5-30s retry)
@@ -64,8 +66,9 @@ cd src/ts/role_play/ui && npm install && npm run dev
 
 ### Testing
 - **Structure**: `/test/python/` → unit/ | integration/ | e2e/ | fixtures/
-- **Coverage**: >90% unit, critical integration, user journey e2e
+- **Coverage**: >90% unit, critical integration, user journey e2e, language functionality
 - **Stack**: pytest, httpx, pytest-asyncio, factory-boy
+- **Language Tests**: ContentLoader language filtering, auth language preferences, model validation
 
 ## TODO List
 
@@ -105,16 +108,29 @@ cd src/ts/role_play/ui && npm install && npm run dev
 - [ ] Monitoring: Cloud Monitoring dashboards and alerts
 - [ ] Tracing: OpenTelemetry + Cloud Trace integration
 
+### Language Support Features (Completed)
+- [x] Traditional Chinese (zh-TW) full localization system
+- [x] Vue i18n frontend integration with English/Chinese translations  
+- [x] Custom ConfirmModal component for consistent UX
+- [x] Language switcher with user preference persistence
+- [x] Backend language preference API (`PATCH /auth/language`)
+- [x] Language-aware content loading (scenarios_zh-TW.json)
+- [x] ContentLoader language filtering and caching
+- [x] User model enhanced with preferred_language field
+- [x] Comprehensive test coverage for language functionality
+- [x] Frontend-backend language preference sync
+
 ### Pending Development
 - [ ] WebSocket: `server/websocket.py` connection manager
-- [ ] Auth Module: handler.py, models.py, oauth_client.py
-- [ ] Scripter: Complete module implementation
+- [ ] Auth Module: Complete OAuth implementation
+- [ ] Scripter: Complete module implementation  
 - [ ] Frontend: Modular monolith restructure, chat/eval interfaces
 - [ ] Testing: integration/handlers/, e2e/api/
 - [ ] Cleanup: Remove deprecated auth_decorators.py and imports
 - [ ] Docs: README.md architecture, OAUTH_SETUP.md
 - [ ] User Management: Complete module
 - [ ] Database: Future schema design
+- [ ] Additional Languages: Japanese (ja) content and UI translations
 
 ### Completed
 - [x] Base Infrastructure: All common modules, cloud storage, distributed locking
@@ -124,6 +140,7 @@ cd src/ts/role_play/ui && npm install && npm run dev
 - [x] Config & Env: All YAML configs, env loading
 - [x] Testing: Unit tests, storage integration, test infrastructure
 - [x] Core Docs: API.md, DEPLOYMENT.md, ENVIRONMENTS.md
+- [x] Traditional Chinese Localization: Complete frontend/backend language support system
 
 ## Implementation Phases
 1. Core Infrastructure → 2. Authentication → 3. Handlers → 4. WebSocket/Audio → 5. Polish
@@ -133,17 +150,54 @@ cd src/ts/role_play/ui && npm install && npm run dev
 ### Completed Systems
 - **Infrastructure**: Common modules, FileStorage, AuthManager, JWT, cloud storage with distributed locking
 - **Server**: FastAPI with stateless handlers, JWT auth, CORS, environment configs
-- **Auth**: RoleChecker pattern (replaced decorators), role hierarchy, proper HTTP codes
-- **Chat**: ADK integration, JSONL logging, singleton services, POC endpoints
+- **Auth**: RoleChecker pattern (replaced decorators), role hierarchy, proper HTTP codes, language preferences
+- **Chat**: ADK integration, JSONL logging, singleton services, POC endpoints, language-aware content
 - **Evaluation**: Simple text export from JSONL
-- **Testing**: 150+ tests, 30% coverage (92% FileStorage, 0% cloud stubs)
-- **Frontend**: Vue.js auth UI, basic chat structure
+- **Testing**: 190+ tests, language functionality coverage (ContentLoader, auth, models)
+- **Frontend**: Vue.js auth UI, i18n with Traditional Chinese, language switcher
+- **Localization**: Complete Traditional Chinese support with content isolation
 
 ### Architecture Highlights
 - **Storage**: Async distributed locking, lease (60-300s) vs timeout (5-30s) separation
 - **Chat**: Separated ADK runtime from JSONL persistence, per-message Runner creation
 - **Config**: YAML + env vars, dynamic handler loading, fail-fast validation
 - **Cloud**: GCS (async atomic ops), S3/Redis (stubs), env restrictions
+- **Language Architecture**: Per-language content files, fallback filtering, UI/backend sync, caching
+
+## i18n/l10n Design Notes & Principles
+
+### Architecture Overview
+- **Language Isolation**: Content created in single language, no active translation
+- **IETF BCP 47 Format**: Consistent language codes (`en`, `zh-TW`, `ja`) throughout system
+- **User-Driven**: User's `preferred_language` drives all content selection and UI
+- **Modular Design**: Language support integrated into existing architecture without disruption
+
+### Frontend Implementation
+- **Vue i18n**: Centralized translation management with locale files
+- **Custom Components**: `ConfirmModal.vue` replaces browser dialogs for consistency
+- **Language Switcher**: Header component with confirmation flow
+- **State Management**: localStorage + backend sync for preference persistence
+- **Content Reload**: Efficient switching without full page reload
+
+### Backend Implementation
+- **Content Files**: Language-specific resources (`scenarios_zh-TW.json`)
+- **API Design**: Language parameter on content endpoints (`?language=zh-TW`)
+- **Fallback Strategy**: Falls back to filtering main content if language file missing
+- **Caching**: Per-language content caching for performance
+- **User Model**: `preferred_language` field with default `"en"`
+
+### Key Principles
+1. **Single Source of Truth**: User preference stored in backend, synced to frontend
+2. **Graceful Degradation**: Missing translations fall back to English
+3. **Performance First**: Language-specific caching, lazy loading
+4. **Future-Ready**: Architecture supports script creator vision (single-language content creation)
+5. **Security**: Server-side content filtering by language preference
+
+### Content Organization
+- **File Naming**: `{resource}_{language}.json` pattern (e.g., `scenarios_zh-TW.json`)
+- **Content Structure**: Each item tagged with `"language"` field
+- **Scenario Compatibility**: Characters properly linked to scenarios within same language
+- **System Prompts**: Localized instructions for role-play agents
 
 ## Critical Guidelines
 
@@ -158,4 +212,11 @@ cd src/ts/role_play/ui && npm install && npm run dev
 - Use: `datetime.now(timezone.utc)`
 - Persist: ISO 8601 UTC strings
 - Exception: `datetime.utcnow().isoformat()` when immediately saving
-- Client converts UTC → local for display only 
+- Client converts UTC → local for display only
+
+**Language Support**:
+- Use IETF BCP 47 format: `"en"`, `"zh-TW"`, `"ja"`
+- User `preferred_language` drives content selection and agent instructions
+- ContentLoader filters by language, caches per-language
+- Frontend Vue i18n syncs with backend user preferences
+- Language-specific content files: `scenarios_zh-TW.json` 
