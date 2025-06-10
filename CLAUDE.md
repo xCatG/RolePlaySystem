@@ -127,8 +127,9 @@ make test-specific TEST_PATH="test/python/unit/chat/test_chat_logger.py"
 - [x] Frontend-backend language preference sync
 
 ### Pending Development
-- [ ] **Code Simplification Phase 3** (Future enhancements):
-  - [ ] Implement frontend composables usage in Chat.vue and ChatWindow.vue
+- [ ] **Code Quality & Testing** (Post-refactoring improvements):
+  - [ ] Implement API contract testing to prevent frontend/backend data structure mismatches
+  - [ ] Add runtime API response validation in development mode to catch integration issues early
   - [ ] Add caching layer for API responses to reduce redundant calls
   - [ ] Extract common error handling decorator for backend methods
   - [ ] Create utility functions for date formatting across components
@@ -141,6 +142,7 @@ make test-specific TEST_PATH="test/python/unit/chat/test_chat_logger.py"
 - [ ] Docs: README.md architecture, OAUTH_SETUP.md
 - [ ] User Management: Complete module
 - [ ] Database: Future schema design
+- [ ] **Localization Completeness**: Complete ChatWindow.vue localization (message placeholders, session labels, timestamps still in English)
 - [ ] Additional Languages: Japanese (ja) content and UI translations
 
 ### Read-Only Session History (Completed)
@@ -192,8 +194,9 @@ make test-specific TEST_PATH="test/python/unit/chat/test_chat_logger.py"
   - Applied `useAsyncOperation` for unified loading/error states
   - Reduced component complexity from ~340 to ~280 lines
 - [x] **Impact**: ~300 lines duplicate code eliminated, better maintainability, all 241 tests passing
+- [x] **Critical Fix**: Resolved frontend data loading issues in Phase 3 refactoring (API response handling bugs)
 
-### Completed
+### Pending Development
 - [x] Base Infrastructure: All common modules, cloud storage, distributed locking
 - [x] Server Core: Base classes, dependencies, config, user accounts
 - [x] Chat Module: ADK integration, JSONL logging, POC features
@@ -262,6 +265,11 @@ make test-specific TEST_PATH="test/python/unit/chat/test_chat_logger.py"
 - **Content Structure**: Each item tagged with `"language"` field
 - **Scenario Compatibility**: Characters properly linked to scenarios within same language
 - **System Prompts**: Localized instructions for role-play agents
+
+### Known Localization Gaps
+- **ChatWindow.vue**: Message input placeholders, session timestamps, and some UI labels remain in English
+- **Dynamic Content**: Session labels using participant names not fully localized
+- **Future Work**: Complete ChatWindow localization for full Traditional Chinese support
 
 ## Critical Guidelines
 

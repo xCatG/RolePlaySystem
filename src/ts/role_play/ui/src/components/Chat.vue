@@ -146,8 +146,8 @@ export default defineComponent({
           chatApi.getScenarios(currentLanguage.value),
           chatApi.getSessions()
         ]);
-        scenarios.value = scenariosResponse.scenarios || [];
-        sessions.value = sessionsResponse.sessions || [];
+        scenarios.value = scenariosResponse || [];
+        sessions.value = sessionsResponse || [];
       } catch (err) {
         error.value = t('errors.loadScenariosFailed');
         console.error(err);
@@ -165,7 +165,7 @@ export default defineComponent({
       try {
         error.value = '';
         const response = await chatApi.getCharacters(scenarioId, currentLanguage.value);
-        characters.value = response.characters || [];
+        characters.value = response || [];
       } catch (err) {
         error.value = t('errors.loadCharactersFailed');
         console.error(err);
@@ -253,7 +253,7 @@ export default defineComponent({
         await chatApi.endSession(sessionId);
         
         // Refresh sessions list
-        await loadData();
+        await refreshData();
       } catch (err) {
         error.value = t('errors.endSessionFailed');
         console.error(err);
@@ -276,7 +276,7 @@ export default defineComponent({
         await chatApi.deleteSession(sessionToDelete.value);
         
         // Refresh sessions list
-        await loadData();
+        await refreshData();
       } catch (err) {
         error.value = 'Failed to delete session';
         console.error(err);
@@ -300,11 +300,11 @@ export default defineComponent({
       characters.value = [];
       
       // Reload content for new language
-      await loadData();
+      await refreshData();
     };
 
     onMounted(() => {
-      loadData();
+      refreshData();
     });
 
     return {

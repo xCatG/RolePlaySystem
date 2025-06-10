@@ -31,8 +31,8 @@ export function useChatData() {
   // Data loading methods
   const loadScenarios = async (language?: string) => {
     const result = await withLoading(() => chatApi.getScenarios(language))
-    if (result?.scenarios) {
-      scenarios.value = result.scenarios
+    if (result) {
+      scenarios.value = result
     }
   }
 
@@ -43,15 +43,15 @@ export function useChatData() {
     }
     
     const result = await withLoading(() => chatApi.getCharacters(scenarioId, language))
-    if (result?.characters) {
-      characters.value = result.characters
+    if (result) {
+      characters.value = result
     }
   }
 
   const loadSessions = async () => {
     const result = await withLoading(() => chatApi.getSessions())
-    if (result?.sessions) {
-      sessions.value = result.sessions
+    if (result) {
+      sessions.value = result
     }
   }
 
