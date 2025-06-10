@@ -121,6 +121,16 @@ help:
 	@echo "  GCP SETUP (Run once per environment, ensure GCP_PROJECT_ID_* are set):"
 	@echo "    make setup-gcp-infra ENV=[dev|beta|prod]  Attempt to create GCS buckets, Artifact Repo, Secret container."
 	@echo "------------------------------------------------------------------------------------"
+	@echo "  TESTING:"
+	@echo "    make test                 Run full test suite with coverage report."
+	@echo "    make test-quiet           Run tests in quiet mode with coverage."
+	@echo "    make test-chat            Run only chat-related tests with coverage."
+	@echo "    make test-unit            Run only unit tests with coverage."
+	@echo "    make test-integration     Run only integration tests with coverage."
+	@echo "    make test-coverage-html   Generate HTML coverage report (viewable in browser)."
+	@echo "    make test-no-coverage     Run tests without coverage for faster execution."
+	@echo "    make test-specific TEST_PATH=<path> Run a specific test file or test method."
+	@echo "------------------------------------------------------------------------------------"
 	@echo "  UTILITIES:"
 	@echo "    make logs                 View Cloud Run logs for the current ENV."
 	@echo "    make list-config          Show current configuration values based on ENV."
@@ -339,6 +349,52 @@ setup-gcp-infra: load-env-mk # Added load-env-mk dependency
 		--role="roles/aiplatform.user" || echo "Failed to grant Vertex AI access or already granted."
 	@echo ""
 	@echo "--- GCP Infrastructure setup for ENV=$(ENV) complete. Please verify in Console. ---"
+
+# --- Testing Targets ---
+.PHONY: test
+test:
+	@echo "Running full test suite with coverage..."
+	@bash -c "source venv/bin/activate && python -m pytest test/python/ --cov=src/python/role_play --cov-report=term-missing --cov-fail-under=25"
+
+.PHONY: test-quiet
+test-quiet:
+	@echo "Running tests in quiet mode with coverage..."
+	@bash -c "source venv/bin/activate && python -m pytest test/python/ -q --cov=src/python/role_play --cov-report=term-missing --cov-fail-under=25"
+
+.PHONY: test-chat
+test-chat:
+	@echo "Running chat-related tests with coverage..."
+	@bash -c "source venv/bin/activate && python -m pytest test/python/ -k 'chat' --cov=src/python/role_play/chat --cov-report=term-missing --cov-fail-under=0"
+
+.PHONY: test-unit
+test-unit:
+	@echo "Running unit tests with coverage..."
+	@bash -c "source venv/bin/activate && python -m pytest test/python/unit/ --cov=src/python/role_play --cov-report=term-missing --cov-fail-under=0"
+
+.PHONY: test-integration
+test-integration:
+	@echo "Running integration tests with coverage..."
+	@bash -c "source venv/bin/activate && python -m pytest test/python/integration/ --cov=src/python/role_play --cov-report=term-missing --cov-fail-under=0"
+
+.PHONY: test-coverage-html
+test-coverage-html:
+	@echo "Generating HTML coverage report..."
+	@bash -c "source venv/bin/activate && python -m pytest test/python/ --cov=src/python/role_play --cov-report=html --cov-fail-under=0"
+	@echo "Coverage report generated at: test/python/htmlcov/index.html"
+	@echo "Open in browser: file://$(shell pwd)/test/python/htmlcov/index.html"
+
+.PHONY: test-no-coverage
+test-no-coverage:
+	@echo "Running tests without coverage (faster)..."
+	@bash -c "source venv/bin/activate && python -m pytest test/python/ -v"
+
+.PHONY: test-specific
+test-specific:
+ifndef TEST_PATH
+	$(error TEST_PATH is not set. Usage: make test-specific TEST_PATH="test/python/unit/chat/test_chat_logger.py::TestChatLogger::test_read_only_session_history_integration")
+endif
+	@echo "Running specific test: $(TEST_PATH)"
+	@bash -c "source venv/bin/activate && python -m pytest '$(TEST_PATH)' -v --cov=src/python/role_play --cov-report=term-missing --cov-fail-under=0"
 
 # --- Utilities ---
 .PHONY: logs

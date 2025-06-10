@@ -331,3 +331,374 @@ class TestChatLogger:
             assert len(sessions) == 1
             assert sessions[0]["session_id"] == session_id
             assert sessions[0]["message_count"] == 3
+
+    # New tests for read-only session history functionality
+
+    @pytest.mark.asyncio
+    async def test_get_session_end_info_active_session(self, chat_logger, mock_storage):
+        """Test getting session end info for an active session."""
+        user_id = "test_user"
+        app_session_id, _ = await chat_logger.start_session(
+            user_id=user_id,
+            participant_name="Alice",
+            scenario_id="s1",
+            scenario_name="Test Scenario",
+            character_id="c1",
+            character_name="Test Character"
+        )
+
+        # Get session end info for active session
+        end_info = await chat_logger.get_session_end_info(user_id, app_session_id)
+        
+        # Should return empty dict for active session
+        assert end_info == {}
+
+    @pytest.mark.asyncio
+    async def test_get_session_end_info_ended_session(self, chat_logger, mock_storage):
+        """Test getting session end info for an ended session."""
+        user_id = "test_user"
+        app_session_id, _ = await chat_logger.start_session(
+            user_id=user_id,
+            participant_name="Bob",
+            scenario_id="s2",
+            scenario_name="Test Scenario 2",
+            character_id="c2",
+            character_name="Test Character 2"
+        )
+
+        # End the session
+        await chat_logger.end_session(
+            user_id=user_id,
+            session_id=app_session_id,
+            total_messages=3,
+            duration_seconds=150.0,
+            reason="User ended session",
+            final_state={"last_action": "completed_task"}
+        )
+
+        # Get session end info
+        end_info = await chat_logger.get_session_end_info(user_id, app_session_id)
+        
+        assert end_info["total_messages"] == 3
+        assert end_info["duration_seconds"] == 150.0
+        assert end_info["reason"] == "User ended session"
+        assert "ended_at" in end_info
+
+    @pytest.mark.asyncio
+    async def test_get_session_end_info_nonexistent_session(self, chat_logger):
+        """Test getting session end info for a session that doesn't exist."""
+        end_info = await chat_logger.get_session_end_info("fake_user", "fake_session_id")
+        assert end_info == {}
+
+    @pytest.mark.asyncio
+    async def test_get_session_messages_with_messages(self, chat_logger, mock_storage):
+        """Test getting session messages when messages exist."""
+        user_id = "test_user"
+        app_session_id, _ = await chat_logger.start_session(
+            user_id=user_id,
+            participant_name="Charlie",
+            scenario_id="s3",
+            scenario_name="Message Test",
+            character_id="c3",
+            character_name="Test Character 3"
+        )
+
+        # Log some messages
+        await chat_logger.log_message(
+            user_id=user_id,
+            session_id=app_session_id,
+            role="participant",
+            content="Hello there!",
+            message_number=1
+        )
+
+        await chat_logger.log_message(
+            user_id=user_id,
+            session_id=app_session_id,
+            role="character",
+            content="Hello! How can I help you?",
+            message_number=2
+        )
+
+        await chat_logger.log_message(
+            user_id=user_id,
+            session_id=app_session_id,
+            role="participant",
+            content="I need some assistance.",
+            message_number=3
+        )
+
+        # Get messages
+        messages = await chat_logger.get_session_messages(user_id, app_session_id)
+        
+        assert len(messages) == 3
+        
+        # Check first message
+        assert messages[0]["role"] == "participant"
+        assert messages[0]["content"] == "Hello there!"
+        assert messages[0]["message_number"] == 1
+        assert "timestamp" in messages[0]
+        
+        # Check second message
+        assert messages[1]["role"] == "character"
+        assert messages[1]["content"] == "Hello! How can I help you?"
+        assert messages[1]["message_number"] == 2
+        
+        # Check third message
+        assert messages[2]["role"] == "participant"
+        assert messages[2]["content"] == "I need some assistance."
+        assert messages[2]["message_number"] == 3
+
+    @pytest.mark.asyncio
+    async def test_get_session_messages_empty_session(self, chat_logger, mock_storage):
+        """Test getting messages from a session with no messages."""
+        user_id = "test_user"
+        app_session_id, _ = await chat_logger.start_session(
+            user_id=user_id,
+            participant_name="David",
+            scenario_id="s4",
+            scenario_name="Empty Test",
+            character_id="c4",
+            character_name="Test Character 4"
+        )
+
+        # Get messages (should be empty)
+        messages = await chat_logger.get_session_messages(user_id, app_session_id)
+        assert messages == []
+
+    @pytest.mark.asyncio
+    async def test_get_session_messages_nonexistent_session(self, chat_logger):
+        """Test getting messages from a session that doesn't exist."""
+        with pytest.raises(StorageError):
+            await chat_logger.get_session_messages("fake_user", "fake_session_id")
+
+    @pytest.mark.asyncio
+    async def test_get_session_messages_with_malformed_json(self, chat_logger, mock_storage):
+        """Test getting messages when JSONL contains malformed JSON lines."""
+        user_id = "test_user"
+        app_session_id, _ = await chat_logger.start_session(
+            user_id=user_id,
+            participant_name="Eve",
+            scenario_id="s5",
+            scenario_name="Malformed Test",
+            character_id="c5",
+            character_name="Test Character 5"
+        )
+
+        # Log a valid message
+        await chat_logger.log_message(
+            user_id=user_id,
+            session_id=app_session_id,
+            role="participant",
+            content="Valid message",
+            message_number=1
+        )
+
+        # Manually corrupt the JSONL file by adding malformed JSON
+        storage_path = f"users/{user_id}/chat_logs/{app_session_id}"
+        current_content = await mock_storage.read(storage_path)
+        corrupted_content = current_content + "\n{invalid json line}\n"
+        await mock_storage.write(storage_path, corrupted_content)
+
+        # Log another valid message
+        await chat_logger.log_message(
+            user_id=user_id,
+            session_id=app_session_id,
+            role="character",
+            content="Another valid message",
+            message_number=2
+        )
+
+        # Get messages - should only return valid ones
+        messages = await chat_logger.get_session_messages(user_id, app_session_id)
+        
+        assert len(messages) == 2
+        assert messages[0]["content"] == "Valid message"
+        assert messages[1]["content"] == "Another valid message"
+
+    @pytest.mark.asyncio
+    async def test_delete_session_existing_session(self, chat_logger, mock_storage):
+        """Test deleting an existing session."""
+        user_id = "test_user"
+        app_session_id, storage_path = await chat_logger.start_session(
+            user_id=user_id,
+            participant_name="Frank",
+            scenario_id="s6",
+            scenario_name="Delete Test",
+            character_id="c6",
+            character_name="Test Character 6"
+        )
+
+        # Verify session exists
+        assert await mock_storage.exists(storage_path)
+
+        # Delete the session
+        await chat_logger.delete_session(user_id, app_session_id)
+        
+        # Verify session is deleted
+        assert not await mock_storage.exists(storage_path)
+
+    @pytest.mark.asyncio
+    async def test_delete_session_nonexistent_session(self, chat_logger):
+        """Test deleting a session that doesn't exist (should not raise error)."""
+        # Should complete without raising an error
+        await chat_logger.delete_session("fake_user", "fake_session_id")
+
+    @pytest.mark.asyncio
+    async def test_delete_session_with_messages(self, chat_logger, mock_storage):
+        """Test deleting a session that contains messages."""
+        user_id = "test_user"
+        app_session_id, storage_path = await chat_logger.start_session(
+            user_id=user_id,
+            participant_name="Grace",
+            scenario_id="s7",
+            scenario_name="Delete Messages Test",
+            character_id="c7",
+            character_name="Test Character 7"
+        )
+
+        # Add some messages
+        await chat_logger.log_message(
+            user_id=user_id,
+            session_id=app_session_id,
+            role="participant",
+            content="Message to be deleted",
+            message_number=1
+        )
+
+        await chat_logger.end_session(
+            user_id=user_id,
+            session_id=app_session_id,
+            total_messages=1,
+            duration_seconds=30.0
+        )
+
+        # Verify session exists with content
+        assert await mock_storage.exists(storage_path)
+        content = await mock_storage.read(storage_path)
+        assert "Message to be deleted" in content
+
+        # Delete the session
+        await chat_logger.delete_session(user_id, app_session_id)
+        
+        # Verify session is completely deleted
+        assert not await mock_storage.exists(storage_path)
+
+    @pytest.mark.asyncio
+    async def test_session_messages_ordering(self, chat_logger, mock_storage):
+        """Test that session messages are returned in the correct order."""
+        user_id = "test_user"
+        app_session_id, _ = await chat_logger.start_session(
+            user_id=user_id,
+            participant_name="Henry",
+            scenario_id="s8",
+            scenario_name="Order Test",
+            character_id="c8",
+            character_name="Test Character 8"
+        )
+
+        # Log messages in specific order
+        for i in range(5):
+            role = "participant" if i % 2 == 0 else "character"
+            await chat_logger.log_message(
+                user_id=user_id,
+                session_id=app_session_id,
+                role=role,
+                content=f"Message {i+1}",
+                message_number=i+1
+            )
+
+        # Get messages
+        messages = await chat_logger.get_session_messages(user_id, app_session_id)
+        
+        # Verify order and content
+        assert len(messages) == 5
+        for i, message in enumerate(messages):
+            assert message["content"] == f"Message {i+1}"
+            assert message["message_number"] == i+1
+            expected_role = "participant" if i % 2 == 0 else "character"
+            assert message["role"] == expected_role
+
+    @pytest.mark.asyncio
+    async def test_read_only_session_history_integration(self, chat_logger, mock_storage):
+        """Integration test for the complete read-only session history workflow."""
+        user_id = "integration_user"
+        
+        # 1. Start session
+        app_session_id, _ = await chat_logger.start_session(
+            user_id=user_id,
+            participant_name="Integration Test User",
+            scenario_id="integration_scenario",
+            scenario_name="Integration Test Scenario",
+            character_id="integration_character",
+            character_name="Integration Test Character",
+            goal="Test complete workflow"
+        )
+        
+        # 2. Add conversation messages
+        conversation = [
+            ("participant", "Hello, I need help with integration testing."),
+            ("character", "I'd be happy to help you with integration testing!"),
+            ("participant", "Can you explain the read-only session feature?"),
+            ("character", "The read-only feature allows users to view historical sessions without editing them."),
+            ("participant", "That's very helpful, thank you!")
+        ]
+        
+        for i, (role, content) in enumerate(conversation, 1):
+            await chat_logger.log_message(
+                user_id=user_id,
+                session_id=app_session_id,
+                role=role,
+                content=content,
+                message_number=i
+            )
+        
+        # 3. End session
+        await chat_logger.end_session(
+            user_id=user_id,
+            session_id=app_session_id,
+            total_messages=len(conversation),
+            duration_seconds=245.5,
+            reason="Integration test completed",
+            final_state={"test_status": "passed"}
+        )
+        
+        # 4. Test session end info retrieval
+        end_info = await chat_logger.get_session_end_info(user_id, app_session_id)
+        assert end_info["total_messages"] == 5
+        assert end_info["duration_seconds"] == 245.5
+        assert end_info["reason"] == "Integration test completed"
+        assert "ended_at" in end_info
+        
+        # 5. Test message history retrieval
+        messages = await chat_logger.get_session_messages(user_id, app_session_id)
+        assert len(messages) == 5
+        
+        # Verify conversation content
+        for i, (expected_role, expected_content) in enumerate(conversation):
+            assert messages[i]["role"] == expected_role
+            assert messages[i]["content"] == expected_content
+            assert messages[i]["message_number"] == i + 1
+        
+        # 6. Test export functionality
+        export_text = await chat_logger.export_session_text(user_id, app_session_id)
+        assert "Integration Test User" in export_text
+        assert "Integration Test Scenario" in export_text
+        assert "Integration Test Character" in export_text
+        assert "Hello, I need help with integration testing." in export_text
+        assert "SESSION ENDED" in export_text
+        assert "Total Messages: 5" in export_text
+        
+        # 7. Test session deletion
+        await chat_logger.delete_session(user_id, app_session_id)
+        
+        # Verify session is gone
+        storage_path = f"users/{user_id}/chat_logs/{app_session_id}"
+        assert not await mock_storage.exists(storage_path)
+        
+        # Verify operations on deleted session
+        end_info_after_delete = await chat_logger.get_session_end_info(user_id, app_session_id)
+        assert end_info_after_delete == {}
+        
+        with pytest.raises(StorageError):
+            await chat_logger.get_session_messages(user_id, app_session_id)

@@ -9,10 +9,15 @@ Guidance for Claude Code when working with this RolePlay System repository.
 python3 -m venv venv && source venv/bin/activate  # Setup
 pip install -r src/python/requirements.txt
 python src/python/run_server.py                    # Run server
-pytest test/python/                                # Run tests
+make test                                          # Run tests with coverage
 
 # Frontend
 cd src/ts/role_play/ui && npm install && npm run dev
+
+# Testing Options
+make test-chat          # Chat module tests only
+make test-coverage-html # Generate HTML coverage report
+make test-specific TEST_PATH="test/python/unit/chat/test_chat_logger.py"
 ```
 
 **Environment**: `ENV=dev|beta|prod`, configs in `config/{env}.yaml`
@@ -69,6 +74,7 @@ cd src/ts/role_play/ui && npm install && npm run dev
 - **Coverage**: >90% unit, critical integration, user journey e2e, language functionality
 - **Stack**: pytest, httpx, pytest-asyncio, factory-boy
 - **Language Tests**: ContentLoader language filtering, auth language preferences, model validation
+- **Makefile Targets**: `make test`, `make test-chat`, `make test-unit`, `make test-integration`, `make test-coverage-html`
 
 ## TODO List
 
@@ -150,13 +156,24 @@ cd src/ts/role_play/ui && npm install && npm run dev
 - [x] UI: Safe deletion workflow (hide delete during active chat, show after ending)
 - [x] Internationalization: Full English/Chinese support for all new features
 
+### Testing Infrastructure (Completed)
+- [x] Comprehensive test targets in Makefile for development workflow
+- [x] `make test` - Full test suite with coverage reporting and 25% minimum threshold
+- [x] `make test-quiet` - Quiet mode execution for faster feedback
+- [x] `make test-chat` - Chat module specific testing with dedicated coverage
+- [x] `make test-unit` - Unit tests only for focused testing
+- [x] `make test-integration` - Integration tests for service interactions
+- [x] `make test-coverage-html` - HTML coverage reports for detailed analysis
+- [x] `make test-no-coverage` - Fast test execution without coverage overhead
+- [x] `make test-specific TEST_PATH=<path>` - Targeted test execution for debugging
+
 ### Completed
 - [x] Base Infrastructure: All common modules, cloud storage, distributed locking
 - [x] Server Core: Base classes, dependencies, config, user accounts
 - [x] Chat Module: ADK integration, JSONL logging, POC features
 - [x] Evaluation: Simple export implementation
 - [x] Config & Env: All YAML configs, env loading
-- [x] Testing: Unit tests, storage integration, test infrastructure
+- [x] Testing: Unit tests, storage integration, test infrastructure, Makefile targets
 - [x] Core Docs: API.md, DEPLOYMENT.md, ENVIRONMENTS.md
 - [x] Traditional Chinese Localization: Complete frontend/backend language support system
 
