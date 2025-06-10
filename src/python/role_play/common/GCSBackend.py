@@ -338,29 +338,6 @@ class GCSStorageBackend(StorageBackend):
             return User(**user_data)
         return None
 
-    async def get_user_by_username(self, username: str) -> Optional[User]:
-        """Get user by username."""
-        # More efficient implementation would use a username index
-        user_keys = await self.list_keys("users/")
-        
-        for key in user_keys:
-            if key.endswith("/profile"):
-                user_data = await self._read_json(key)
-                if user_data and user_data.get("username") == username:
-                    return User(**user_data)
-        return None
-
-    async def get_user_by_email(self, email: str) -> Optional[User]:
-        """Get user by email."""
-        # More efficient implementation would use an email index
-        user_keys = await self.list_keys("users/")
-        
-        for key in user_keys:
-            if key.endswith("/profile"):
-                user_data = await self._read_json(key)
-                if user_data and user_data.get("email") == email:
-                    return User(**user_data)
-        return None
 
     async def create_user(self, user: User) -> User:
         """Create a new user."""

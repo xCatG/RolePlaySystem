@@ -18,7 +18,7 @@
         :class="['message', message.role]"
       >
         <div class="message-header">
-          <strong>{{ message.role === 'user' ? session.participant_name : 'Character' }}:</strong>
+          <strong>{{ message.role === 'participant' ? session.participant_name : session.character_name }}:</strong>
           <span class="timestamp">{{ formatTimestamp(message.timestamp) }}</span>
         </div>
         <div class="message-content">{{ message.content }}</div>
@@ -81,7 +81,7 @@ export default defineComponent({
       if (!newMessage.value.trim() || loading.value) return;
 
       const userMessage: Message = {
-        role: 'user',
+        role: 'participant',
         content: newMessage.value,
         timestamp: new Date().toISOString()
       };
@@ -96,7 +96,7 @@ export default defineComponent({
         const response = await chatApi.sendMessage(props.session.session_id, { message: messageText });
         
         const assistantMessage: Message = {
-          role: 'assistant',
+          role: 'character',
           content: response.response,
           timestamp: new Date().toISOString()
         };
@@ -213,17 +213,25 @@ export default defineComponent({
   max-width: 85%;
 }
 
-.message.user {
+.message.participant {
   background: #007bff;
   color: white;
   margin-left: auto;
   text-align: right;
 }
 
-.message.assistant {
+.message.character {
   background: #e9ecef;
   color: #212529;
   margin-right: auto;
+}
+
+.message.system {
+  background: #f8f9fa;
+  color: #6c757d;
+  margin: 0 auto;
+  text-align: center;
+  font-style: italic;
 }
 
 .message-header {

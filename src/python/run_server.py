@@ -90,29 +90,30 @@ def _validate_configuration(config) -> None:
     import os
     
     # Only validate file paths for file storage
-    if config.storage_type == "file":
+    if config.storage and config.storage.type == "file":
         # Validate storage path exists
-        if not os.path.exists(config.storage_path):
+        storage_path = config.storage.base_dir
+        if not os.path.exists(storage_path):
             raise FileNotFoundError(
-                f"Storage path '{config.storage_path}' does not exist. "
+                f"Storage path '{storage_path}' does not exist. "
                 "Please create the directory before starting the server."
             )
-        if not os.path.isdir(config.storage_path):
+        if not os.path.isdir(storage_path):
             raise NotADirectoryError(
-                f"Storage path '{config.storage_path}' is not a directory."
+                f"Storage path '{storage_path}' is not a directory."
             )
-        if not os.access(config.storage_path, os.R_OK | os.W_OK):
+        if not os.access(storage_path, os.R_OK | os.W_OK):
             raise PermissionError(
-                f"Storage path '{config.storage_path}' is not readable/writable."
+                f"Storage path '{storage_path}' is not readable/writable."
             )
-    elif config.storage_type == "gcs":
+    elif config.storage and config.storage.type == "gcs":
         # For GCS, just validate that required env vars are present
-        if not os.getenv("GCP_PROJECT_ID"):
+        if not config.storage.project_id:
             raise ValueError("GCP_PROJECT_ID environment variable is required for GCS storage")
-        if not os.getenv("GCS_BUCKET"):
+        if not config.storage.bucket:
             raise ValueError("GCS_BUCKET environment variable is required for GCS storage")
-    elif config.storage_type not in ["file", "gcs", "s3"]:
-        raise ValueError(f"Unsupported storage type: {config.storage_type}")
+    elif config.storage and config.storage.type not in ["file", "gcs", "s3"]:
+        raise ValueError(f"Unsupported storage type: {config.storage.type}")
     
     # Validate JWT secret in production
     if hasattr(config, 'debug') and not config.debug:

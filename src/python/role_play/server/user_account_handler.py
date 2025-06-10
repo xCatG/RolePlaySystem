@@ -7,7 +7,7 @@ from typing import Annotated
 from .base_handler import BaseHandler
 from .dependencies import get_auth_manager, get_current_user
 from ..common.auth import AuthManager
-from ..common.models import User, UserRole, AuthProvider
+from ..common.models import User, UserRole, AuthProvider, UpdateLanguageRequest, UpdateLanguageResponse
 from ..common.exceptions import AuthenticationError, StorageError
 
 
@@ -16,6 +16,7 @@ class RegisterRequest(BaseModel):
     username: str
     email: EmailStr
     password: str
+    preferred_language: str = "en"
 
 
 class LoginRequest(BaseModel):
@@ -70,11 +71,16 @@ class UserAccountHandler(BaseHandler):
                 Raises:
                     HTTPException: If registration fails
                 """
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.info(f"Registration request: username={request.username}, email={request.email}, language={request.preferred_language}")
+                
                 try:
                     user, token = await auth_manager.register_user(
                         username=request.username,
                         email=request.email,
-                        password=request.password
+                        password=request.password,
+                        preferred_language=request.preferred_language
                     )
                     
                     return AuthResponse(
@@ -151,7 +157,7 @@ class UserAccountHandler(BaseHandler):
                         detail=str(e)
                     )
             
-            @self._router.get("/me", response_model=UserResponse)
+            @self._router.get("/me", response_model=User)
             async def get_current_user_profile(
                 current_user: Annotated[User, Depends(get_current_user)]
             ):
@@ -162,9 +168,53 @@ class UserAccountHandler(BaseHandler):
                     current_user: Current authenticated user from JWT token
                     
                 Returns:
-                    UserResponse: Current user's profile data
+                    User: Current user's profile data
                 """
-                return UserResponse(user=current_user)
+                return current_user
+            
+            @self._router.patch("/language", response_model=UpdateLanguageResponse)
+            async def update_language_preference(
+                request: UpdateLanguageRequest,
+                current_user: Annotated[User, Depends(get_current_user)],
+                auth_manager: Annotated[AuthManager, Depends(get_auth_manager)]
+            ):
+                """
+                Update user's language preference.
+                
+                Args:
+                    request: Language update request
+                    current_user: Current authenticated user
+                    auth_manager: AuthManager dependency
+                    
+                Returns:
+                    UpdateLanguageResponse: Confirmation of language update
+                    
+                Raises:
+                    HTTPException: If update fails
+                """
+                try:
+                    # Update user's language preference directly
+                    current_user.preferred_language = request.language
+                    
+                    # Save updated user (update_user handles updated_at timestamp)
+                    await auth_manager.storage.update_user(current_user)
+                    
+                    return UpdateLanguageResponse(
+                        success=True,
+                        language=request.language,
+                        message=f"Language preference updated to {request.language}"
+                    )
+                    
+                except StorageError as e:
+                    raise HTTPException(
+                        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                        detail="Failed to update language preference due to storage error"
+                    )
+                except ValueError as e:
+                    raise HTTPException(
+                        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                        detail=str(e)
+                    )
         
         return self._router
     

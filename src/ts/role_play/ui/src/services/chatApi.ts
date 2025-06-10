@@ -14,9 +14,9 @@ import type {
 } from '../types/chat';
 
 export const chatApi = {
-  async getScenarios(): Promise<ScenarioInfo[]> {
+  async getScenarios(language: string = 'en'): Promise<ScenarioInfo[]> {
     const response = await axios.get<ScenarioListResponse>(
-      apiUrl('/chat/content/scenarios'), 
+      apiUrl(`/chat/content/scenarios?language=${encodeURIComponent(language)}`), 
       {
         headers: getAuthHeaders()
       }
@@ -24,9 +24,9 @@ export const chatApi = {
     return response.data.scenarios;
   },
 
-  async getCharacters(scenarioId: string): Promise<CharacterInfo[]> {
+  async getCharacters(scenarioId: string, language: string = 'en'): Promise<CharacterInfo[]> {
     const response = await axios.get<CharacterListResponse>(
-      apiUrl(`/chat/content/scenarios/${scenarioId}/characters`), 
+      apiUrl(`/chat/content/scenarios/${scenarioId}/characters?language=${encodeURIComponent(language)}`), 
       {
         headers: getAuthHeaders()
       }

@@ -39,16 +39,7 @@ class ServerConfig(BaseModel):
         default=24, description="JWT token expiration in hours"
     )
 
-    # Storage settings (legacy - for backward compatibility)
-    storage_type: str = Field(
-        default="file", description="Storage backend type (file, s3) - DEPRECATED: Use storage.type"
-    )
-    storage_path: str = Field(
-        default_factory=lambda: os.path.expanduser(os.getenv("STORAGE_PATH", "./data")),
-        description="Storage path for file backend (must exist) - DEPRECATED: Use storage.base_dir",
-    )
-    
-    # New storage configuration
+    # Storage configuration
     storage: Optional[StorageConfigUnion] = Field(
         default=None, description="Storage configuration (new format)"
     )
@@ -77,6 +68,12 @@ class ServerConfig(BaseModel):
                 raise ValueError(f"Unknown storage type: {storage_type}")
         
         return v
+
+    # Language configuration
+    supported_languages: List[str] = Field(
+        default=["en", "zh-TW", "ja"],
+        description="List of supported language codes for scenarios and characters"
+    )
 
 
 class DevelopmentConfig(ServerConfig):

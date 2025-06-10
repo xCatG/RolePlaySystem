@@ -66,6 +66,7 @@ class User(BaseModel):
     username: str
     email: Optional[str] = None
     role: UserRole = UserRole.USER
+    preferred_language: str = "en"
     created_at: datetime
     updated_at: datetime
     is_active: bool = True
@@ -112,6 +113,16 @@ class BaseResponse(BaseModel):
     """Base fields for all API responses."""
     success: bool = True
     message: Optional[str] = None  # Human-readable message (useful for clients)
+
+
+class UpdateLanguageRequest(BaseModel):
+    """Request to update user's language preference."""
+    language: str = Field(..., description="Language code (e.g., 'en', 'zh-TW')")
+
+
+class UpdateLanguageResponse(BaseResponse):
+    """Response for language preference update."""
+    language: str = Field(..., description="Updated language preference")
 
 
 class Environment(str, Enum):

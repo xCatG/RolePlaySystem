@@ -36,9 +36,6 @@ storage:
     retry_attempts: "${LOCK_RETRY_ATTEMPTS:5}"
     retry_delay_seconds: "${LOCK_RETRY_DELAY:0.5}"
 
-# Legacy storage settings (maintained for backward compatibility)
-storage_type: "gcs"
-storage_path: "gs://${GCS_BUCKET:roleplay-beta-storage}/${GCS_PREFIX:beta/}"
 
 # Handler configuration
 enabled_handlers:
