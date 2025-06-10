@@ -46,6 +46,7 @@
     "createSessionFailed": "建立對話失敗",
     "sendMessageFailed": "發送訊息失敗",
     "endSessionFailed": "結束對話失敗",
+    "deleteSessionFailed": "刪除對話失敗",
     "updateLanguageFailed": "更新語言偏好失敗",
     "networkError": "發生網路錯誤"
   },

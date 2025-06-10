@@ -46,6 +46,7 @@
     "createSessionFailed": "Failed to create session",
     "sendMessageFailed": "Failed to send message",
     "endSessionFailed": "Failed to end session",
+    "deleteSessionFailed": "Failed to delete session",
     "updateLanguageFailed": "Failed to update language preference",
     "networkError": "Network error occurred"
   },

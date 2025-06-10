@@ -253,7 +253,7 @@ export default defineComponent({
         await chatApi.endSession(sessionId);
         
         // Refresh sessions list
-        await refreshData();
+        await loadData();
       } catch (err) {
         error.value = t('errors.endSessionFailed');
         console.error(err);
@@ -276,7 +276,7 @@ export default defineComponent({
         await chatApi.deleteSession(sessionToDelete.value);
         
         // Refresh sessions list
-        await refreshData();
+        await loadData();
       } catch (err) {
         error.value = 'Failed to delete session';
         console.error(err);
@@ -300,11 +300,11 @@ export default defineComponent({
       characters.value = [];
       
       // Reload content for new language
-      await refreshData();
+      await loadData();
     };
 
     onMounted(() => {
-      refreshData();
+      loadData();
     });
 
     return {
