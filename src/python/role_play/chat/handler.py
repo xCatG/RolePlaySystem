@@ -29,7 +29,10 @@ from .models import (
     ScenarioListResponse,
     ScenarioInfo,
     CharacterListResponse,
-    CharacterInfo
+    CharacterInfo,
+    SessionStatusResponse,
+    Message,
+    MessagesListResponse
 )
 from .content_loader import ContentLoader
 from .chat_logger import ChatLogger
@@ -62,6 +65,9 @@ class ChatHandler(BaseHandler):
             self._router.post("/session/{session_id}/message", tags=["Session"], response_model=ChatMessageResponse)(self.send_message)
             self._router.get("/session/{session_id}/export-text", tags=["Session"])(self.export_session_text)
             self._router.post("/session/{session_id}/end", tags=["Session"], status_code=204)(self.end_session)
+            self._router.get("/session/{session_id}/status", tags=["Session"])(self.get_session_status)
+            self._router.get("/session/{session_id}/messages", tags=["Session"])(self.get_session_messages)
+            self._router.delete("/session/{session_id}", tags=["Session"], status_code=204)(self.delete_session)
 
         return self._router
 
@@ -219,21 +225,44 @@ class ChatHandler(BaseHandler):
         self,
         current_user: Annotated[User, Depends(require_user_or_higher)],
         chat_logger: Annotated[ChatLogger, Depends(get_chat_logger)],
+        adk_session_service: Annotated[InMemorySessionService, Depends(get_adk_session_service)],
     ) -> SessionListResponse:
         """Get all sessions for the current user by listing logs from ChatLogger."""
         try:
             sessions_data = await chat_logger.list_user_sessions(current_user.id)
-            session_infos = [
-                SessionInfo(
-                    session_id=s_data["session_id"],
+            session_infos = []
+            
+            for s_data in sessions_data:
+                session_id = s_data["session_id"]
+                
+                # Check if session is still active in ADK memory
+                adk_session = await adk_session_service.get_session(
+                    app_name="roleplay_chat", user_id=current_user.id, session_id=session_id
+                )
+                is_active = adk_session is not None
+                
+                # If session is not active, try to get end info
+                ended_at = None
+                ended_reason = None
+                if not is_active:
+                    end_info = await chat_logger.get_session_end_info(current_user.id, session_id)
+                    ended_at = end_info.get("ended_at")
+                    ended_reason = end_info.get("reason")
+                
+                session_info = SessionInfo(
+                    session_id=session_id,
                     scenario_name=s_data.get("scenario_name", "Unknown"),
                     character_name=s_data.get("character_name", "Unknown"),
                     participant_name=s_data.get("participant_name", "Unknown"),
                     created_at=s_data.get("created_at", ""),
                     message_count=s_data.get("message_count", 0),
-                    jsonl_filename=s_data.get("storage_path", "")
-                ) for s_data in sessions_data
-            ]
+                    jsonl_filename=s_data.get("storage_path", ""),
+                    is_active=is_active,
+                    ended_at=ended_at,
+                    ended_reason=ended_reason
+                )
+                session_infos.append(session_info)
+            
             return SessionListResponse(success=True, sessions=session_infos)
         except Exception as e:
             logger.error(f"Failed to get sessions for user {current_user.id}: {e}", exc_info=True)
@@ -254,7 +283,12 @@ class ChatHandler(BaseHandler):
                 app_name="roleplay_chat", user_id=current_user.id, session_id=session_id
             )
             if not adk_session:
-                raise HTTPException(status_code=404, detail="Active session not found or access denied.")
+                # Check if session exists in logs but is ended
+                end_info = await chat_logger.get_session_end_info(current_user.id, session_id)
+                if end_info:
+                    raise HTTPException(status_code=403, detail="Cannot send messages to ended session.")
+                else:
+                    raise HTTPException(status_code=404, detail="Session not found or access denied.")
 
             storage_path = adk_session.state.get("storage_path")
             if not storage_path:
@@ -395,3 +429,83 @@ class ChatHandler(BaseHandler):
         except Exception as e:
             logger.error(f"Failed to export session {session_id}: {e}", exc_info=True)
             raise HTTPException(status_code=500, detail="Failed to export session")
+
+    async def get_session_status(
+        self,
+        session_id: str,
+        current_user: Annotated[User, Depends(require_user_or_higher)],
+        adk_session_service: Annotated[InMemorySessionService, Depends(get_adk_session_service)],
+        chat_logger: Annotated[ChatLogger, Depends(get_chat_logger)],
+    ) -> SessionStatusResponse:
+        """Get the status of a session (active or ended)."""
+        try:
+            # Check if session exists in ADK InMemorySessionService
+            adk_session = await adk_session_service.get_session(
+                app_name="roleplay_chat", user_id=current_user.id, session_id=session_id
+            )
+            
+            if adk_session:
+                # Session is active
+                return SessionStatusResponse(
+                    success=True,
+                    status="active"
+                )
+            else:
+                # Session is ended - try to get end info from JSONL logs
+                ended_info = await chat_logger.get_session_end_info(user_id=current_user.id, session_id=session_id)
+                
+                return SessionStatusResponse(
+                    success=True,
+                    status="ended",
+                    ended_at=ended_info.get("ended_at"),
+                    ended_reason=ended_info.get("reason", "Session ended")
+                )
+        except Exception as e:
+            logger.error(f"Failed to get session status for {session_id}: {e}", exc_info=True)
+            raise HTTPException(status_code=500, detail="Failed to get session status")
+
+    async def get_session_messages(
+        self,
+        session_id: str,
+        current_user: Annotated[User, Depends(require_user_or_higher)],
+        chat_logger: Annotated[ChatLogger, Depends(get_chat_logger)],
+    ) -> MessagesListResponse:
+        """Get all messages for a session from JSONL logs."""
+        try:
+            messages = await chat_logger.get_session_messages(user_id=current_user.id, session_id=session_id)
+            
+            return MessagesListResponse(
+                success=True,
+                messages=messages,
+                session_id=session_id
+            )
+        except Exception as e:
+            logger.error(f"Failed to get messages for session {session_id}: {e}", exc_info=True)
+            raise HTTPException(status_code=500, detail="Failed to get session messages")
+
+    async def delete_session(
+        self,
+        session_id: str,
+        current_user: Annotated[User, Depends(require_user_or_higher)],
+        adk_session_service: Annotated[InMemorySessionService, Depends(get_adk_session_service)],
+        chat_logger: Annotated[ChatLogger, Depends(get_chat_logger)],
+    ):
+        """Delete a session completely (both from memory and storage)."""
+        try:
+            # First remove from ADK memory if it exists
+            adk_session = await adk_session_service.get_session(
+                app_name="roleplay_chat", user_id=current_user.id, session_id=session_id
+            )
+            if adk_session:
+                await adk_session_service.delete_session(
+                    app_name="roleplay_chat", user_id=current_user.id, session_id=session_id
+                )
+                logger.info(f"Removed active session {session_id} from ADK memory")
+            
+            # Delete the JSONL log file
+            await chat_logger.delete_session(user_id=current_user.id, session_id=session_id)
+            logger.info(f"Deleted session {session_id} for user {current_user.id}")
+            
+        except Exception as e:
+            logger.error(f"Failed to delete session {session_id}: {e}", exc_info=True)
+            raise HTTPException(status_code=500, detail="Failed to delete session")

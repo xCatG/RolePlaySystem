@@ -212,6 +212,101 @@ class ChatLogger:
         sessions_summary.sort(key=lambda s: s.get("created_at", ""), reverse=True)
         return sessions_summary
 
+    async def get_session_end_info(self, user_id: str, session_id: str) -> Dict[str, Any]:
+        """
+        Gets the end information for a session if it exists.
+        
+        Returns:
+            Dict with 'ended_at' and 'reason' if session was ended, empty dict otherwise.
+        """
+        storage_path = self._get_chat_log_path(user_id, session_id)
+        
+        try:
+            async with self.storage.lock(storage_path, timeout=10.0):
+                log_content = await self.storage.read(storage_path)
+                lines = log_content.strip().split('\n')
+                
+                # Look for session_end event (usually last line)
+                for line in reversed(lines):
+                    try:
+                        entry = json.loads(line)
+                        if entry.get("type") == "session_end":
+                            return {
+                                "ended_at": entry.get("timestamp"),
+                                "reason": entry.get("reason", "Session ended"),
+                                "total_messages": entry.get("total_messages", 0),
+                                "duration_seconds": entry.get("duration_seconds", 0)
+                            }
+                    except json.JSONDecodeError:
+                        continue
+                
+                # No session_end event found
+                return {}
+        except StorageError as e:
+            logger.warning(f"Session log not found for {session_id}: {e}")
+            return {}
+        except Exception as e:
+            logger.error(f"Error getting session end info for {session_id}: {e}")
+            return {}
+
+    async def get_session_messages(self, user_id: str, session_id: str) -> List[Dict[str, Any]]:
+        """
+        Gets all messages from a session's JSONL log.
+        
+        Returns:
+            List of message dictionaries with role, content, timestamp, and message_number.
+        """
+        storage_path = self._get_chat_log_path(user_id, session_id)
+        messages = []
+        
+        try:
+            async with self.storage.lock(storage_path, timeout=10.0):
+                log_content = await self.storage.read(storage_path)
+                lines = log_content.strip().split('\n')
+                
+                for line in lines:
+                    try:
+                        entry = json.loads(line)
+                        if entry.get("type") == "message":
+                            messages.append({
+                                "role": entry.get("role"),
+                                "content": entry.get("content"),
+                                "timestamp": entry.get("timestamp"),
+                                "message_number": entry.get("message_number", 0)
+                            })
+                    except json.JSONDecodeError:
+                        continue
+                
+                return messages
+        except StorageError as e:
+            logger.warning(f"Session log not found for {session_id}: {e}")
+            raise
+        except Exception as e:
+            logger.error(f"Error getting session messages for {session_id}: {e}")
+            raise
+
+    async def delete_session(self, user_id: str, session_id: str) -> None:
+        """
+        Deletes a session's JSONL log file completely.
+        
+        Args:
+            user_id: The user ID who owns the session
+            session_id: The session ID to delete
+        """
+        storage_path = self._get_chat_log_path(user_id, session_id)
+        
+        try:
+            async with self.storage.lock(storage_path, timeout=10.0):
+                await self.storage.delete(storage_path)
+            
+            logger.info(f"Deleted session log for {session_id}")
+        except StorageError as e:
+            logger.warning(f"Session log not found for deletion {session_id}: {e}")
+            # Don't raise error if file doesn't exist - it's already "deleted"
+        except Exception as e:
+            logger.error(f"Error deleting session log for {session_id}: {e}")
+            raise
+
     async def export_session_text(self, user_id: str, session_id: str) -> str:
         """Exports a session as a human-readable text transcript."""
         storage_path = self._get_chat_log_path(user_id, session_id)

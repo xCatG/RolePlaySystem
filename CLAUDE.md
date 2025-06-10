@@ -132,6 +132,24 @@ cd src/ts/role_play/ui && npm install && npm run dev
 - [ ] Database: Future schema design
 - [ ] Additional Languages: Japanese (ja) content and UI translations
 
+### Read-Only Session History (Completed)
+- [x] Backend: Add `GET /chat/session/{session_id}/status` endpoint to check if session is active or ended
+- [x] Backend: Add `GET /chat/session/{session_id}/messages` endpoint to retrieve message history from JSONL
+- [x] Backend: Add `DELETE /chat/session/{session_id}` endpoint to permanently delete sessions
+- [x] Backend: Update `SessionInfo` model to include `is_active`, `ended_at`, `ended_reason` fields
+- [x] Backend: Block message sending to ended sessions (403 Forbidden)
+- [x] Backend: ChatLogger methods for session end info and message retrieval
+- [x] Frontend: Update TypeScript types for session status tracking
+- [x] Frontend: Add visual distinction for ended sessions in session list (gray out, badges)
+- [x] Frontend: ChatWindow read-only mode (hide input, show banner for historical sessions)
+- [x] Frontend: Load and display message history when viewing ended sessions
+- [x] Frontend: Scrollable sessions list with max-height container
+- [x] Frontend: Session management actions (end/delete) with confirmation dialogs
+- [x] UI: Add "Send to Evaluation" button next to Export button (show "Coming Soon" dialog)
+- [x] UI: Session management buttons in both session list and chat window
+- [x] UI: Safe deletion workflow (hide delete during active chat, show after ending)
+- [x] Internationalization: Full English/Chinese support for all new features
+
 ### Completed
 - [x] Base Infrastructure: All common modules, cloud storage, distributed locking
 - [x] Server Core: Base classes, dependencies, config, user accounts
