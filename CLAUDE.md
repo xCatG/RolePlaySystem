@@ -127,6 +127,11 @@ make test-specific TEST_PATH="test/python/unit/chat/test_chat_logger.py"
 - [x] Frontend-backend language preference sync
 
 ### Pending Development
+- [ ] **Code Simplification Phase 3** (Future enhancements):
+  - [ ] Implement frontend composables usage in Chat.vue and ChatWindow.vue
+  - [ ] Add caching layer for API responses to reduce redundant calls
+  - [ ] Extract common error handling decorator for backend methods
+  - [ ] Create utility functions for date formatting across components
 - [ ] WebSocket: `server/websocket.py` connection manager
 - [ ] Auth Module: Complete OAuth implementation
 - [ ] Scripter: Complete module implementation  
@@ -167,6 +172,22 @@ make test-specific TEST_PATH="test/python/unit/chat/test_chat_logger.py"
 - [x] `make test-no-coverage` - Fast test execution without coverage overhead
 - [x] `make test-specific TEST_PATH=<path>` - Targeted test execution for debugging
 
+### Code Simplification & Refactoring (Completed)
+- [x] **Backend Phase 1**: Extract `_parse_jsonl_file()` utility from ChatLogger (~200 lines duplicate code eliminated)
+- [x] **Backend Phase 1**: Extract `_validate_active_session()` helper from handler methods
+- [x] **Backend Phase 2**: Break down complex `send_message()` method (80→30 lines) into focused helpers:
+  - `_log_participant_message()` - Handle participant message logging
+  - `_log_character_message()` - Handle character response logging  
+  - `_load_session_content()` - Load and validate character/scenario content
+  - `_generate_character_response()` - ADK Runner interaction and response generation
+- [x] **Frontend Phase 2**: Create reusable composables for common patterns:
+  - `useConfirmModal.ts` - Centralized modal management
+  - `useAsyncOperation.ts` - Standardized loading/error handling
+  - `useSessionActions.ts` - Session operation workflows
+  - `useChatData.ts` - Consolidated data management
+- [x] **Frontend Phase 2**: Consolidate data loading patterns (7 duplicate `loadInitialData()` calls → single `refreshData()`)
+- [x] **Impact**: ~250 lines duplicate code eliminated, better maintainability, all 67 chat tests passing
+
 ### Completed
 - [x] Base Infrastructure: All common modules, cloud storage, distributed locking
 - [x] Server Core: Base classes, dependencies, config, user accounts
@@ -186,15 +207,18 @@ make test-specific TEST_PATH="test/python/unit/chat/test_chat_logger.py"
 - **Infrastructure**: Common modules, FileStorage, AuthManager, JWT, cloud storage with distributed locking
 - **Server**: FastAPI with stateless handlers, JWT auth, CORS, environment configs
 - **Auth**: RoleChecker pattern (replaced decorators), role hierarchy, proper HTTP codes, language preferences
-- **Chat**: ADK integration, JSONL logging, singleton services, POC endpoints, language-aware content
+- **Chat**: ADK integration, JSONL logging, singleton services, POC endpoints, language-aware content, refactored for maintainability
 - **Evaluation**: Simple text export from JSONL
-- **Testing**: 190+ tests, language functionality coverage (ContentLoader, auth, models)
-- **Frontend**: Vue.js auth UI, i18n with Traditional Chinese, language switcher
+- **Testing**: 190+ tests, language functionality coverage (ContentLoader, auth, models), comprehensive Makefile targets
+- **Frontend**: Vue.js auth UI, i18n with Traditional Chinese, language switcher, reusable composables
 - **Localization**: Complete Traditional Chinese support with content isolation
+- **Code Quality**: Simplified architecture with extracted utilities, focused methods, reduced duplication
 
 ### Architecture Highlights
 - **Storage**: Async distributed locking, lease (60-300s) vs timeout (5-30s) separation
-- **Chat**: Separated ADK runtime from JSONL persistence, per-message Runner creation
+- **Chat**: Separated ADK runtime from JSONL persistence, per-message Runner creation, utility methods for JSONL parsing
+- **Backend Structure**: Helper methods for session validation, message logging, content loading, response generation
+- **Frontend Patterns**: Composable architecture for modal management, async operations, data loading
 - **Config**: YAML + env vars, dynamic handler loading, fail-fast validation
 - **Cloud**: GCS (async atomic ops), S3/Redis (stubs), env restrictions
 - **Language Architecture**: Per-language content files, fallback filtering, UI/backend sync, caching

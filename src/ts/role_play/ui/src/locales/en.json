@@ -53,5 +53,11 @@
     "comingSoonTitle": "Coming Soon",
     "comingSoonMessage": "The evaluation feature is currently under development and will be available soon.",
     "ok": "OK"
+  },
+  "sessionActions": {
+    "endSessionTitle": "End Session",
+    "endSessionMessage": "Are you sure you want to end this session? You will no longer be able to send messages.",
+    "deleteSessionTitle": "Delete Session",
+    "deleteSessionMessage": "Are you sure you want to delete this session? This action cannot be undone."
   }
 }

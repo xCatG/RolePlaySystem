@@ -138,16 +138,16 @@ export default defineComponent({
       participantName.value.trim()
     );
 
-    const loadInitialData = async () => {
+    const refreshData = async () => {
       try {
         loading.value = true;
         error.value = '';
-        const [scenariosData, sessionsData] = await Promise.all([
+        const [scenariosResponse, sessionsResponse] = await Promise.all([
           chatApi.getScenarios(currentLanguage.value),
           chatApi.getSessions()
         ]);
-        scenarios.value = scenariosData;
-        sessions.value = sessionsData;
+        scenarios.value = scenariosResponse.scenarios || [];
+        sessions.value = sessionsResponse.sessions || [];
       } catch (err) {
         error.value = t('errors.loadScenariosFailed');
         console.error(err);
@@ -156,19 +156,25 @@ export default defineComponent({
       }
     };
 
+    const loadCharacters = async (scenarioId: string) => {
+      if (!scenarioId) {
+        characters.value = [];
+        return;
+      }
+      
+      try {
+        error.value = '';
+        const response = await chatApi.getCharacters(scenarioId, currentLanguage.value);
+        characters.value = response.characters || [];
+      } catch (err) {
+        error.value = t('errors.loadCharactersFailed');
+        console.error(err);
+      }
+    };
+
     const onScenarioChange = async () => {
       selectedCharacterId.value = '';
-      characters.value = [];
-      
-      if (selectedScenarioId.value) {
-        try {
-          error.value = '';
-          characters.value = await chatApi.getCharacters(selectedScenarioId.value, currentLanguage.value);
-        } catch (err) {
-          error.value = t('errors.loadCharactersFailed');
-          console.error(err);
-        }
-      }
+      await loadCharacters(selectedScenarioId.value);
     };
 
     const startSession = async () => {
@@ -210,12 +216,12 @@ export default defineComponent({
 
     const closeSession = () => {
       activeSession.value = null;
-      loadInitialData(); // Refresh sessions list
+      refreshData(); // Refresh sessions list
     };
 
     const handleSessionEnded = () => {
       // Session was ended from ChatWindow, refresh data and update current session
-      loadInitialData();
+      refreshData();
       if (activeSession.value) {
         // Update the current session to reflect it's now ended
         activeSession.value.is_active = false;
@@ -227,7 +233,7 @@ export default defineComponent({
     const handleSessionDeleted = () => {
       // Session was deleted from ChatWindow, close and refresh
       activeSession.value = null;
-      loadInitialData();
+      refreshData();
     };
 
     const getSessionLabel = (session: SessionInfo) => {
@@ -247,7 +253,7 @@ export default defineComponent({
         await chatApi.endSession(sessionId);
         
         // Refresh sessions list
-        await loadInitialData();
+        await refreshData();
       } catch (err) {
         error.value = t('errors.endSessionFailed');
         console.error(err);
@@ -270,7 +276,7 @@ export default defineComponent({
         await chatApi.deleteSession(sessionToDelete.value);
         
         // Refresh sessions list
-        await loadInitialData();
+        await refreshData();
       } catch (err) {
         error.value = 'Failed to delete session';
         console.error(err);
@@ -294,11 +300,11 @@ export default defineComponent({
       characters.value = [];
       
       // Reload content for new language
-      await loadInitialData();
+      await refreshData();
     };
 
     onMounted(() => {
-      loadInitialData();
+      refreshData();
     });
 
     return {

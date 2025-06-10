@@ -53,5 +53,11 @@
     "comingSoonTitle": "即將推出",
     "comingSoonMessage": "評估功能目前正在開發中，將很快推出。",
     "ok": "確定"
+  },
+  "sessionActions": {
+    "endSessionTitle": "結束對話",
+    "endSessionMessage": "您確定要結束此對話嗎？您將無法再發送訊息。",
+    "deleteSessionTitle": "刪除對話",
+    "deleteSessionMessage": "您確定要刪除此對話嗎？此操作無法復原。"
   }
 }
