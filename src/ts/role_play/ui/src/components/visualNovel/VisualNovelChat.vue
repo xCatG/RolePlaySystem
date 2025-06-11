@@ -155,9 +155,8 @@ const isLoading = ref(false);
 const currentSpeakerId = ref<string>('');
 
 const scenarioId = computed(() => {
-  // Extract scenario ID from session
-  // TODO: This should come from the session data
-  return props.session.scenario_name.toLowerCase().replace(/\s+/g, '_');
+  // Scenario ID is now provided directly by the session
+  return props.session.scenario_id;
 });
 
 const currentTransition = computed(() => {

@@ -165,7 +165,9 @@ export default defineComponent({
         // Convert CreateSessionResponse to SessionInfo for consistent UI handling
         const sessionInfo: SessionInfo = {
           session_id: createResponse.session_id,
+          scenario_id: createResponse.scenario_id,
           scenario_name: createResponse.scenario_name,
+          character_id: createResponse.character_id,
           character_name: createResponse.character_name,
           participant_name: participantName.value,
           created_at: new Date().toISOString(),

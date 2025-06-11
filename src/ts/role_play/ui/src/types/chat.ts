@@ -30,7 +30,9 @@ export interface CharacterListResponse extends BaseResponse {
 // Session types - matches SessionInfo and SessionListResponse
 export interface SessionInfo {
   session_id: string;
+  scenario_id: string;
   scenario_name: string;
+  character_id: string;
   character_name: string;
   participant_name: string;
   created_at: string;
@@ -51,7 +53,9 @@ export interface CreateSessionRequest {
 
 export interface CreateSessionResponse extends BaseResponse {
   session_id: string;
+  scenario_id: string;
   scenario_name: string;
+  character_id: string;
   character_name: string;
   jsonl_filename: string;
 }

@@ -205,7 +205,9 @@ class ChatHandler(BaseHandler):
             return CreateSessionResponse(
                 success=True,
                 session_id=app_session_id,
+                scenario_id=request.scenario_id,
                 scenario_name=scenario["name"],
+                character_id=request.character_id,
                 character_name=character["name"],
                 jsonl_filename=storage_path
             )
@@ -226,7 +228,9 @@ class ChatHandler(BaseHandler):
             session_infos = [
                 SessionInfo(
                     session_id=s_data["session_id"],
+                    scenario_id=s_data.get("scenario_id", ""),
                     scenario_name=s_data.get("scenario_name", "Unknown"),
+                    character_id=s_data.get("character_id", ""),
                     character_name=s_data.get("character_name", "Unknown"),
                     participant_name=s_data.get("participant_name", "Unknown"),
                     created_at=s_data.get("created_at", ""),
