@@ -10,6 +10,7 @@ import logging
 import os
 from pathlib import Path
 
+from ..dev_agents.roleplay_agent.agent import RolePlayAgent
 from ..server.base_handler import BaseHandler
 from ..server.dependencies import (
     require_user_or_higher,
@@ -197,7 +198,7 @@ class ChatHandler(BaseHandler):
 -   **IMPORTANT: Respond in {language_name} language as specified by your character and scenario.**
 -   Engage with the user's messages within the roleplay context.
 """
-        agent = Agent(
+        agent = RolePlayAgent(
             name=f"roleplay_{character.get('id', 'unknown')}_{scenario.get('id', 'unknown')}",
             model=DEFAULT_MODEL,
             description=f"Roleplay agent for {character.get('name', 'Unknown Character')} in {scenario.get('name', 'Unknown Scenario')}",

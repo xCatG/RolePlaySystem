@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 from typing import Dict, Optional
 from google.adk.agents import Agent
+from .tools import dev_tools, content_loader
 
 # Add project root to path
 PROJECT_ROOT = Path(__file__).parent.parent.parent.parent.parent
@@ -13,24 +14,14 @@ sys.path.insert(0, str(PROJECT_ROOT / "src" / "python"))
 DEFAULT_MODEL = "gemini-2.0-flash-lite-001" # Set a reasonable default
 AGENT_MODEL = os.getenv("ADK_MODEL", DEFAULT_MODEL) # <-- Read from env
 
-try:
-    from .tools import dev_tools, content_loader
-    ADK_AVAILABLE = True
-except ImportError as e:
-    print(f"Warning: Failed to import ADK or tools: {e}. Using dummy agent.")
-    ADK_AVAILABLE = False
-    class Agent:
-        def __init__(self, **kwargs): pass
-    dev_tools = []
-    class ContentLoader:
-        def get_scenario_by_id(self, _): return None
-        def get_character_by_id(self, _): return None
-    content_loader = ContentLoader()
-
 # --- Development Agent for adk web ---
 
-if ADK_AVAILABLE:
-    root_agent = Agent(
+class RolePlayAgent(Agent):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+
+root_agent = RolePlayAgent(
         name="roleplay_dev_agent",
         model=AGENT_MODEL, # Use a capable model
         description="Development agent for testing roleplay prompts and tools.",
@@ -48,8 +39,6 @@ You DO NOT need to manage state or *become* the character in this dev view.
 Focus on providing information and allowing prompt testing.""",
         tools=dev_tools,
     )
-else:
-    root_agent = None # No agent if ADK isn't present
 
 agent = root_agent
 
@@ -90,10 +79,8 @@ def get_production_config(character_id: str, scenario_id: str) -> Optional[Dict]
 # --- Main block for verification ---
 if __name__ == "__main__":
     print("Roleplay Development Agent Module")
-    print(f"ADK Available: {ADK_AVAILABLE}")
-    if ADK_AVAILABLE:
-        print(f"Agent Name: {root_agent.name}")
-        print(f"Tools loaded: {len(dev_tools)}")
+    print(f"Agent Name: {root_agent.name}")
+    print(f"Tools loaded: {len(dev_tools)}")
 
     print("\nTesting production config export:")
     # Assuming 'medical_interview' and 'patient_chronic' exist in scenarios.json
