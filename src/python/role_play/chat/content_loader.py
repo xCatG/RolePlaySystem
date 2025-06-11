@@ -213,6 +213,22 @@ class ContentLoader:
             Character dictionary or None if not found
         """
         return next((c for c in self.get_characters(language) if c["id"] == character_id), None)
+
+    def get_scenario_by_id_any_language(self, scenario_id: str) -> Optional[Dict]:
+        """Get a scenario by ID searching across all supported languages."""
+        for lang in self.supported_languages:
+            scenario = self.get_scenario_by_id(scenario_id, lang)
+            if scenario:
+                return scenario
+        return None
+
+    def get_character_by_id_any_language(self, character_id: str) -> Optional[Dict]:
+        """Get a character by ID searching across all supported languages."""
+        for lang in self.supported_languages:
+            character = self.get_character_by_id(character_id, lang)
+            if character:
+                return character
+        return None
     
     def get_scenario_characters(self, scenario_id: str, language: str = "en") -> List[Dict]:
         """Get all characters compatible with a scenario for a specific language.

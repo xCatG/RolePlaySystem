@@ -351,42 +351,49 @@ setup-gcp-infra: load-env-mk # Added load-env-mk dependency
 	@echo "--- GCP Infrastructure setup for ENV=$(ENV) complete. Please verify in Console. ---"
 
 # --- Testing Targets ---
+
+# Helper to run Python with optional virtual environment
+PY_RUN = if [ -f venv/bin/activate ]; then \
+. venv/bin/activate; \
+fi; \
+python
+
 .PHONY: test
 test:
 	@echo "Running full test suite with coverage..."
-	@bash -c "source venv/bin/activate && python -m pytest test/python/ --cov=src/python/role_play --cov-report=term-missing --cov-fail-under=25"
+	@bash -c "$(PY_RUN) -m pytest test/python/ --cov=src/python/role_play --cov-report=term-missing --cov-fail-under=25"
 
 .PHONY: test-quiet
 test-quiet:
 	@echo "Running tests in quiet mode with coverage..."
-	@bash -c "source venv/bin/activate && python -m pytest test/python/ -q --cov=src/python/role_play --cov-report=term-missing --cov-fail-under=25"
+	@bash -c "$(PY_RUN) -m pytest test/python/ -q --cov=src/python/role_play --cov-report=term-missing --cov-fail-under=25"
 
 .PHONY: test-chat
 test-chat:
 	@echo "Running chat-related tests with coverage..."
-	@bash -c "source venv/bin/activate && python -m pytest test/python/ -k 'chat' --cov=src/python/role_play/chat --cov-report=term-missing --cov-fail-under=0"
+	@bash -c "$(PY_RUN) -m pytest test/python/ -k 'chat' --cov=src/python/role_play/chat --cov-report=term-missing --cov-fail-under=0"
 
 .PHONY: test-unit
 test-unit:
 	@echo "Running unit tests with coverage..."
-	@bash -c "source venv/bin/activate && python -m pytest test/python/unit/ --cov=src/python/role_play --cov-report=term-missing --cov-fail-under=0"
+	@bash -c "$(PY_RUN) -m pytest test/python/unit/ --cov=src/python/role_play --cov-report=term-missing --cov-fail-under=0"
 
 .PHONY: test-integration
 test-integration:
 	@echo "Running integration tests with coverage..."
-	@bash -c "source venv/bin/activate && python -m pytest test/python/integration/ --cov=src/python/role_play --cov-report=term-missing --cov-fail-under=0"
+	@bash -c "$(PY_RUN) -m pytest test/python/integration/ --cov=src/python/role_play --cov-report=term-missing --cov-fail-under=0"
 
 .PHONY: test-coverage-html
 test-coverage-html:
 	@echo "Generating HTML coverage report..."
-	@bash -c "source venv/bin/activate && python -m pytest test/python/ --cov=src/python/role_play --cov-report=html --cov-fail-under=0"
+	@bash -c "$(PY_RUN) -m pytest test/python/ --cov=src/python/role_play --cov-report=html --cov-fail-under=0"
 	@echo "Coverage report generated at: test/python/htmlcov/index.html"
 	@echo "Open in browser: file://$(shell pwd)/test/python/htmlcov/index.html"
 
 .PHONY: test-no-coverage
 test-no-coverage:
 	@echo "Running tests without coverage (faster)..."
-	@bash -c "source venv/bin/activate && python -m pytest test/python/ -v"
+	@bash -c "$(PY_RUN) -m pytest test/python/ -v"
 
 .PHONY: test-specific
 test-specific:
@@ -394,7 +401,7 @@ ifndef TEST_PATH
 	$(error TEST_PATH is not set. Usage: make test-specific TEST_PATH="test/python/unit/chat/test_chat_logger.py::TestChatLogger::test_read_only_session_history_integration")
 endif
 	@echo "Running specific test: $(TEST_PATH)"
-	@bash -c "source venv/bin/activate && python -m pytest '$(TEST_PATH)' -v --cov=src/python/role_play --cov-report=term-missing --cov-fail-under=0"
+	@bash -c "$(PY_RUN) -m pytest '$(TEST_PATH)' -v --cov=src/python/role_play --cov-report=term-missing --cov-fail-under=0"
 
 # --- Utilities ---
 .PHONY: logs

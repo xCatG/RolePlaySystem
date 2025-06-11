@@ -8,7 +8,6 @@ from pathlib import Path
 from typing import AsyncGenerator, Generator
 
 import pytest
-import pytest_asyncio
 
 # Add src/python to path for imports
 import sys

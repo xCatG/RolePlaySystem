@@ -265,15 +265,24 @@ class ChatHandler(BaseHandler):
         """Create a new chat session (ADK session in memory, log via ChatLogger)."""
         try:
             # Use user's preferred language for content loading
-            user_language = getattr(current_user, 'preferred_language', 'en')
-            
+            user_language = getattr(current_user, "preferred_language", "en")
+
             scenario = content_loader.get_scenario_by_id(request.scenario_id, user_language)
+            character = content_loader.get_character_by_id(request.character_id, user_language)
+
+            # Fallback to search across all languages if not found
+            if not scenario:
+                scenario = content_loader.get_scenario_by_id_any_language(request.scenario_id)
+            if not character:
+                character = content_loader.get_character_by_id_any_language(request.character_id)
+
             if not scenario:
                 raise HTTPException(status_code=400, detail=f"Invalid scenario ID: {request.scenario_id}")
-
-            character = content_loader.get_character_by_id(request.character_id, user_language)
             if not character:
                 raise HTTPException(status_code=400, detail=f"Invalid character ID: {request.character_id}")
+
+            # Determine the language actually used for the session
+            session_language = scenario.get("language", user_language)
 
             if request.character_id not in scenario.get("compatible_characters", []):
                 raise HTTPException(status_code=400, detail="Character not compatible with scenario")
@@ -296,7 +305,7 @@ class ChatHandler(BaseHandler):
                 "scenario_name": scenario["name"],
                 "character_id": request.character_id,
                 "character_name": character["name"],
-                "language": user_language,
+                "language": session_language,
                 "message_count": 0,
                 "session_creation_time_iso": utc_now_isoformat()
             }

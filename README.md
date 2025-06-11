@@ -186,6 +186,7 @@ make test-unit            # Unit tests only
 make test-integration     # Integration tests only
 make test-coverage-html   # Generate HTML coverage report
 make test-quiet           # Quiet mode for faster feedback
+# Make targets automatically use `venv` if present
 
 # Run specific test
 make test-specific TEST_PATH="test/python/unit/chat/test_chat_logger.py"

@@ -2,6 +2,9 @@
 import pytest
 from unittest.mock import Mock, patch, AsyncMock
 
+from role_play.chat.content_loader import ContentLoader
+from role_play.chat.models import CreateSessionRequest
+
 from role_play.chat.handler import ChatHandler
 
 
@@ -566,3 +569,52 @@ class TestChatHandlerReadOnlySession:
             user_id="test_user_123",
             session_id=session_id
         )
+
+
+class TestChatHandlerCreateSession:
+    """Tests for creating sessions across language mismatches."""
+
+    @pytest.mark.asyncio
+    async def test_create_session_cross_language_fallback(self):
+        chat_handler = ChatHandler()
+
+        user = Mock()
+        user.id = "user123"
+        user.preferred_language = "zh-TW"
+
+        request = CreateSessionRequest(
+            scenario_id="customer_service",
+            character_id="angry_customer",
+            participant_name="Alice",
+        )
+
+        chat_logger = AsyncMock()
+        chat_logger.start_session = AsyncMock(return_value=("sess-1", "path"))
+
+        adk_service = AsyncMock()
+        adk_service.create_session = AsyncMock()
+
+        content_loader = ContentLoader(supported_languages=["en", "zh-TW"])
+
+        response = await chat_handler.create_session(
+            request=request,
+            current_user=user,
+            chat_logger=chat_logger,
+            adk_session_service=adk_service,
+            content_loader=content_loader,
+        )
+
+        assert response.success is True
+        assert response.session_id == "sess-1"
+
+        chat_logger.start_session.assert_called_once_with(
+            user_id="user123",
+            participant_name="Alice",
+            scenario_id="customer_service",
+            scenario_name="Customer Service Call",
+            character_id="angry_customer",
+            character_name="Mike - Frustrated Customer",
+        )
+
+        state = adk_service.create_session.call_args.kwargs["state"]
+        assert state["language"] == "en"

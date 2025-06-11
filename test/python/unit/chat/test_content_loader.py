@@ -263,3 +263,18 @@ def test_unsupported_language_validation():
         assert "unsupported language" in str(exc_info.value)
     except FileNotFoundError:
         pytest.skip("Resource files not available")
+
+
+def test_get_by_id_any_language():
+    """Ensure get_scenario_by_id_any_language and get_character_by_id_any_language work."""
+    loader = ContentLoader(supported_languages=["en", "zh-TW"])
+
+    scenario = loader.get_scenario_by_id_any_language("customer_service")
+    assert scenario is not None
+    assert scenario["id"] == "customer_service"
+    assert scenario.get("language") == "en"
+
+    character = loader.get_character_by_id_any_language("angry_customer")
+    assert character is not None
+    assert character["id"] == "angry_customer"
+    assert character.get("language") == "en"
