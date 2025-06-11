@@ -12,7 +12,9 @@ class CreateSessionRequest(BaseModel):
 class CreateSessionResponse(BaseResponse):
     """Response after creating a chat session."""
     session_id: str
+    scenario_id: str
     scenario_name: str
+    character_id: str
     character_name: str
     jsonl_filename: str
 
@@ -29,7 +31,9 @@ class ChatMessageResponse(BaseResponse):
 class SessionInfo(BaseModel):
     """Information about a chat session."""
     session_id: str
+    scenario_id: str
     scenario_name: str
+    character_id: str
     character_name: str
     participant_name: str
     created_at: str
