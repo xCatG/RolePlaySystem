@@ -9,10 +9,15 @@ Guidance for Claude Code when working with this RolePlay System repository.
 python3 -m venv venv && source venv/bin/activate  # Setup
 pip install -r src/python/requirements.txt
 python src/python/run_server.py                    # Run server
-pytest test/python/                                # Run tests
+make test                                          # Run tests with coverage
 
 # Frontend
 cd src/ts/role_play/ui && npm install && npm run dev
+
+# Testing Options
+make test-chat          # Chat module tests only
+make test-coverage-html # Generate HTML coverage report
+make test-specific TEST_PATH="test/python/unit/chat/test_chat_logger.py"
 ```
 
 **Environment**: `ENV=dev|beta|prod`, configs in `config/{env}.yaml`
@@ -69,6 +74,7 @@ cd src/ts/role_play/ui && npm install && npm run dev
 - **Coverage**: >90% unit, critical integration, user journey e2e, language functionality
 - **Stack**: pytest, httpx, pytest-asyncio, factory-boy
 - **Language Tests**: ContentLoader language filtering, auth language preferences, model validation
+- **Makefile Targets**: `make test`, `make test-chat`, `make test-unit`, `make test-integration`, `make test-coverage-html`
 
 ## TODO List
 
@@ -121,6 +127,12 @@ cd src/ts/role_play/ui && npm install && npm run dev
 - [x] Frontend-backend language preference sync
 
 ### Pending Development
+- [ ] **Code Quality & Testing** (Post-refactoring improvements):
+  - [ ] Implement API contract testing to prevent frontend/backend data structure mismatches
+  - [ ] Add runtime API response validation in development mode to catch integration issues early
+  - [ ] Add caching layer for API responses to reduce redundant calls
+  - [ ] Extract common error handling decorator for backend methods
+  - [ ] Create utility functions for date formatting across components
 - [ ] WebSocket: `server/websocket.py` connection manager
 - [ ] Auth Module: Complete OAuth implementation
 - [ ] Scripter: Complete module implementation  
@@ -130,15 +142,67 @@ cd src/ts/role_play/ui && npm install && npm run dev
 - [ ] Docs: README.md architecture, OAUTH_SETUP.md
 - [ ] User Management: Complete module
 - [ ] Database: Future schema design
+- [ ] **Localization Completeness**: Complete ChatWindow.vue localization (message placeholders, session labels, timestamps still in English)
 - [ ] Additional Languages: Japanese (ja) content and UI translations
 
-### Completed
+### Read-Only Session History (Completed)
+- [x] Backend: Add `GET /chat/session/{session_id}/status` endpoint to check if session is active or ended
+- [x] Backend: Add `GET /chat/session/{session_id}/messages` endpoint to retrieve message history from JSONL
+- [x] Backend: Add `DELETE /chat/session/{session_id}` endpoint to permanently delete sessions
+- [x] Backend: Update `SessionInfo` model to include `is_active`, `ended_at`, `ended_reason` fields
+- [x] Backend: Block message sending to ended sessions (403 Forbidden)
+- [x] Backend: ChatLogger methods for session end info and message retrieval
+- [x] Frontend: Update TypeScript types for session status tracking
+- [x] Frontend: Add visual distinction for ended sessions in session list (gray out, badges)
+- [x] Frontend: ChatWindow read-only mode (hide input, show banner for historical sessions)
+- [x] Frontend: Load and display message history when viewing ended sessions
+- [x] Frontend: Scrollable sessions list with max-height container
+- [x] Frontend: Session management actions (end/delete) with confirmation dialogs
+- [x] UI: Add "Send to Evaluation" button next to Export button (show "Coming Soon" dialog)
+- [x] UI: Session management buttons in both session list and chat window
+- [x] UI: Safe deletion workflow (hide delete during active chat, show after ending)
+- [x] Internationalization: Full English/Chinese support for all new features
+
+### Testing Infrastructure (Completed)
+- [x] Comprehensive test targets in Makefile for development workflow
+- [x] `make test` - Full test suite with coverage reporting and 25% minimum threshold
+- [x] `make test-quiet` - Quiet mode execution for faster feedback
+- [x] `make test-chat` - Chat module specific testing with dedicated coverage
+- [x] `make test-unit` - Unit tests only for focused testing
+- [x] `make test-integration` - Integration tests for service interactions
+- [x] `make test-coverage-html` - HTML coverage reports for detailed analysis
+- [x] `make test-no-coverage` - Fast test execution without coverage overhead
+- [x] `make test-specific TEST_PATH=<path>` - Targeted test execution for debugging
+
+### Code Simplification & Refactoring (Completed)
+- [x] **Backend Phase 1**: Extract `_parse_jsonl_file()` utility from ChatLogger (~200 lines duplicate code eliminated)
+- [x] **Backend Phase 1**: Extract `_validate_active_session()` helper from handler methods
+- [x] **Backend Phase 2**: Break down complex `send_message()` method (80→30 lines) into focused helpers:
+  - `_log_participant_message()` - Handle participant message logging
+  - `_log_character_message()` - Handle character response logging  
+  - `_load_session_content()` - Load and validate character/scenario content
+  - `_generate_character_response()` - ADK Runner interaction and response generation
+- [x] **Frontend Phase 2**: Create reusable composables for common patterns:
+  - `useConfirmModal.ts` - Centralized modal management
+  - `useAsyncOperation.ts` - Standardized loading/error handling
+  - `useSessionActions.ts` - Session operation workflows
+  - `useChatData.ts` - Consolidated data management
+- [x] **Frontend Phase 2**: Consolidate data loading patterns (7 duplicate `loadInitialData()` calls → single `refreshData()`)
+- [x] **Frontend Phase 3**: Integrate composables into Chat.vue:
+  - Replaced manual state management with `useChatData` composable
+  - Integrated `useConfirmModal` for consistent deletion workflows
+  - Applied `useAsyncOperation` for unified loading/error states
+  - Reduced component complexity from ~340 to ~280 lines
+- [x] **Impact**: ~300 lines duplicate code eliminated, better maintainability, all 241 tests passing
+- [x] **Critical Fix**: Resolved frontend data loading issues in Phase 3 refactoring (API response handling bugs)
+
+### Pending Development
 - [x] Base Infrastructure: All common modules, cloud storage, distributed locking
 - [x] Server Core: Base classes, dependencies, config, user accounts
 - [x] Chat Module: ADK integration, JSONL logging, POC features
 - [x] Evaluation: Simple export implementation
 - [x] Config & Env: All YAML configs, env loading
-- [x] Testing: Unit tests, storage integration, test infrastructure
+- [x] Testing: Unit tests, storage integration, test infrastructure, Makefile targets
 - [x] Core Docs: API.md, DEPLOYMENT.md, ENVIRONMENTS.md
 - [x] Traditional Chinese Localization: Complete frontend/backend language support system
 
@@ -151,15 +215,18 @@ cd src/ts/role_play/ui && npm install && npm run dev
 - **Infrastructure**: Common modules, FileStorage, AuthManager, JWT, cloud storage with distributed locking
 - **Server**: FastAPI with stateless handlers, JWT auth, CORS, environment configs
 - **Auth**: RoleChecker pattern (replaced decorators), role hierarchy, proper HTTP codes, language preferences
-- **Chat**: ADK integration, JSONL logging, singleton services, POC endpoints, language-aware content
+- **Chat**: ADK integration, JSONL logging, singleton services, POC endpoints, language-aware content, refactored for maintainability
 - **Evaluation**: Simple text export from JSONL
-- **Testing**: 190+ tests, language functionality coverage (ContentLoader, auth, models)
-- **Frontend**: Vue.js auth UI, i18n with Traditional Chinese, language switcher
+- **Testing**: 190+ tests, language functionality coverage (ContentLoader, auth, models), comprehensive Makefile targets
+- **Frontend**: Vue.js auth UI, i18n with Traditional Chinese, language switcher, reusable composables
 - **Localization**: Complete Traditional Chinese support with content isolation
+- **Code Quality**: Simplified architecture with extracted utilities, focused methods, reduced duplication
 
 ### Architecture Highlights
 - **Storage**: Async distributed locking, lease (60-300s) vs timeout (5-30s) separation
-- **Chat**: Separated ADK runtime from JSONL persistence, per-message Runner creation
+- **Chat**: Separated ADK runtime from JSONL persistence, per-message Runner creation, utility methods for JSONL parsing
+- **Backend Structure**: Helper methods for session validation, message logging, content loading, response generation
+- **Frontend Patterns**: Composable architecture for modal management, async operations, data loading
 - **Config**: YAML + env vars, dynamic handler loading, fail-fast validation
 - **Cloud**: GCS (async atomic ops), S3/Redis (stubs), env restrictions
 - **Language Architecture**: Per-language content files, fallback filtering, UI/backend sync, caching
@@ -198,6 +265,11 @@ cd src/ts/role_play/ui && npm install && npm run dev
 - **Content Structure**: Each item tagged with `"language"` field
 - **Scenario Compatibility**: Characters properly linked to scenarios within same language
 - **System Prompts**: Localized instructions for role-play agents
+
+### Known Localization Gaps
+- **ChatWindow.vue**: Message input placeholders, session timestamps, and some UI labels remain in English
+- **Dynamic Content**: Session labels using participant names not fully localized
+- **Future Work**: Complete ChatWindow localization for full Traditional Chinese support
 
 ## Critical Guidelines
 

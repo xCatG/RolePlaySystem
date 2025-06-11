@@ -179,10 +179,19 @@ Currently supported languages:
 ### Running Tests
 
 ```bash
-# Run all tests
-pytest test/python/
+# Using Makefile targets (recommended)
+make test                  # Run full test suite with coverage
+make test-chat            # Chat module tests only
+make test-unit            # Unit tests only
+make test-integration     # Integration tests only
+make test-coverage-html   # Generate HTML coverage report
+make test-quiet           # Quiet mode for faster feedback
 
-# Run with coverage
+# Run specific test
+make test-specific TEST_PATH="test/python/unit/chat/test_chat_logger.py"
+
+# Direct pytest usage
+pytest test/python/
 pytest test/python/ --cov=role_play --cov-report=html
 ```
 

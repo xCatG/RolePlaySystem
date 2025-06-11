@@ -1,11 +1,33 @@
 <template>
   <div class="chat-window">
     <div class="chat-header">
-      <h3>{{ session.participant_name }}'s Session</h3>
+      <h3>{{ session.participant_name }}'s Session
+        <span v-if="!session.is_active" class="read-only-indicator">(Read-Only)</span>
+      </h3>
       <div class="header-actions">
-        <button @click="exportChat" class="secondary-button">Export</button>
+        <button @click="exportChat" class="secondary-button">{{ $t('chat.exportText') }}</button>
+        <button @click="sendToEvaluation" class="secondary-button">{{ $t('chat.sendToEvaluation') }}</button>
+        <button v-if="session.is_active" 
+                @click="endSession" 
+                class="secondary-button end-session-button">
+          {{ $t('chat.endSession') }}
+        </button>
+        <button v-if="!session.is_active"
+                @click="deleteSession" 
+                class="secondary-button delete-session-button">
+          {{ $t('chat.deleteSession') }}
+        </button>
         <button @click="$emit('close')" class="secondary-button">Close</button>
       </div>
+    </div>
+    
+    <!-- Read-only banner for ended sessions -->
+    <div v-if="!session.is_active" class="read-only-banner">
+      <strong>{{ $t('chat.sessionEnded') }}</strong>
+      <span v-if="session.ended_at"> - {{ formatDate(session.ended_at) }}</span>
+      <span v-if="session.ended_reason"> ({{ session.ended_reason }})</span>
+      <br>
+      <small>This is a historical session. Messages are read-only.</small>
     </div>
 
     <div class="messages-container" ref="messagesContainer">
@@ -28,7 +50,8 @@
       </div>
     </div>
 
-    <div class="input-container">
+    <!-- Hide input for ended sessions -->
+    <div v-if="session.is_active" class="input-container">
       <form @submit.prevent="sendMessage">
         <input 
           v-model="newMessage"
@@ -46,28 +69,64 @@
         </button>
       </form>
     </div>
+    
+    <!-- Coming Soon Modal -->
+    <ConfirmModal
+      v-model="showEvaluationModal"
+      :message="$t('evaluation.comingSoonMessage')"
+      :title="$t('evaluation.comingSoonTitle')"
+      :confirm-text="$t('evaluation.ok')"
+      @confirm="showEvaluationModal = false"
+    />
+    
+    <!-- End Session Confirmation Modal -->
+    <ConfirmModal
+      v-model="showEndModal"
+      :message="$t('chat.confirmEndSession')"
+      :title="$t('chat.endSession')"
+      :confirm-text="$t('warnings.confirm')"
+      :cancel-text="$t('warnings.cancel')"
+      @confirm="confirmEndSession"
+    />
+    
+    <!-- Delete Session Confirmation Modal -->
+    <ConfirmModal
+      v-model="showDeleteModal"
+      :message="$t('chat.confirmDeleteSession')"
+      :title="$t('chat.deleteSession')"
+      :confirm-text="$t('warnings.confirm')"
+      :cancel-text="$t('warnings.cancel')"
+      @confirm="confirmDeleteSession"
+    />
   </div>
 </template>
 
 <script lang="ts">
-import { defineComponent, ref, nextTick, PropType } from 'vue';
+import { defineComponent, ref, nextTick, PropType, onMounted } from 'vue';
 import { chatApi } from '../services/chatApi';
 import type { SessionInfo, Message } from '../types/chat';
+import ConfirmModal from './ConfirmModal.vue';
 
 export default defineComponent({
   name: 'ChatWindow',
+  components: {
+    ConfirmModal
+  },
   props: {
     session: {
       type: Object as PropType<SessionInfo>,
       required: true
     }
   },
-  emits: ['close'],
-  setup(props) {
+  emits: ['close', 'session-ended', 'session-deleted'],
+  setup(props, { emit }) {
     const messages = ref<Message[]>([]);
     const newMessage = ref('');
     const loading = ref(false);
     const messagesContainer = ref<HTMLElement>();
+    const showEvaluationModal = ref(false);
+    const showDeleteModal = ref(false);
+    const showEndModal = ref(false);
 
     const scrollToBottom = () => {
       nextTick(() => {
@@ -133,14 +192,86 @@ export default defineComponent({
       return new Date(timestamp).toLocaleTimeString();
     };
 
+    const sendToEvaluation = () => {
+      showEvaluationModal.value = true;
+    };
+
+    const formatDate = (dateString: string) => {
+      return new Date(dateString).toLocaleString();
+    };
+
+    const loadMessageHistory = async () => {
+      if (!props.session.is_active) {
+        try {
+          loading.value = true;
+          const historyMessages = await chatApi.getSessionMessages(props.session.session_id);
+          messages.value = historyMessages;
+          scrollToBottom();
+        } catch (error) {
+          console.error('Failed to load message history:', error);
+        } finally {
+          loading.value = false;
+        }
+      }
+    };
+
+    const endSession = () => {
+      showEndModal.value = true;
+    };
+
+    const confirmEndSession = async () => {
+      try {
+        loading.value = true;
+        await chatApi.endSession(props.session.session_id);
+        showEndModal.value = false;
+        // Emit event to parent to refresh session list
+        emit('session-ended');
+      } catch (error) {
+        console.error('Failed to end session:', error);
+      } finally {
+        loading.value = false;
+      }
+    };
+
+    const deleteSession = () => {
+      showDeleteModal.value = true;
+    };
+
+    const confirmDeleteSession = async () => {
+      try {
+        loading.value = true;
+        await chatApi.deleteSession(props.session.session_id);
+        showDeleteModal.value = false;
+        // Emit event to parent to refresh and close
+        emit('session-deleted');
+      } catch (error) {
+        console.error('Failed to delete session:', error);
+      } finally {
+        loading.value = false;
+      }
+    };
+
+    onMounted(() => {
+      loadMessageHistory();
+    });
+
     return {
       messages,
       newMessage,
       loading,
       messagesContainer,
+      showEvaluationModal,
+      showDeleteModal,
+      showEndModal,
       sendMessage,
       exportChat,
-      formatTimestamp
+      sendToEvaluation,
+      endSession,
+      confirmEndSession,
+      deleteSession,
+      confirmDeleteSession,
+      formatTimestamp,
+      formatDate
     };
   }
 });
@@ -172,6 +303,21 @@ export default defineComponent({
   margin: 0;
 }
 
+.read-only-indicator {
+  font-size: 0.8em;
+  color: #6c757d;
+  font-weight: normal;
+}
+
+.read-only-banner {
+  background: #fff3cd;
+  border: 1px solid #ffeaa7;
+  color: #856404;
+  padding: 12px 20px;
+  border-top: none;
+  font-size: 14px;
+}
+
 .header-actions {
   display: flex;
   gap: 10px;
@@ -190,6 +336,19 @@ export default defineComponent({
 
 .secondary-button:hover {
   background: #5a6268;
+}
+
+.end-session-button:hover {
+  background: #ffc107;
+  color: #212529;
+}
+
+.delete-session-button {
+  background: #dc3545;
+}
+
+.delete-session-button:hover {
+  background: #c82333;
 }
 
 .messages-container {

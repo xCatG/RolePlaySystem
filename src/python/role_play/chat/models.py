@@ -1,6 +1,6 @@
 """Data models for the chat module."""
 from pydantic import BaseModel
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from ..common.models import BaseResponse
 
 class CreateSessionRequest(BaseModel):
@@ -35,6 +35,9 @@ class SessionInfo(BaseModel):
     created_at: str
     message_count: int
     jsonl_filename: str
+    is_active: bool = True  # Whether session exists in InMemorySessionService
+    ended_at: Optional[str] = None
+    ended_reason: Optional[str] = None
 
 class SessionListResponse(BaseResponse):
     """Response containing list of sessions."""
@@ -60,3 +63,21 @@ class CharacterInfo(BaseModel):
 class CharacterListResponse(BaseResponse):
     """Response containing list of characters."""
     characters: List[CharacterInfo]
+
+class SessionStatusResponse(BaseResponse):
+    """Response containing session status."""
+    status: str  # "active" or "ended"
+    ended_at: Optional[str] = None
+    ended_reason: Optional[str] = None
+
+class Message(BaseModel):
+    """A single message in a chat session."""
+    role: str  # "participant" or "character"
+    content: str
+    timestamp: str
+    message_number: int
+
+class MessagesListResponse(BaseResponse):
+    """Response containing list of messages for a session."""
+    messages: List[Message]
+    session_id: str

@@ -29,7 +29,11 @@
     "noCharacters": "No characters available",
     "sessionEnded": "Session ended",
     "exportText": "Export as Text",
-    "continueExistingSession": "Or Continue an Existing Session:"
+    "sendToEvaluation": "Send to Evaluation",
+    "continueExistingSession": "View Previous Sessions:",
+    "deleteSession": "Delete session",
+    "confirmDeleteSession": "Are you sure you want to delete this session? This action cannot be undone.",
+    "confirmEndSession": "Are you sure you want to end this session? You will no longer be able to send messages."
   },
   "warnings": {
     "languageSwitch": "Switching language will hide scenarios in the current language until you switch back. Continue?",
@@ -42,7 +46,19 @@
     "createSessionFailed": "Failed to create session",
     "sendMessageFailed": "Failed to send message",
     "endSessionFailed": "Failed to end session",
+    "deleteSessionFailed": "Failed to delete session",
     "updateLanguageFailed": "Failed to update language preference",
     "networkError": "Network error occurred"
+  },
+  "evaluation": {
+    "comingSoonTitle": "Coming Soon",
+    "comingSoonMessage": "The evaluation feature is currently under development and will be available soon.",
+    "ok": "OK"
+  },
+  "sessionActions": {
+    "endSessionTitle": "End Session",
+    "endSessionMessage": "Are you sure you want to end this session? You will no longer be able to send messages.",
+    "deleteSessionTitle": "Delete Session",
+    "deleteSessionMessage": "Are you sure you want to delete this session? This action cannot be undone."
   }
 }

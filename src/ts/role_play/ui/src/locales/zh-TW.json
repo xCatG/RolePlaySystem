@@ -29,7 +29,11 @@
     "noCharacters": "無可用角色",
     "sessionEnded": "對話已結束",
     "exportText": "匯出為文字",
-    "continueExistingSession": "或繼續現有對話："
+    "sendToEvaluation": "送至評估",
+    "continueExistingSession": "查看先前對話：",
+    "deleteSession": "刪除對話",
+    "confirmDeleteSession": "確定要刪除此對話嗎？此操作無法復原。",
+    "confirmEndSession": "確定要結束此對話嗎？結束後將無法再發送訊息。"
   },
   "warnings": {
     "languageSwitch": "切換語言將隱藏目前語言的情境，直到您切換回來。是否繼續？",
@@ -42,7 +46,19 @@
     "createSessionFailed": "建立對話失敗",
     "sendMessageFailed": "發送訊息失敗",
     "endSessionFailed": "結束對話失敗",
+    "deleteSessionFailed": "刪除對話失敗",
     "updateLanguageFailed": "更新語言偏好失敗",
     "networkError": "發生網路錯誤"
+  },
+  "evaluation": {
+    "comingSoonTitle": "即將推出",
+    "comingSoonMessage": "評估功能目前正在開發中，將很快推出。",
+    "ok": "確定"
+  },
+  "sessionActions": {
+    "endSessionTitle": "結束對話",
+    "endSessionMessage": "您確定要結束此對話嗎？您將無法再發送訊息。",
+    "deleteSessionTitle": "刪除對話",
+    "deleteSessionMessage": "您確定要刪除此對話嗎？此操作無法復原。"
   }
 }

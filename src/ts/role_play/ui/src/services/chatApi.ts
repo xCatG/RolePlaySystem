@@ -10,7 +10,10 @@ import type {
   CreateSessionRequest,
   CreateSessionResponse,
   ChatMessageRequest,
-  ChatMessageResponse
+  ChatMessageResponse,
+  SessionStatusResponse,
+  Message,
+  MessagesListResponse
 } from '../types/chat';
 
 export const chatApi = {
@@ -74,5 +77,44 @@ export const chatApi = {
       }
     );
     return response.data;
+  },
+
+  async getSessionStatus(sessionId: string): Promise<SessionStatusResponse> {
+    const response = await axios.get<SessionStatusResponse>(
+      apiUrl(`/chat/session/${sessionId}/status`), 
+      {
+        headers: getAuthHeaders()
+      }
+    );
+    return response.data;
+  },
+
+  async getSessionMessages(sessionId: string): Promise<Message[]> {
+    const response = await axios.get<MessagesListResponse>(
+      apiUrl(`/chat/session/${sessionId}/messages`), 
+      {
+        headers: getAuthHeaders()
+      }
+    );
+    return response.data.messages;
+  },
+
+  async endSession(sessionId: string): Promise<void> {
+    await axios.post(
+      apiUrl(`/chat/session/${sessionId}/end`), 
+      {},
+      {
+        headers: getAuthHeaders()
+      }
+    );
+  },
+
+  async deleteSession(sessionId: string): Promise<void> {
+    await axios.delete(
+      apiUrl(`/chat/session/${sessionId}`), 
+      {
+        headers: getAuthHeaders()
+      }
+    );
   }
 };

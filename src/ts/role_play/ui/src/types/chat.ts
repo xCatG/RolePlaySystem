@@ -36,6 +36,9 @@ export interface SessionInfo {
   created_at: string;
   message_count: number;
   jsonl_filename: string;
+  is_active: boolean;
+  ended_at?: string | null;
+  ended_reason?: string | null;
 }
 
 export interface SessionListResponse extends BaseResponse {
@@ -66,11 +69,24 @@ export interface ChatMessageResponse extends BaseResponse {
   message_count: number;
 }
 
-// Frontend-only types (not in Python backend)
+// Session status types
+export interface SessionStatusResponse extends BaseResponse {
+  status: 'active' | 'ended';
+  ended_at?: string | null;
+  ended_reason?: string | null;
+}
+
+// Message types - now matches backend Message model
 export interface Message {
   role: 'participant' | 'character' | 'system';
   content: string;
   timestamp: string;
+  message_number?: number;
+}
+
+export interface MessagesListResponse extends BaseResponse {
+  messages: Message[];
+  session_id: string;
 }
 
 // Legacy aliases for backward compatibility (will be removed)

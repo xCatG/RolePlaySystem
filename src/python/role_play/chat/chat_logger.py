@@ -32,6 +32,39 @@ class ChatLogger:
         """Constructs the storage path for a session's chat log."""
         return f"users/{user_id}/chat_logs/{session_id}"
 
+    async def _parse_jsonl_file(self, storage_path: str) -> List[Dict[str, Any]]:
+        """
+        Parse JSONL file and return list of events, handling malformed lines gracefully.
+        
+        Args:
+            storage_path: Path to the JSONL file in storage
+            
+        Returns:
+            List of parsed JSON events
+            
+        Raises:
+            StorageError: If file cannot be read
+        """
+        try:
+            async with self.storage.lock(storage_path, timeout=10.0):
+                log_content = await self.storage.read(storage_path)
+                lines = log_content.strip().split('\n')
+                
+                events = []
+                for line_num, line in enumerate(lines):
+                    try:
+                        if line.strip():  # Skip empty lines
+                            events.append(json.loads(line.strip()))
+                    except json.JSONDecodeError:
+                        logger.warning(f"Skipping malformed JSON line {line_num+1} in {storage_path}")
+                        continue
+                return events
+        except StorageError:
+            raise
+        except Exception as e:
+            logger.error(f"Error parsing JSONL file {storage_path}: {e}")
+            raise StorageError(f"Failed to parse session log: {e}")
+
     async def start_session(
         self,
         user_id: str,
@@ -176,41 +209,115 @@ class ChatLogger:
         
         for log_key in log_keys:
             try:
-                async with self.storage.lock(log_key, timeout=10.0):
-                    # Read the entire log file
-                    log_content = await self.storage.read(log_key)
-                    lines = log_content.strip().split('\n')
-                    
-                    if lines:
-                        # Parse the first line (session start)
-                        start_event = json.loads(lines[0])
-                        if start_event.get("type") == "session_start":
-                            # Count messages
-                            message_count = 0
-                            for line in lines[1:]:
-                                try:
-                                    entry = json.loads(line)
-                                    if entry.get("type") == "message":
-                                        message_count += 1
-                                except json.JSONDecodeError:
-                                    continue
+                events = await self._parse_jsonl_file(log_key)
+                
+                if events:
+                    # First event should be session start
+                    start_event = events[0]
+                    if start_event.get("type") == "session_start":
+                        # Count messages using parsed events
+                        message_count = sum(1 for event in events if event.get("type") == "message")
 
-                            sessions_summary.append({
-                                "session_id": start_event.get("app_session_id"),
-                                "user_id": start_event.get("user_id"),
-                                "participant_name": start_event.get("participant_name"),
-                                "scenario_name": start_event.get("scenario_name"),
-                                "character_name": start_event.get("character_name"),
-                                "created_at": start_event.get("timestamp"),
-                                "storage_path": log_key,
-                                "message_count": message_count
-                            })
+                        sessions_summary.append({
+                            "session_id": start_event.get("app_session_id"),
+                            "user_id": start_event.get("user_id"),
+                            "participant_name": start_event.get("participant_name"),
+                            "scenario_name": start_event.get("scenario_name"),
+                            "character_name": start_event.get("character_name"),
+                            "created_at": start_event.get("timestamp"),
+                            "storage_path": log_key,
+                            "message_count": message_count
+                        })
             except Exception as e:
                 logger.error(f"Error reading session summary from {log_key}: {e}")
         
         # Sort by creation time (newest first)
         sessions_summary.sort(key=lambda s: s.get("created_at", ""), reverse=True)
         return sessions_summary
+
+    async def get_session_end_info(self, user_id: str, session_id: str) -> Dict[str, Any]:
+        """
+        Gets the end information for a session if it exists.
+        
+        Returns:
+            Dict with 'ended_at' and 'reason' if session was ended, empty dict otherwise.
+        """
+        storage_path = self._get_chat_log_path(user_id, session_id)
+        
+        try:
+            events = await self._parse_jsonl_file(storage_path)
+            
+            # Look for session_end event (usually last event)
+            for event in reversed(events):
+                if event.get("type") == "session_end":
+                    return {
+                        "ended_at": event.get("timestamp"),
+                        "reason": event.get("reason", "Session ended"),
+                        "total_messages": event.get("total_messages", 0),
+                        "duration_seconds": event.get("duration_seconds", 0)
+                    }
+            
+            # No session_end event found
+            return {}
+        except StorageError as e:
+            logger.warning(f"Session log not found for {session_id}: {e}")
+            return {}
+        except Exception as e:
+            logger.error(f"Error getting session end info for {session_id}: {e}")
+            return {}
+
+    async def get_session_messages(self, user_id: str, session_id: str) -> List[Dict[str, Any]]:
+        """
+        Gets all messages from a session's JSONL log.
+        
+        Returns:
+            List of message dictionaries with role, content, timestamp, and message_number.
+        """
+        storage_path = self._get_chat_log_path(user_id, session_id)
+        messages = []
+        
+        try:
+            events = await self._parse_jsonl_file(storage_path)
+            
+            # Filter and transform message events
+            for event in events:
+                if event.get("type") == "message":
+                    messages.append({
+                        "role": event.get("role"),
+                        "content": event.get("content"),
+                        "timestamp": event.get("timestamp"),
+                        "message_number": event.get("message_number", 0)
+                    })
+            
+            return messages
+        except StorageError as e:
+            logger.warning(f"Session log not found for {session_id}: {e}")
+            raise
+        except Exception as e:
+            logger.error(f"Error getting session messages for {session_id}: {e}")
+            raise
+
+    async def delete_session(self, user_id: str, session_id: str) -> None:
+        """
+        Deletes a session's JSONL log file completely.
+        
+        Args:
+            user_id: The user ID who owns the session
+            session_id: The session ID to delete
+        """
+        storage_path = self._get_chat_log_path(user_id, session_id)
+        
+        try:
+            async with self.storage.lock(storage_path, timeout=10.0):
+                await self.storage.delete(storage_path)
+            
+            logger.info(f"Deleted session log for {session_id}")
+        except StorageError as e:
+            logger.warning(f"Session log not found for deletion {session_id}: {e}")
+            # Don't raise error if file doesn't exist - it's already "deleted"
+        except Exception as e:
+            logger.error(f"Error deleting session log for {session_id}: {e}")
+            raise
 
     async def export_session_text(self, user_id: str, session_id: str) -> str:
         """Exports a session as a human-readable text transcript."""
@@ -226,25 +333,17 @@ class ChatLogger:
         session_ended_info = {}
 
         try:
-            async with self.storage.lock(storage_path, timeout=10.0):
-                # Read the entire log file
-                log_content = await self.storage.read(storage_path)
-                log_lines = log_content.strip().split('\n')
-                
-                for line_num, log_line in enumerate(log_lines):
-                    try:
-                        entry = json.loads(log_line.strip())
-                        entry_type = entry.get("type")
-
-                        if entry_type == "session_start":
-                            session_info = entry
-                        elif entry_type == "message":
-                            messages.append(entry)
-                        elif entry_type == "session_end":
-                            session_ended_info = entry
-                    except json.JSONDecodeError:
-                        logger.warning(f"Skipping malformed JSON line {line_num+1} in {storage_path}")
-                        continue
+            events = await self._parse_jsonl_file(storage_path)
+            
+            # Categorize events
+            for event in events:
+                entry_type = event.get("type")
+                if entry_type == "session_start":
+                    session_info = event
+                elif entry_type == "message":
+                    messages.append(event)
+                elif entry_type == "session_end":
+                    session_ended_info = event
         except Exception as e:
             logger.error(f"Error reading session file {storage_path} for export: {e}")
             return f"Error processing session file: {str(e)}"

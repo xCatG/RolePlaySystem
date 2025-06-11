@@ -42,13 +42,34 @@
 
       <div v-if="sessions.length > 0" class="existing-sessions">
         <h3>{{ $t('chat.continueExistingSession') }}</h3>
-        <ul>
-          <li v-for="session in sessions" :key="session.session_id">
-            <button @click="loadSession(session)" class="session-link">
-              {{ getSessionLabel(session) }}
-            </button>
-          </li>
-        </ul>
+        <div class="sessions-list-container">
+          <ul class="sessions-list">
+            <li v-for="session in sessions" :key="session.session_id" 
+                :class="{ 'session-ended': !session.is_active }"
+                class="session-item">
+              <button @click="loadSession(session)" 
+                      :class="['session-link', { 'ended': !session.is_active }]">
+                {{ getSessionLabel(session) }}
+                <span v-if="!session.is_active" class="session-status-badge">
+                  {{ $t('chat.sessionEnded') }}
+                </span>
+              </button>
+              <div class="session-actions">
+                <button v-if="session.is_active" 
+                        @click="endSession(session.session_id)" 
+                        class="action-button end-button"
+                        :title="$t('chat.endSession')">
+                  📝
+                </button>
+                <button @click="deleteSession(session.session_id)" 
+                        class="action-button delete-button"
+                        :title="$t('chat.deleteSession')">
+                  🗑️
+                </button>
+              </div>
+            </li>
+          </ul>
+        </div>
       </div>
       
       <!-- Error message with internationalization -->
@@ -59,6 +80,19 @@
       v-else 
       :session="activeSession"
       @close="closeSession"
+      @session-ended="handleSessionEnded"
+      @session-deleted="handleSessionDeleted"
+    />
+    
+    <!-- Delete Confirmation Modal -->
+    <ConfirmModal
+      v-model="showDeleteModal"
+      :message="$t('chat.confirmDeleteSession')"
+      :title="$t('chat.deleteSession')"
+      :confirm-text="$t('warnings.confirm')"
+      :cancel-text="$t('warnings.cancel')"
+      @confirm="confirmDeleteSession"
+      @cancel="cancelDeleteSession"
     />
   </div>
 </template>
@@ -68,12 +102,14 @@ import { defineComponent, ref, computed, onMounted } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { chatApi } from '../services/chatApi';
 import ChatWindow from './ChatWindow.vue';
+import ConfirmModal from './ConfirmModal.vue';
 import type { ScenarioInfo, CharacterInfo, SessionInfo, CreateSessionResponse } from '../types/chat';
 
 export default defineComponent({
   name: 'Chat',
   components: {
-    ChatWindow
+    ChatWindow,
+    ConfirmModal
   },
   setup() {
     const { locale, t } = useI18n();
@@ -87,6 +123,8 @@ export default defineComponent({
     const activeSession = ref<SessionInfo | null>(null);
     const loading = ref(false);
     const error = ref('');
+    const showDeleteModal = ref(false);
+    const sessionToDelete = ref<string | null>(null);
 
     const currentLanguage = computed(() => locale.value);
 
@@ -100,16 +138,16 @@ export default defineComponent({
       participantName.value.trim()
     );
 
-    const loadInitialData = async () => {
+    const refreshData = async () => {
       try {
         loading.value = true;
         error.value = '';
-        const [scenariosData, sessionsData] = await Promise.all([
+        const [scenariosResponse, sessionsResponse] = await Promise.all([
           chatApi.getScenarios(currentLanguage.value),
           chatApi.getSessions()
         ]);
-        scenarios.value = scenariosData;
-        sessions.value = sessionsData;
+        scenarios.value = scenariosResponse || [];
+        sessions.value = sessionsResponse || [];
       } catch (err) {
         error.value = t('errors.loadScenariosFailed');
         console.error(err);
@@ -118,19 +156,25 @@ export default defineComponent({
       }
     };
 
+    const loadCharacters = async (scenarioId: string) => {
+      if (!scenarioId) {
+        characters.value = [];
+        return;
+      }
+      
+      try {
+        error.value = '';
+        const response = await chatApi.getCharacters(scenarioId, currentLanguage.value);
+        characters.value = response || [];
+      } catch (err) {
+        error.value = t('errors.loadCharactersFailed');
+        console.error(err);
+      }
+    };
+
     const onScenarioChange = async () => {
       selectedCharacterId.value = '';
-      characters.value = [];
-      
-      if (selectedScenarioId.value) {
-        try {
-          error.value = '';
-          characters.value = await chatApi.getCharacters(selectedScenarioId.value, currentLanguage.value);
-        } catch (err) {
-          error.value = t('errors.loadCharactersFailed');
-          console.error(err);
-        }
-      }
+      await loadCharacters(selectedScenarioId.value);
     };
 
     const startSession = async () => {
@@ -151,7 +195,10 @@ export default defineComponent({
           participant_name: participantName.value,
           created_at: new Date().toISOString(),
           message_count: 0,
-          jsonl_filename: createResponse.jsonl_filename
+          jsonl_filename: createResponse.jsonl_filename,
+          is_active: true,
+          ended_at: null,
+          ended_reason: null
         };
         
         activeSession.value = sessionInfo;
@@ -169,11 +216,80 @@ export default defineComponent({
 
     const closeSession = () => {
       activeSession.value = null;
-      loadInitialData(); // Refresh sessions list
+      refreshData(); // Refresh sessions list
+    };
+
+    const handleSessionEnded = () => {
+      // Session was ended from ChatWindow, refresh data and update current session
+      refreshData();
+      if (activeSession.value) {
+        // Update the current session to reflect it's now ended
+        activeSession.value.is_active = false;
+        activeSession.value.ended_at = new Date().toISOString();
+        activeSession.value.ended_reason = "User ended session";
+      }
+    };
+
+    const handleSessionDeleted = () => {
+      // Session was deleted from ChatWindow, close and refresh
+      activeSession.value = null;
+      refreshData();
     };
 
     const getSessionLabel = (session: SessionInfo) => {
-      return `${session.participant_name} - ${session.scenario_name} (${new Date(session.created_at).toLocaleDateString()})`;
+      // Format UTC timestamps to local date and time
+      const createdDateTime = new Date(session.created_at).toLocaleString();
+      if (!session.is_active && session.ended_at) {
+        const endedDateTime = new Date(session.ended_at).toLocaleString();
+        return `${session.participant_name} - ${session.scenario_name} (Created: ${createdDateTime}, Ended: ${endedDateTime})`;
+      }
+      return `${session.participant_name} - ${session.scenario_name} (${createdDateTime})`;
+    };
+
+    const endSession = async (sessionId: string) => {
+      try {
+        loading.value = true;
+        error.value = '';
+        await chatApi.endSession(sessionId);
+        
+        // Refresh sessions list
+        await refreshData();
+      } catch (err) {
+        error.value = t('errors.endSessionFailed');
+        console.error(err);
+      } finally {
+        loading.value = false;
+      }
+    };
+
+    const deleteSession = (sessionId: string) => {
+      sessionToDelete.value = sessionId;
+      showDeleteModal.value = true;
+    };
+
+    const confirmDeleteSession = async () => {
+      if (!sessionToDelete.value) return;
+      
+      try {
+        loading.value = true;
+        error.value = '';
+        await chatApi.deleteSession(sessionToDelete.value);
+        
+        // Refresh sessions list
+        await refreshData();
+      } catch (err) {
+        error.value = 'Failed to delete session';
+        console.error(err);
+      } finally {
+        loading.value = false;
+        showDeleteModal.value = false;
+        sessionToDelete.value = null;
+      }
+    };
+
+    const cancelDeleteSession = () => {
+      showDeleteModal.value = false;
+      sessionToDelete.value = null;
     };
 
     // Handle language changes from parent
@@ -184,11 +300,11 @@ export default defineComponent({
       characters.value = [];
       
       // Reload content for new language
-      await loadInitialData();
+      await refreshData();
     };
 
     onMounted(() => {
-      loadInitialData();
+      refreshData();
     });
 
     return {
@@ -201,12 +317,19 @@ export default defineComponent({
       activeSession,
       loading,
       error,
+      showDeleteModal,
       selectedScenario,
       canStartSession,
       onScenarioChange,
       startSession,
       loadSession,
       closeSession,
+      endSession,
+      deleteSession,
+      confirmDeleteSession,
+      cancelDeleteSession,
+      handleSessionEnded,
+      handleSessionDeleted,
       getSessionLabel,
       handleLanguageChange
     };
@@ -280,13 +403,36 @@ export default defineComponent({
   border-top: 1px solid #eee;
 }
 
-.existing-sessions ul {
-  list-style: none;
-  padding: 0;
+.sessions-list-container {
+  max-height: 300px;
+  overflow-y: auto;
+  border: 1px solid #e9ecef;
+  border-radius: 6px;
+  background: #f8f9fa;
 }
 
-.existing-sessions li {
-  margin-bottom: 10px;
+.sessions-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.session-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-bottom: 1px solid #e9ecef;
+  background: white;
+  margin-bottom: 0;
+}
+
+.session-item:last-child {
+  border-bottom: none;
+}
+
+.session-item:hover {
+  background: #f8f9fa;
 }
 
 .session-link {
@@ -295,12 +441,75 @@ export default defineComponent({
   color: #007bff;
   cursor: pointer;
   text-decoration: underline;
-  font-size: 16px;
+  font-size: 14px;
   padding: 5px 0;
+  text-align: left;
+  flex: 1;
+  margin-right: 10px;
 }
 
 .session-link:hover {
   color: #0056b3;
+}
+
+.session-link.ended {
+  color: #6c757d;
+  opacity: 0.7;
+}
+
+.session-link.ended:hover {
+  color: #5a6268;
+}
+
+.session-ended {
+  opacity: 0.8;
+}
+
+.session-status-badge {
+  display: inline-block;
+  background: #6c757d;
+  color: white;
+  font-size: 12px;
+  padding: 2px 6px;
+  border-radius: 12px;
+  margin-left: 8px;
+  font-weight: normal;
+}
+
+.session-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.action-button {
+  background: none;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 4px 8px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.2s;
+  min-width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.action-button:hover {
+  background: #f8f9fa;
+  border-color: #adb5bd;
+}
+
+.end-button:hover {
+  background: #fff3cd;
+  border-color: #ffeaa7;
+}
+
+.delete-button:hover {
+  background: #f8d7da;
+  border-color: #f5c6cb;
 }
 
 .error-message {
