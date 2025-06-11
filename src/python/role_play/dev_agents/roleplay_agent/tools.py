@@ -6,21 +6,16 @@ import sys
 from pathlib import Path
 from typing import List, Dict, Optional
 
+from google.adk.tools import FunctionTool
+
 # Add project root to path to find ContentLoader
 PROJECT_ROOT = Path(__file__).parent.parent.parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "src" / "python"))
 
 try:
     from role_play.chat.content_loader import ContentLoader
-    from google.adk.tools import FunctionTool
-
-    ADK_AVAILABLE = True
-    content_loader = ContentLoader(data_file=str(PROJECT_ROOT / "data" / "scenarios.json"))
+    content_loader = ContentLoader()
 except ImportError:
-    ADK_AVAILABLE = False
-    # Define dummy classes if ADK or ContentLoader not found
-    class FunctionTool:
-        def __init__(self, *args, **kwargs): pass
     class ContentLoader:
         def get_scenarios(self): return [{"id": "err", "name": "Error Loading"}]
         def get_scenario_characters(self, _): return [{"id": "err", "name": "Error Loading"}]
@@ -53,4 +48,4 @@ dev_tools = [
     FunctionTool(list_scenarios),
     FunctionTool(list_characters),
     FunctionTool(get_character_prompt),
-] if ADK_AVAILABLE else []
+]

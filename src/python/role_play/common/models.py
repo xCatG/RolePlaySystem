@@ -19,7 +19,7 @@ class UserRole(str, Enum):
     SCRIPTER = "scripter"  # Can create/edit/delete scripts used by chat
     
     # Regular authenticated user
-    USER = "user"  # Can use chat and evaluator features
+    USER = "user"  # Can use chat and evaluator_agent features
     
     # Not authenticated - minimal access
     GUEST = "guest"  # Can only access public endpoints (health, docs)
