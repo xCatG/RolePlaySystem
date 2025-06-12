@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 import json
+import sys
+from pathlib import Path
 from typing import List, Dict, Any
 
-from role_play.chat.chat_logger import ChatLogger
-from role_play.chat.content_loader import ContentLoader
-from role_play.common.storage import StorageBackend
+PROJECT_ROOT = Path(__file__).parent.parent.parent.parent.parent.parent
+sys.path.insert(0, str(PROJECT_ROOT / "src" / "python"))
 
+from role_play.chat.content_loader import ContentLoader
+from role_play.chat.chat_logger import ChatLogger
+from role_play.common.storage import StorageBackend
 
 # Globals that will be configured by the evaluation handler
 CHAT_LOGGER: ChatLogger | None = None
@@ -63,3 +67,5 @@ async def store_final_review(user_id: str, session_id: str, review: Dict[str, An
     path = f"users/{user_id}/evaluations/{session_id}.json"
     await STORAGE.write(path, json.dumps(review, ensure_ascii=False))
 
+if __name__ == "__main__":
+    print("hello")

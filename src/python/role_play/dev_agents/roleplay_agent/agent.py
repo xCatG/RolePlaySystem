@@ -6,13 +6,14 @@ import sys
 from pathlib import Path
 from typing import Dict, Optional
 from google.adk.agents import Agent
-from .tools import dev_tools, content_loader
 
 # Add project root to path
-PROJECT_ROOT = Path(__file__).parent.parent.parent.parent.parent
+PROJECT_ROOT = Path(__file__).parent.parent.parent.parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "src" / "python"))
 DEFAULT_MODEL = "gemini-2.0-flash-lite-001" # Set a reasonable default
 AGENT_MODEL = os.getenv("ADK_MODEL", DEFAULT_MODEL) # <-- Read from env
+
+from . import tools
 
 # --- Development Agent for adk web ---
 
@@ -37,7 +38,7 @@ To test a character, get their prompt using 'get_character_prompt', copy it,
 and then paste it into a new chat session (or imagine you are that character).
 You DO NOT need to manage state or *become* the character in this dev view.
 Focus on providing information and allowing prompt testing.""",
-        tools=dev_tools,
+        tools=tools.dev_tools,
     )
 
 agent = root_agent
@@ -49,8 +50,8 @@ def get_production_config(character_id: str, scenario_id: str) -> Optional[Dict]
     Generates the configuration (prompt, model) for a specific
     character and scenario, intended for production use.
     """
-    character = content_loader.get_character_by_id(character_id)
-    scenario = content_loader.get_scenario_by_id(scenario_id)
+    character = tools.content_loader.get_character_by_id(character_id)
+    scenario = tools.content_loader.get_scenario_by_id(scenario_id)
 
     if not character or not scenario:
         return None
@@ -80,7 +81,7 @@ def get_production_config(character_id: str, scenario_id: str) -> Optional[Dict]
 if __name__ == "__main__":
     print("Roleplay Development Agent Module")
     print(f"Agent Name: {root_agent.name}")
-    print(f"Tools loaded: {len(dev_tools)}")
+    print(f"Tools loaded: {len(tools.dev_tools)}")
 
     print("\nTesting production config export:")
     # Assuming 'medical_interview' and 'patient_chronic' exist in scenarios.json

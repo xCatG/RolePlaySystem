@@ -8,10 +8,6 @@ from typing import List, Dict, Optional
 
 from google.adk.tools import FunctionTool
 
-# Add project root to path to find ContentLoader
-PROJECT_ROOT = Path(__file__).parent.parent.parent.parent.parent
-sys.path.insert(0, str(PROJECT_ROOT / "src" / "python"))
-
 try:
     from role_play.chat.content_loader import ContentLoader
     content_loader = ContentLoader()
