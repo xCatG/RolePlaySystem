@@ -206,11 +206,14 @@ export default {
           email: this.loginForm.email,
           password: this.loginForm.password
         })
-        
+
         this.token = response.access_token
         this.user = response.user
         localStorage.setItem('token', this.token)
-        
+        // Sync UI language with user's preferred language
+        this.locale = response.user.preferred_language
+        localStorage.setItem('language', response.user.preferred_language)
+
         this.success = this.t('auth.loginSuccess')
         this.loginForm = { email: '', password: '' }
         
@@ -233,11 +236,14 @@ export default {
           password: this.registerForm.password,
           preferred_language: this.locale
         })
-        
+
         this.token = response.access_token
         this.user = response.user
         localStorage.setItem('token', this.token)
-        
+        // Ensure UI language matches newly registered preference
+        this.locale = response.user.preferred_language
+        localStorage.setItem('language', response.user.preferred_language)
+
         this.success = this.t('auth.registerSuccess')
         this.registerForm = { username: '', email: '', password: '' }
         
@@ -252,6 +258,9 @@ export default {
       try {
         const user = await authApi.getCurrentUser(this.token)
         this.user = user
+        // Apply stored preference to UI when token login succeeds
+        this.locale = user.preferred_language
+        localStorage.setItem('language', user.preferred_language)
       } catch (error) {
         // Token is invalid, remove it
         this.logout()
