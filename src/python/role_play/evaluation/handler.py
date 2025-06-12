@@ -11,7 +11,8 @@ from pydantic import BaseModel
 
 from ..chat.chat_logger import ChatLogger
 from ..common.models import BaseResponse, User
-from ..dev_agents.evaluator_agent.agent import evaluator_agent
+from ..dev_agents.evaluator_agent import tools as eval_tools
+from ..dev_agents.evaluator_agent.agent import create_evaluator_agent
 from ..server.base_handler import BaseHandler
 from ..server.dependencies import require_user_or_higher, get_chat_logger, get_adk_session_service
 
@@ -34,16 +35,12 @@ class SessionListResponse(BaseResponse):
 class EvaluationRequest(BaseModel):
     """Request to evaluate a session."""
     session_id: str
-    evaluation_type: str = "comprehensive"  # comprehensive, quick, custom
-    custom_criteria: Optional[List[str]] = None
+    language: str = "English"
 
 
 class EvaluationResponse(BaseResponse):
     """Response containing evaluation results."""
-    session_id: str
-    evaluation_type: str
-    feedback: str
-    strengths: List[str]
+    report: dict
 
 class EvaluationHandler(BaseHandler):
     """Handler for evaluation-related endpoints."""
@@ -55,7 +52,8 @@ class EvaluationHandler(BaseHandler):
 
         self._router.get("/sessions", response_model=SessionListResponse)(self.get_evaluation_sessions)
         self._router.get("/session/{session_id}/download")(self.download_session)
-        self._router.post("/session/evaluate", response_model=EvaluationResponse)(self.evaluate_session)
+        self._router.post("/{session_id}/request", response_model=BaseResponse)(self.request_evaluation)
+        self._router.get("/{session_id}", response_model=EvaluationResponse)(self.get_evaluation)
 
         return self._router
 
@@ -144,131 +142,78 @@ class EvaluationHandler(BaseHandler):
             logger.error(f"Failed to download session: {e}")
             raise HTTPException(status_code=500, detail="Failed to download session")
     
-    async def evaluate_session(
+    async def request_evaluation(
         self,
+        session_id: str,
         request: EvaluationRequest,
         current_user: Annotated[User, Depends(require_user_or_higher)],
         chat_logger: Annotated[ChatLogger, Depends(get_chat_logger)],
-        adk_session_service: Annotated[InMemorySessionService, Depends(get_adk_session_service)]
+        adk_session_service: Annotated[InMemorySessionService, Depends(get_adk_session_service)],
+    ) -> BaseResponse:
+        """Kick off an evaluation. For now this runs synchronously."""
+        await self._run_evaluation(session_id, request.language, current_user, chat_logger, adk_session_service)
+        return BaseResponse(success=True)
+
+    async def get_evaluation(
+        self,
+        session_id: str,
+        current_user: Annotated[User, Depends(require_user_or_higher)],
+        chat_logger: Annotated[ChatLogger, Depends(get_chat_logger)],
+        adk_session_service: Annotated[InMemorySessionService, Depends(get_adk_session_service)],
     ) -> EvaluationResponse:
-        """Evaluate a roleplay session using the AI evaluator agent.
-        
-        Args:
-            request: Evaluation request details
-            current_user: Authenticated user
-            chat_logger: Chat logger instance
-            adk_session_service: ADK session service for agent execution
-            
-        Returns:
-            Evaluation results with scores and feedback
-        """
+        """Return the stored evaluation report."""
+        path = f"users/{current_user.id}/evaluations/{session_id}.json"
         try:
-            # Get the session transcript
-            transcript = await chat_logger.export_session_text(
+            data = await chat_logger.storage.read(path)
+            report = json.loads(data)
+        except Exception:
+            raise HTTPException(status_code=404, detail="Report not found")
+        return EvaluationResponse(success=True, report=report)
+
+    async def _run_evaluation(
+        self,
+        session_id: str,
+        language: str,
+        current_user: User,
+        chat_logger: ChatLogger,
+        adk_session_service: InMemorySessionService,
+    ) -> None:
+        """Internal helper that executes the evaluator agent."""
+        eval_tools.configure_tools(
+            chat_logger=chat_logger,
+            storage=chat_logger.storage,
+            user_id=current_user.id,
+        )
+
+        agent = create_evaluator_agent(language)
+        eval_session_id = f"eval_{session_id}"
+        await adk_session_service.create_session(
+            app_name="roleplay_evaluator",
+            user_id=current_user.id,
+            session_id=eval_session_id,
+        )
+        runner = Runner(
+            app_name="roleplay_evaluator",
+            agent=agent,
+            session_service=adk_session_service,
+        )
+
+        try:
+            async for _ in runner.run_async(
+                new_message=Content(role="user", parts=[Part(text="evaluate")]),
+                session_id=eval_session_id,
                 user_id=current_user.id,
-                session_id=request.session_id
-            )
-            
-            if transcript == "Session log file not found.":
-                raise HTTPException(status_code=404, detail="Session not found")
-            
-            # Create a unique evaluation session ID
-            eval_session_id = f"eval_{request.session_id}"
-            
-            # Initialize ADK session for evaluation
-            await adk_session_service.create_session(
+            ):
+                pass
+        finally:
+            await adk_session_service.delete_session(
                 app_name="roleplay_evaluator",
                 user_id=current_user.id,
                 session_id=eval_session_id,
-                state={"transcript": transcript, "evaluation_type": request.evaluation_type}
             )
-            
-            # Create runner with evaluator agent
-            runner = Runner(
-                app_name="roleplay_evaluator",
-                agent=evaluator_agent,
-                session_service=adk_session_service
-            )
-            
-            # Prepare evaluation prompt based on type
-            if request.evaluation_type == "quick":
-                prompt = f"""Please provide a quick evaluation of this roleplay session transcript:
+            if hasattr(runner, "close") and callable(runner.close):
+                try:
+                    await runner.close()
+                except Exception as close_err:
+                    logger.error("Error closing evaluator runner: %s", close_err)
 
-{transcript}
-
-Focus on the key strengths and areas for improvement. Provide numerical scores for:
-- Character Consistency (0-10)
-- Engagement Quality (0-10)
-- Scenario Adherence (0-10)
-- Overall Quality (0-10)"""
-            elif request.evaluation_type == "custom" and request.custom_criteria:
-                criteria_list = "\n".join(f"- {criterion}" for criterion in request.custom_criteria)
-                prompt = f"""Please evaluate this roleplay session transcript based on these specific criteria:
-
-{criteria_list}
-
-Transcript:
-{transcript}
-
-Also provide standard numerical scores for character consistency, engagement quality, scenario adherence, and overall quality (0-10 scale)."""
-            else:  # comprehensive
-                prompt = f"""Please provide a comprehensive evaluation of this roleplay session transcript:
-
-{transcript}
-
-Analyze:
-1. Character consistency and authenticity
-2. Quality of engagement and responses
-3. Adherence to the scenario
-4. Language appropriateness
-5. Immersion maintenance
-6. Conversation flow and pacing
-7. Meeting participant needs
-
-Provide:
-- Detailed feedback
-- Specific examples from the transcript
-- Numerical scores (0-10) for character consistency, engagement quality, scenario adherence, and overall quality
-- List of strengths
-- List of areas for improvement"""
-            
-            # Execute evaluation
-            content = Content(role="user", parts=[Part(text=prompt)])
-            
-            response_text = ""
-            try:
-                async for event in runner.run_async(
-                    new_message=content,
-                    session_id=eval_session_id,
-                    user_id=current_user.id
-                ):
-                    if event.content and event.content.parts:
-                        for part in event.content.parts:
-                            if part.text:
-                                response_text += part.text
-            finally:
-                # Clean up
-                await adk_session_service.delete_session(
-                    app_name="roleplay_evaluator",
-                    user_id=current_user.id,
-                    session_id=eval_session_id
-                )
-                if hasattr(runner, 'close') and callable(runner.close):
-                    try:
-                        await runner.close()
-                    except Exception as close_err:
-                        logger.error(f"Error closing evaluator runner: {close_err}")
-
-            return EvaluationResponse(
-                success=True,
-                session_id=request.session_id,
-                evaluation_type=request.evaluation_type,
-                feedback=response_text,
-                strengths=[],
-            )
-            
-        except HTTPException:
-            raise
-        except Exception as e:
-            logger.error(f"Failed to evaluate session {request.session_id}: {e}", exc_info=True)
-            raise HTTPException(status_code=500, detail="Failed to evaluate session")

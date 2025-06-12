@@ -26,12 +26,13 @@ class ConfidenceScore(IntEnum):
 
 
 class SpecializedAssessment(BaseModel):
-    """
-    Defines the structured output for a specialized review agent (e.g., Empathy, Clarity).
-    Each agent instance will produce one of these objects.
-    """
+    """Structured output for a specialized review agent."""
+
     assessment_area: str = Field(
-        description="The specific skill or area being assessed, e.g., 'empathy'."
+        description="The area being assessed, e.g., 'empathy'."
+    )
+    language: str = Field(
+        description="The language for the assessment, e.g., 'English', 'Traditional Chinese'."
     )
     score: SkillScore = Field(
         description="A score for this area: 1 (Low), 2 (Medium), or 3 (High)."
@@ -40,17 +41,20 @@ class SpecializedAssessment(BaseModel):
         description="The model's confidence in its score: 1 (Low), 2 (Medium), or 3 (High)."
     )
     positive_points: List[str] = Field(
-        description="List of observed strengths in localized language."
+        description="List of observed strengths. The text must be in the specified language."
     )
     improvement_areas: List[str] = Field(
-        description="List of areas needing improvement in localized language."
+        description="List of areas for improvement. The text must be in the specified language."
     )
     specific_suggestions: List[str] = Field(
-        description="Concrete, actionable suggestions for the user in localized language."
+        description="Concrete suggestions for the user. The text must be in the specified language."
     )
     notes: Optional[str] = Field(
         default=None,
-        description="MUST be provided if confidence is Medium or Low, explaining the reason for the uncertainty."
+        description=(
+            "MUST be provided if confidence is Medium or Low, explaining the reason for the uncertainty. "
+            "The text must be in the specified language."
+        ),
     )
 
 
@@ -59,9 +63,12 @@ class FinalReviewReport(BaseModel):
     Defines the structure for the final, consolidated review report that is
     synthesized by the ReviewSummarizerAgent and stored.
     """
-    user_id: str = Field(description="The unique identifier for the user.")
-    scenario_id: str = Field(description="The unique identifier for the scenario.")
-    chat_session_id: str = Field(description="The unique identifier for the chat session being evaluated.")
+    user_id: str
+    scenario_id: str
+    chat_session_id: str
+    language: str = Field(
+        description="The full language name for the report, e.g., 'English', 'Traditional Chinese'."
+    )
     overall_score: float = Field(
         description="Aggregated and normalized score from all reviewers, ranging from 0.0 to 1.0."
     )
@@ -83,4 +90,5 @@ class FinalReviewReport(BaseModel):
     progress_notes_from_past_feedback: str = Field(
         description="Notes on the user's progress or recurring themes when compared to past feedback, in localized language."
     )
+
 
