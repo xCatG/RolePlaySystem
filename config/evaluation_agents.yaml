@@ -1,0 +1,13 @@
+agents:
+  - name: ReviewAgent_Clarity_ZH
+    skill: clarity
+    description: "Assesses the clarity of the user's communication in Traditional Chinese."
+    prompt: "Evaluate the user's responses for clarity, conciseness, and ease of understanding. Provide feedback in Traditional Chinese."
+  - name: ReviewAgent_Empathy_ZH
+    skill: empathy
+    description: "Assesses the user's ability to demonstrate empathy in Traditional Chinese."
+    prompt: "Evaluate the user's responses for empathetic statements, understanding of the other party's feelings, and appropriate emotional responses. Provide feedback in Traditional Chinese."
+  - name: ReviewAgent_Escalation_ZH
+    skill: escalation
+    description: "Assesses the user's ability to handle escalations effectively in Traditional Chinese."
+    prompt: "Evaluate the user's responses for de-escalation techniques, problem-solving skills, and ability to maintain composure during challenging situations. Provide feedback in Traditional Chinese."
