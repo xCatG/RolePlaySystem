@@ -29,7 +29,7 @@
     "noCharacters": "No characters available",
     "sessionEnded": "Session ended",
     "exportText": "Export as Text",
-    "sendToEvaluation": "Send to Evaluation",
+    "sendToEvaluation": "View Evaluation Report",
     "continueExistingSession": "View Previous Sessions:",
     "deleteSession": "Delete session",
     "confirmDeleteSession": "Are you sure you want to delete this session? This action cannot be undone.",
@@ -49,11 +49,6 @@
     "deleteSessionFailed": "Failed to delete session",
     "updateLanguageFailed": "Failed to update language preference",
     "networkError": "Network error occurred"
-  },
-  "evaluation": {
-    "comingSoonTitle": "Coming Soon",
-    "comingSoonMessage": "The evaluation feature is currently under development and will be available soon.",
-    "ok": "OK"
   },
   "sessionActions": {
     "endSessionTitle": "End Session",

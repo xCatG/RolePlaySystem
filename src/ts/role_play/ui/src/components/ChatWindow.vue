@@ -6,7 +6,7 @@
       </h3>
       <div class="header-actions">
         <button @click="exportChat" class="secondary-button">{{ $t('chat.exportText') }}</button>
-        <button @click="sendToEvaluation" class="secondary-button">{{ $t('chat.sendToEvaluation') }}</button>
+        <button @click="sendToEvaluation" class="secondary-button" :disabled="session.is_active">{{ $t('chat.sendToEvaluation') }}</button>
         <button v-if="session.is_active" 
                 @click="endSession" 
                 class="secondary-button end-session-button">
@@ -70,14 +70,13 @@
       </form>
     </div>
     
-    <!-- Coming Soon Modal -->
-    <ConfirmModal
-      v-model="showEvaluationModal"
-      :message="$t('evaluation.comingSoonMessage')"
-      :title="$t('evaluation.comingSoonTitle')"
-      :confirm-text="$t('evaluation.ok')"
-      @confirm="showEvaluationModal = false"
-    />
+    <!-- Evaluation Report Modal -->
+    <div v-if="showActualEvaluationReport" class="modal-overlay">
+      <div class="modal-content evaluation-modal-content">
+        <EvaluationReport :session-id="session.session_id" />
+        <button @click="showActualEvaluationReport = false" class="close-report-button">Close Report</button>
+      </div>
+    </div>
     
     <!-- End Session Confirmation Modal -->
     <ConfirmModal
@@ -106,11 +105,13 @@ import { defineComponent, ref, nextTick, PropType, onMounted } from 'vue';
 import { chatApi } from '../services/chatApi';
 import type { SessionInfo, Message } from '../types/chat';
 import ConfirmModal from './ConfirmModal.vue';
+import EvaluationReport from './EvaluationReport.vue';
 
 export default defineComponent({
   name: 'ChatWindow',
   components: {
-    ConfirmModal
+    ConfirmModal,
+    EvaluationReport
   },
   props: {
     session: {
@@ -124,7 +125,7 @@ export default defineComponent({
     const newMessage = ref('');
     const loading = ref(false);
     const messagesContainer = ref<HTMLElement>();
-    const showEvaluationModal = ref(false);
+    const showActualEvaluationReport = ref(false);
     const showDeleteModal = ref(false);
     const showEndModal = ref(false);
 
@@ -193,7 +194,12 @@ export default defineComponent({
     };
 
     const sendToEvaluation = () => {
-      showEvaluationModal.value = true;
+      if (!props.session.is_active) {
+        showActualEvaluationReport.value = true;
+      } else {
+        // This case should ideally be prevented by a disabled button
+        console.warn("Session must be ended to view evaluation report.");
+      }
     };
 
     const formatDate = (dateString: string) => {
@@ -260,7 +266,7 @@ export default defineComponent({
       newMessage,
       loading,
       messagesContainer,
-      showEvaluationModal,
+      showActualEvaluationReport,
       showDeleteModal,
       showEndModal,
       sendMessage,
@@ -547,5 +553,49 @@ export default defineComponent({
   .input-container {
     padding: 24px;
   }
+}
+
+/* Styles for the Evaluation Report Modal */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal-content {
+  background: white;
+  padding: 25px;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  width: 90%;
+  max-width: 800px; /* Max width for the report modal */
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.evaluation-modal-content {
+  /* Specific styles if needed, otherwise modal-content is fine */
+}
+
+.close-report-button {
+  display: block;
+  margin: 20px auto 0;
+  padding: 10px 20px;
+  background-color: #007bff;
+  color: white;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.close-report-button:hover {
+  background-color: #0056b3;
 }
 </style>

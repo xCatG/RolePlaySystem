@@ -15,6 +15,7 @@ import type {
   Message,
   MessagesListResponse
 } from '../types/chat';
+import type { FinalReviewReport } from '../types/evaluation';
 
 export const chatApi = {
   async getScenarios(language: string = 'en'): Promise<ScenarioInfo[]> {
@@ -41,6 +42,16 @@ export const chatApi = {
     const response = await axios.post<CreateSessionResponse>(
       apiUrl('/chat/session'), 
       request, 
+      {
+        headers: getAuthHeaders()
+      }
+    );
+    return response.data;
+  },
+
+  async getEvaluationReport(sessionId: string): Promise<FinalReviewReport> {
+    const response = await axios.get<FinalReviewReport>(
+      apiUrl(`/eval/session/${sessionId}/evaluate`),
       {
         headers: getAuthHeaders()
       }
