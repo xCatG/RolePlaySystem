@@ -81,9 +81,10 @@ const fetchReport = async () => {
   isLoading.value = true;
   error.value = null;
   try {
-    report.value = await chatApi.getEvaluationReport(props.sessionId);
+    // MODIFIED LINE: Using the new function name
+    report.value = await chatApi.triggerAndFetchEvaluationReport(props.sessionId);
   } catch (e) {
-    console.error('Failed to fetch evaluation report:', e);
+    console.error('Failed to fetch or trigger evaluation report:', e);
     error.value = e instanceof Error ? e : new Error('An unknown error occurred');
   } finally {
     isLoading.value = false;

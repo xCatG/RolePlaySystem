@@ -49,14 +49,41 @@ export const chatApi = {
     return response.data;
   },
 
-  async getEvaluationReport(sessionId: string): Promise<FinalReviewReport> {
-    const response = await axios.get<FinalReviewReport>(
-      apiUrl(`/eval/session/${sessionId}/evaluate`),
-      {
-        headers: getAuthHeaders()
+  async triggerAndFetchEvaluationReport(sessionId: string): Promise<FinalReviewReport> {
+    try {
+      // Attempt to GET the report first
+      const response = await axios.get<FinalReviewReport>(
+        apiUrl(`/eval/session/${sessionId}/evaluate`),
+        {
+          headers: getAuthHeaders()
+        }
+      );
+      return response.data;
+    } catch (error) {
+      // Check if error is AxiosError and has a 404 status
+      if (axios.isAxiosError(error) && error.response && error.response.status === 404) {
+        // Report not found, so POST to trigger evaluation
+        console.log(`Report for session ${sessionId} not found (404). Triggering evaluation with POST...`);
+        try {
+          const postResponse = await axios.post<FinalReviewReport>(
+            apiUrl(`/eval/session/${sessionId}/evaluate`),
+            {}, // Assuming empty body for POST, adjust if API requires payload
+            {
+              headers: getAuthHeaders()
+            }
+          );
+          // Assuming POST returns the report directly or finishes generation before responding
+          return postResponse.data;
+        } catch (postError) {
+          console.error(`Failed to trigger or fetch evaluation report for session ${sessionId} after POST:`, postError);
+          throw postError; // Re-throw error from POST
+        }
+      } else {
+        // Other error (not 404 or not AxiosError)
+        console.error(`Failed to fetch evaluation report for session ${sessionId} with initial GET:`, error);
+        throw error; // Re-throw original error
       }
-    );
-    return response.data;
+    }
   },
 
   async getSessions(): Promise<SessionInfo[]> {
