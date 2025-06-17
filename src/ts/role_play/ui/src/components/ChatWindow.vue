@@ -70,13 +70,14 @@
       </form>
     </div>
     
-    <!-- Coming Soon Modal -->
-    <ConfirmModal
-      v-model="showEvaluationModal"
-      :message="$t('evaluation.comingSoonMessage')"
-      :title="$t('evaluation.comingSoonTitle')"
-      :confirm-text="$t('evaluation.ok')"
-      @confirm="showEvaluationModal = false"
+    <!-- Evaluation report -->
+    <div v-if="evaluationLoading" class="loading-indicator">
+      Evaluating session...
+    </div>
+    <EvaluationReport
+      v-if="evaluationReport"
+      :report="evaluationReport"
+      @close="evaluationReport = null"
     />
     
     <!-- End Session Confirmation Modal -->
@@ -104,13 +105,17 @@
 <script lang="ts">
 import { defineComponent, ref, nextTick, PropType, onMounted } from 'vue';
 import { chatApi } from '../services/chatApi';
+import { evaluationApi } from '../services/evaluationApi';
 import type { SessionInfo, Message } from '../types/chat';
+import type { FinalReviewReport } from '../types/evaluation';
 import ConfirmModal from './ConfirmModal.vue';
+import EvaluationReport from './EvaluationReport.vue';
 
 export default defineComponent({
   name: 'ChatWindow',
   components: {
-    ConfirmModal
+    ConfirmModal,
+    EvaluationReport
   },
   props: {
     session: {
@@ -124,7 +129,8 @@ export default defineComponent({
     const newMessage = ref('');
     const loading = ref(false);
     const messagesContainer = ref<HTMLElement>();
-    const showEvaluationModal = ref(false);
+    const evaluationReport = ref<FinalReviewReport | null>(null);
+    const evaluationLoading = ref(false);
     const showDeleteModal = ref(false);
     const showEndModal = ref(false);
 
@@ -192,8 +198,16 @@ export default defineComponent({
       return new Date(timestamp).toLocaleTimeString();
     };
 
-    const sendToEvaluation = () => {
-      showEvaluationModal.value = true;
+    const sendToEvaluation = async () => {
+      try {
+        evaluationLoading.value = true;
+        const response = await evaluationApi.evaluateSession(props.session.session_id);
+        evaluationReport.value = response.report;
+      } catch (error) {
+        console.error('Failed to evaluate session:', error);
+      } finally {
+        evaluationLoading.value = false;
+      }
     };
 
     const formatDate = (dateString: string) => {
@@ -260,7 +274,8 @@ export default defineComponent({
       newMessage,
       loading,
       messagesContainer,
-      showEvaluationModal,
+      evaluationReport,
+      evaluationLoading,
       showDeleteModal,
       showEndModal,
       sendMessage,

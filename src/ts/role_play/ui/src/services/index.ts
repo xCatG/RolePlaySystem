@@ -3,3 +3,4 @@
 export * from './apiConfig';
 export * from './authApi';
 export * from './chatApi';
+export * from './evaluationApi';
