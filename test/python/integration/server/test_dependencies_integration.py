@@ -4,7 +4,7 @@ import pytest
 import tempfile
 from pathlib import Path
 
-from role_play.server.dependencies import get_storage_backend, get_chat_logger, get_auth_manager
+from role_play.server.dependencies import get_storage_backend, get_chat_logger, get_auth_manager, get_content_loader
 from role_play.common.storage import FileStorage, FileStorageConfig
 from role_play.chat.chat_logger import ChatLogger
 from role_play.common.auth import AuthManager
@@ -46,12 +46,16 @@ class TestDependencyInjectionIntegration:
             config = FileStorageConfig(type="file", base_dir=temp_dir)
             storage = FileStorage(config)
             
-            # Get chat logger with this storage
-            chat_logger = get_chat_logger(storage)
+            # Create a content loader
+            content_loader = get_content_loader()
+            
+            # Get chat logger with this storage and content loader
+            chat_logger = get_chat_logger(storage, content_loader)
             
             # Verify it's properly configured
             assert isinstance(chat_logger, ChatLogger)
             assert chat_logger.storage == storage
+            assert chat_logger.content_loader == content_loader
 
     def test_auth_manager_dependency_integration(self):
         """Test that auth manager dependency uses injected storage backend."""
@@ -90,7 +94,8 @@ class TestDependencyInjectionIntegration:
             storage = FileStorage(config)
             
             # Get dependencies
-            chat_logger = get_chat_logger(storage)
+            content_loader = get_content_loader()
+            chat_logger = get_chat_logger(storage, content_loader)
             
             # Mock auth manager setup
             import os
@@ -187,8 +192,9 @@ class TestStorageBackendSingleton:
             storage = FileStorage(config)
             
             # Get chat logger multiple times - should work fine
-            chat_logger1 = get_chat_logger(storage)
-            chat_logger2 = get_chat_logger(storage)
+            content_loader = get_content_loader()
+            chat_logger1 = get_chat_logger(storage, content_loader)
+            chat_logger2 = get_chat_logger(storage, content_loader)
             
             # Both should use the same storage
             assert chat_logger1.storage is chat_logger2.storage
@@ -216,7 +222,8 @@ class TestConcurrentDependencyAccess:
             storage = FileStorage(config)
             
             async def get_and_use_chat_logger(user_num):
-                chat_logger = get_chat_logger(storage)
+                content_loader = get_content_loader()
+                chat_logger = get_chat_logger(storage, content_loader)
                 
                 # Start a session
                 session_id, _ = await chat_logger.start_session(
@@ -248,7 +255,8 @@ class TestConcurrentDependencyAccess:
             
             # Verify each user has their session
             for user_id, session_id in results:
-                chat_logger = get_chat_logger(storage)
+                content_loader = get_content_loader()
+                chat_logger = get_chat_logger(storage, content_loader)
                 sessions = await chat_logger.list_user_sessions(user_id)
                 assert len(sessions) == 1
                 assert sessions[0]["session_id"] == session_id

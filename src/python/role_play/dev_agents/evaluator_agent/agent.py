@@ -20,7 +20,7 @@ def create_evaluator_agent(language: str, chat_info: ChatInfo):
     analysis_agents = [create_analysis_agent(analysis_area=analysis_areas, chat_info=chat_info) for analysis_areas in analysis_areas]
     parallel = ParallelAgent(
         name="parallelize_specialized_analysis",
-        description=f"Create analysis report in the areas of [{', '.join(analysis_areas)}] from chat history",
+        description=f"Create analysis report for participant {chat_info.participant_name} in the areas of [{', '.join(analysis_areas)}] from chat history",
         sub_agents=analysis_agents
     )
     summarize_agent = create_summary_report_agent(language=chat_info.chat_language)
@@ -32,8 +32,8 @@ def create_evaluator_agent(language: str, chat_info: ChatInfo):
 
 # Export the agent
 agent = create_evaluator_agent("English",
-            ChatInfo(chat_language="English", chat_session_id="chat_session_2025_06_16_16_46_00",
-            scenario_info={
+                               ChatInfo(chat_language="English", chat_session_id="chat_session_2025_06_16_16_46_00",
+                                        scenario_info={
                 "id": "123",
                 "name": "Clinic visit",
                 "description": "routine clinic visit",
@@ -48,7 +48,7 @@ Jane Smith: Hi Doctor I have a question for you about my pet cat. He kept biting
 My Trainee: He might be under stress, let me check on him.
 Jane Smith: (holds cat from carrier and hands to doctor)
 My Trainee: ok let me take a look at him. Yes, the tail has lots of bite marks.
-            """, trainee_name="My Trainee"))
+            """, participant_name="My Trainee"))
 
 root_agent = agent
 

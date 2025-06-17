@@ -1,4 +1,5 @@
 """Evaluation handler for session analysis and export."""
+import json
 import logging
 from typing import List, Annotated, Optional
 
@@ -11,7 +12,7 @@ from pydantic import BaseModel
 
 from ..chat.chat_logger import ChatLogger
 from ..common.models import BaseResponse, User
-from ..dev_agents.evaluator_agent.agent import evaluator_agent
+from ..dev_agents.evaluator_agent.agent import create_evaluator_agent
 from ..server.base_handler import BaseHandler
 from ..server.dependencies import require_user_or_higher, get_chat_logger, get_adk_session_service
 
@@ -55,6 +56,7 @@ class EvaluationHandler(BaseHandler):
 
         self._router.get("/sessions", response_model=SessionListResponse)(self.get_evaluation_sessions)
         self._router.get("/session/{session_id}/download")(self.download_session)
+        self._router.get("/session/{session_id}/chat-info")(self.get_session_chat_info)
         self._router.post("/session/evaluate", response_model=EvaluationResponse)(self.evaluate_session)
 
         return self._router
@@ -144,6 +146,45 @@ class EvaluationHandler(BaseHandler):
             logger.error(f"Failed to download session: {e}")
             raise HTTPException(status_code=500, detail="Failed to download session")
     
+    async def get_session_chat_info(
+        self,
+        session_id: str,
+        current_user: Annotated[User, Depends(require_user_or_higher)],
+        chat_logger: Annotated[ChatLogger, Depends(get_chat_logger)]
+    ):
+        """Get session data in ChatInfo format for evaluator agent.
+        
+        Args:
+            session_id: ID of the session to get
+            current_user: Authenticated user
+            chat_logger: Chat logger instance
+            
+        Returns:
+            Session data formatted as ChatInfo JSON
+        """
+        try:
+            # Export session as JSON format with complete data
+            chat_info_json = await chat_logger.export_session_text(
+                user_id=current_user.id,
+                session_id=session_id,
+                export_format="json"
+            )
+            
+            if chat_info_json == "Session log file not found.":
+                raise HTTPException(status_code=404, detail="Session not found")
+            
+            return {
+                "success": True,
+                "session_id": session_id,
+                "chat_info": chat_info_json
+            }
+            
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Failed to get session chat info: {e}")
+            raise HTTPException(status_code=500, detail="Failed to get session data")
+
     async def evaluate_session(
         self,
         request: EvaluationRequest,
@@ -163,78 +204,44 @@ class EvaluationHandler(BaseHandler):
             Evaluation results with scores and feedback
         """
         try:
-            # Get the session transcript
-            transcript = await chat_logger.export_session_text(
+            # Get the session data in ChatInfo format for the evaluator agent
+            chat_info_json = await chat_logger.export_session_text(
                 user_id=current_user.id,
-                session_id=request.session_id
+                session_id=request.session_id,
+                export_format="json"
             )
             
-            if transcript == "Session log file not found.":
+            if chat_info_json == "Session log file not found.":
                 raise HTTPException(status_code=404, detail="Session not found")
             
             # Create a unique evaluation session ID
             eval_session_id = f"eval_{request.session_id}"
+            
+            # Parse the ChatInfo JSON for use with evaluator agent
+            import json
+            from ..dev_agents.evaluator_agent.model import ChatInfo
+            chat_info_data = json.loads(chat_info_json)
+            chat_info = ChatInfo(**chat_info_data)
             
             # Initialize ADK session for evaluation
             await adk_session_service.create_session(
                 app_name="roleplay_evaluator",
                 user_id=current_user.id,
                 session_id=eval_session_id,
-                state={"transcript": transcript, "evaluation_type": request.evaluation_type}
+                state={"chat_info": chat_info_json, "evaluation_type": request.evaluation_type}
             )
-            
+
+            evaluator_agent = create_evaluator_agent(chat_info.chat_language, chat_info)
             # Create runner with evaluator agent
             runner = Runner(
                 app_name="roleplay_evaluator",
                 agent=evaluator_agent,
                 session_service=adk_session_service
             )
-            
-            # Prepare evaluation prompt based on type
-            if request.evaluation_type == "quick":
-                prompt = f"""Please provide a quick evaluation of this roleplay session transcript:
-
-{transcript}
-
-Focus on the key strengths and areas for improvement. Provide numerical scores for:
-- Character Consistency (0-10)
-- Engagement Quality (0-10)
-- Scenario Adherence (0-10)
-- Overall Quality (0-10)"""
-            elif request.evaluation_type == "custom" and request.custom_criteria:
-                criteria_list = "\n".join(f"- {criterion}" for criterion in request.custom_criteria)
-                prompt = f"""Please evaluate this roleplay session transcript based on these specific criteria:
-
-{criteria_list}
-
-Transcript:
-{transcript}
-
-Also provide standard numerical scores for character consistency, engagement quality, scenario adherence, and overall quality (0-10 scale)."""
-            else:  # comprehensive
-                prompt = f"""Please provide a comprehensive evaluation of this roleplay session transcript:
-
-{transcript}
-
-Analyze:
-1. Character consistency and authenticity
-2. Quality of engagement and responses
-3. Adherence to the scenario
-4. Language appropriateness
-5. Immersion maintenance
-6. Conversation flow and pacing
-7. Meeting participant needs
-
-Provide:
-- Detailed feedback
-- Specific examples from the transcript
-- Numerical scores (0-10) for character consistency, engagement quality, scenario adherence, and overall quality
-- List of strengths
-- List of areas for improvement"""
-            
             # Execute evaluation
+            prompt = "Please evaluate this roleplay session and provide review."
             content = Content(role="user", parts=[Part(text=prompt)])
-            
+
             response_text = ""
             try:
                 async for event in runner.run_async(
@@ -242,6 +249,7 @@ Provide:
                     session_id=eval_session_id,
                     user_id=current_user.id
                 ):
+                    # TODO double check what happens when using structured output!
                     if event.content and event.content.parts:
                         for part in event.content.parts:
                             if part.text:

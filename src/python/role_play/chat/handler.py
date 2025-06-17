@@ -284,7 +284,8 @@ class ChatHandler(BaseHandler):
                 scenario_id=request.scenario_id,
                 scenario_name=scenario["name"],
                 character_id=request.character_id,
-                character_name=character["name"]
+                character_name=character["name"],
+                session_language=user_language
             )
 
             initial_adk_state = {

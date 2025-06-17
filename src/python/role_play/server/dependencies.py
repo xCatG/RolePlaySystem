@@ -166,13 +166,14 @@ def get_content_loader() -> ContentLoader:
 
 
 def get_chat_logger(
-    storage: Annotated[StorageBackend, Depends(get_storage_backend)]
+    storage: Annotated[StorageBackend, Depends(get_storage_backend)],
+    content_loader: Annotated[ContentLoader, Depends(get_content_loader)]
 ) -> ChatLogger:
     """
-    Provides a ChatLogger instance with injected storage backend.
+    Provides a ChatLogger instance with injected storage backend and content loader.
     Note: This is NOT a singleton as it depends on the storage backend.
     """
-    return ChatLogger(storage_backend=storage)
+    return ChatLogger(storage_backend=storage, content_loader=content_loader)
 
 
 @lru_cache(maxsize=None)
