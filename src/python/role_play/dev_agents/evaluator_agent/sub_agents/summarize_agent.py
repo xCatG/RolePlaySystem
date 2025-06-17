@@ -33,11 +33,9 @@ Please make sure to return values of overall_assessment, key_strengths_demonstra
     return Agent(
         model=MODEL,
         name="summarize_report_agent",
-        description=(
-            "Summarize the content and sentiment of the latest FOMC meeting."
-        ),
+        description="Summarize the area specific analysis reports into one coherent report.",
         instruction=instruction,
         output_schema=FinalReviewReport,
+        output_key="final_report"
         #before_model_callback=rate_limit_callback,
-
     )

@@ -222,7 +222,7 @@ class EvaluationHandler(BaseHandler):
             chat_info = ChatInfo(**chat_info_data)
             
             # Initialize ADK session for evaluation
-            await adk_session_service.create_session(
+            current_session = await adk_session_service.create_session(
                 app_name="roleplay_evaluator",
                 user_id=current_user.id,
                 session_id=eval_session_id,
@@ -240,6 +240,7 @@ class EvaluationHandler(BaseHandler):
             prompt = "Please evaluate this roleplay session and provide review."
             content = Content(role="user", parts=[Part(text=prompt)])
 
+            report_response = None
             response_text = ""
             try:
                 async for event in runner.run_async(
@@ -247,11 +248,18 @@ class EvaluationHandler(BaseHandler):
                     session_id=eval_session_id,
                     user_id=current_user.id
                 ):
-                    # TODO double check what happens when using structured output!
                     if event.content and event.content.parts:
                         for part in event.content.parts:
                             if part.text:
                                 response_text += part.text
+
+                completed_session = await adk_session_service.get_session(
+                    app_name="roleplay_evaluator",
+                    user_id=current_user.id,
+                    session_id=eval_session_id
+                )
+                # pull final report from session.state
+                report_response = FinalReviewReport(**completed_session.state["final_report"])
             finally:
                 # Clean up
                 await adk_session_service.delete_session(
@@ -265,12 +273,14 @@ class EvaluationHandler(BaseHandler):
                     except Exception as close_err:
                         logger.error(f"Error closing evaluator runner: {close_err}")
 
+            if report_response is None:
+                raise HTTPException(status_code=500, detail="Failed to get session data")
+
             return EvaluationResponse(
                 success=True,
                 session_id=request.session_id,
                 evaluation_type=request.evaluation_type,
-                feedback=response_text,
-                strengths=[],
+                report=report_response
             )
             
         except HTTPException:

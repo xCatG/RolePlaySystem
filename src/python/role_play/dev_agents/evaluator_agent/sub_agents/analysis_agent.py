@@ -30,5 +30,6 @@ def create_analysis_agent(analysis_area:str, chat_info=ChatInfo) -> Agent:
         description=f"Analyze Chat History and provide feedback in area of {analysis_area}",
         instruction=instruction,
         output_schema=SpecializedAssessment,
+        output_key=f"report_{analysis_area}"
         #before_model_callback=rate_limit_callback,
     )
