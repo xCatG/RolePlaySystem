@@ -11,7 +11,12 @@ from pydantic import BaseModel
 
 from ..chat.chat_logger import ChatLogger
 from ..common.models import BaseResponse, User
-from ..dev_agents.evaluator_agent.agent import evaluator_agent
+from ..dev_agents.evaluator_agent.agent import (
+    create_evaluator_agent,
+    root_agent as evaluator_agent,
+)
+from ..dev_agents.evaluator_agent.model import FinalReviewReport, ChatInfo
+from ..chat.models import ScenarioInfo, CharacterInfo
 from ..server.base_handler import BaseHandler
 from ..server.dependencies import require_user_or_higher, get_chat_logger, get_adk_session_service
 
@@ -45,6 +50,22 @@ class EvaluationResponse(BaseResponse):
     feedback: str
     strengths: List[str]
 
+
+class TranscriptEvaluationRequest(BaseModel):
+    """Request to evaluate a raw chat transcript."""
+    chat_session_id: str
+    transcript_text: str
+    scenario: ScenarioInfo
+    character: CharacterInfo
+    trainee_name: str
+    goal: str
+    language: str = "en"
+
+
+class TranscriptEvaluationResponse(BaseResponse):
+    """Evaluation response for transcript analysis."""
+    report: FinalReviewReport
+
 class EvaluationHandler(BaseHandler):
     """Handler for evaluation-related endpoints."""
 
@@ -56,12 +77,26 @@ class EvaluationHandler(BaseHandler):
         self._router.get("/sessions", response_model=SessionListResponse)(self.get_evaluation_sessions)
         self._router.get("/session/{session_id}/download")(self.download_session)
         self._router.post("/session/evaluate", response_model=EvaluationResponse)(self.evaluate_session)
+        self._router.post("/transcript/evaluate", response_model=TranscriptEvaluationResponse)(self.evaluate_transcript)
 
         return self._router
 
     @property
     def prefix(self) -> str:
         return "/eval"
+
+    def _create_evaluator_agent(self, request: TranscriptEvaluationRequest):
+        """Create an evaluator agent for a given transcript request."""
+        chat_info = ChatInfo(
+            chat_language=request.language,
+            chat_session_id=request.chat_session_id,
+            scenario_info=request.scenario,
+            goal=request.goal,
+            char_info=request.character,
+            transcript_text=request.transcript_text,
+            trainee_name=request.trainee_name,
+        )
+        return create_evaluator_agent(request.language, chat_info)
     
     async def get_evaluation_sessions(
         self, 
@@ -259,16 +294,70 @@ Provide:
                     except Exception as close_err:
                         logger.error(f"Error closing evaluator runner: {close_err}")
 
-            return EvaluationResponse(
-                success=True,
-                session_id=request.session_id,
-                evaluation_type=request.evaluation_type,
-                feedback=response_text,
-                strengths=[],
-            )
-            
+        return EvaluationResponse(
+            success=True,
+            session_id=request.session_id,
+            evaluation_type=request.evaluation_type,
+            feedback=response_text,
+            strengths=[],
+        )
+
         except HTTPException:
             raise
         except Exception as e:
             logger.error(f"Failed to evaluate session {request.session_id}: {e}", exc_info=True)
             raise HTTPException(status_code=500, detail="Failed to evaluate session")
+
+    async def evaluate_transcript(
+        self,
+        request: TranscriptEvaluationRequest,
+        current_user: Annotated[User, Depends(require_user_or_higher)],
+        adk_session_service: Annotated[InMemorySessionService, Depends(get_adk_session_service)],
+    ) -> TranscriptEvaluationResponse:
+        """Evaluate a raw transcript using the evaluator agent."""
+        eval_session_id = f"eval_{request.chat_session_id}"
+        agent = self._create_evaluator_agent(request)
+        runner = Runner(
+            app_name="roleplay_evaluator",
+            agent=agent,
+            session_service=adk_session_service,
+        )
+
+        await adk_session_service.create_session(
+            app_name="roleplay_evaluator",
+            user_id=current_user.id,
+            session_id=eval_session_id,
+            state={"transcript": request.transcript_text},
+        )
+
+        content = Content(role="user", parts=[Part(text="evaluate")])
+        response_text = ""
+        try:
+            async for event in runner.run_async(
+                new_message=content,
+                session_id=eval_session_id,
+                user_id=current_user.id,
+            ):
+                if event.content and event.content.parts:
+                    for part in event.content.parts:
+                        if part.text:
+                            response_text += part.text
+        finally:
+            await adk_session_service.delete_session(
+                app_name="roleplay_evaluator",
+                user_id=current_user.id,
+                session_id=eval_session_id,
+            )
+            if hasattr(runner, "close") and callable(runner.close):
+                try:
+                    await runner.close()
+                except Exception as close_err:
+                    logger.error(f"Error closing evaluator runner: {close_err}")
+
+        try:
+            report = FinalReviewReport.model_validate_json(response_text)
+        except Exception as e:
+            logger.error(f"Failed to parse evaluator output: {e}", exc_info=True)
+            raise HTTPException(status_code=500, detail="Failed to parse evaluation result")
+
+        return TranscriptEvaluationResponse(success=True, report=report)
