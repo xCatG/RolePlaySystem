@@ -14,37 +14,30 @@
 
 """Summarize the content of the FOMC meeting transcript."""
 
-from google.adk.agents import Agent
+from google.adk.agents import Agent, LlmAgent
 
 from .. import MODEL
 from ..library.callback import rate_limit_callback
-# from ..tools.store_state import store_state_tool
-# from . import summarize_meeting_agent_prompt
+from ..model import FinalReviewReport
 
-PROMPT = """
-You are a financial analyst experienced in understanding the meaning, sentiment
-and sub-text of financial meeting transcripts. Below is the transcript
-of the latest FOMC meeting press conference.
 
-<TRANSCRIPT>
-{artifact.transcript_fulltext}
-</TRANSCRIPT>
+def create_summary_report_agent(language:str) -> Agent:
+    instruction = f"""
+You are an expert communications and soft skills coach, you are reviewing analysis for a chat session and giving a summary as a JSON object the following format
 
-Read this transcript and create a summary of the content and sentiment of this
-meeting. Call the store_state tool with key 'meeting_summary' and the value as your
-meeting summary. Tell the user what you are doing but do not output your summary
-to the user.
+{FinalReviewReport.model_json_schema()}
 
-Then call transfer_to_agent to transfer to research_agent.
+Please make sure to return values of overall_assessment, key_strengths_demonstrated, key_areas_for_development, actionable_next_steps fields written in {language}.
+    """
 
-"""
-SummarizeReportAgent = Agent(
-    name="summarize_report_agent",
-    model=MODEL,
-    description=(
-        "Summarize the content and sentiment of the latest FOMC meeting."
-    ),
-    instruction=PROMPT,
-    tools=[],
-    before_model_callback=rate_limit_callback,
-)
+    return Agent(
+        model=MODEL,
+        name="summarize_report_agent",
+        description=(
+            "Summarize the content and sentiment of the latest FOMC meeting."
+        ),
+        instruction=instruction,
+        output_schema=FinalReviewReport,
+        #before_model_callback=rate_limit_callback,
+
+    )

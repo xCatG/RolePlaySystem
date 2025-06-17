@@ -5,39 +5,50 @@ These models enforce a consistent, structured data format for communication betw
 the evaluation agents and for storing the final results.
 """
 
-from enum import IntEnum
+import sys
+from pathlib import Path
+from enum import IntEnum, Enum
 from typing import List, Optional
 
 from pydantic import BaseModel, Field
 
+# Add project root to path; this will break if you run adk web from places OTHER than dev_agents dir
+PROJECT_ROOT = Path(__file__).parent.parent.parent.parent.parent.parent
+sys.path.insert(0, str(PROJECT_ROOT / "src" / "python"))
 
-class SkillScore(IntEnum):
+from role_play.chat.models import ScenarioInfo, CharacterInfo
+
+
+class Score(Enum):
     """Enumeration for skill assessment scoring."""
-    LOW = 1
-    MEDIUM = 2
-    HIGH = 3
+    low = "low"
+    med = "med"
+    high = "high"
 
 
-class ConfidenceScore(IntEnum):
-    """Enumeration for an agent's confidence in its assessment."""
-    LOW = 1
-    MEDIUM = 2
-    HIGH = 3
-
+class ChatInfo(BaseModel):
+    chat_language: str
+    chat_session_id: str
+    scenario_info: ScenarioInfo
+    goal: str
+    char_info: CharacterInfo
+    transcript_text: str
+    trainee_name: str
 
 class SpecializedAssessment(BaseModel):
     """
     Defines the structured output for a specialized review agent (e.g., Empathy, Clarity).
     Each agent instance will produce one of these objects.
     """
+    chat_session_id: str = Field(description="The unique identifier for the chat session being evaluated.")
     assessment_area: str = Field(
         description="The specific skill or area being assessed, e.g., 'empathy'."
     )
-    score: SkillScore = Field(
-        description="A score for this area: 1 (Low), 2 (Medium), or 3 (High)."
+    score: Score = Field(
+        description="A score for this area. Valid values are low, med, and high. "
     )
-    confidence: ConfidenceScore = Field(
-        description="The model's confidence in its score: 1 (Low), 2 (Medium), or 3 (High)."
+    confidence: Score = Field(
+        description="How confident you are in the score you give. Valid values are high, med, and low. High means you are very confident about your score, med means you are confident, low means you are NOT confident."
     )
     positive_points: List[str] = Field(
         description="List of observed strengths in localized language."
@@ -59,8 +70,8 @@ class FinalReviewReport(BaseModel):
     Defines the structure for the final, consolidated review report that is
     synthesized by the ReviewSummarizerAgent and stored.
     """
-    user_id: str = Field(description="The unique identifier for the user.")
-    scenario_id: str = Field(description="The unique identifier for the scenario.")
+    #user_id: str = Field(description="The unique identifier for the user.")
+    #scenario_id: str = Field(description="The unique identifier for the scenario.")
     chat_session_id: str = Field(description="The unique identifier for the chat session being evaluated.")
     overall_score: float = Field(
         description="Aggregated and normalized score from all reviewers, ranging from 0.0 to 1.0."

@@ -1,68 +1,34 @@
-# Copyright 2025 Google LLC
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
 
-"""Analyze the research output for the FOMC Research Agent."""
-
-from google.adk.agents import Agent
+from google.adk.agents import Agent, LlmAgent
 
 from .. import MODEL
 from ..library.callback import rate_limit_callback
+from ..model import SpecializedAssessment, ChatInfo
 
-PROMPT = """
-You are an experienced financial analyst, specializing in the analysis of
-meetings and minutes of the Federal Open Market Committee (FOMC). Your goal is
-to develop a thorough and insightful report on the latest FOMC
-meeting. You have access to the output from previous agents to develop your
-analysis, shown below.
+def create_analysis_agent(analysis_area:str, chat_info=ChatInfo) -> Agent:
+    instruction = f"""
+    You are an expert communications and soft skills coach. 
+    You are looking at the chat history between your trainee {chat_info.trainee_name} 
+    and an actor playing the character {chat_info.char_info} 
+    for scenario {chat_info.scenario_info.description}
+    with the goal of {chat_info.goal}. 
 
-<RESEARCH_OUTPUT>
+    Here is the chat transcription in {chat_info.chat_language}: 
+    {chat_info.transcript_text}
 
-<REQUESTED_FOMC_STATEMENT>
-{artifact.requested_statement_fulltext}
-</REQUESTED_FOMC_STATEMENT>
+    Provide analysis in the area of {analysis_area}
 
-<PREVIOUS_FOMC_STATEMENT>
-{artifact.previous_statement_fulltext}
-</PREVIOUS_FOMC_STATEMENT>
+    respond in JSON format {SpecializedAssessment.model_json_schema()}
+    use {chat_info.chat_session_id} as chat_session_id field in your response.
 
-<STATEMENT_REDLINE>
-{artifact.statement_redline}
-</STATEMENT_REDLINE>
-
-<MEETING_SUMMARY>
-{meeting_summary}
-</MEETING_SUMMARY>
-
-<RATE_MOVE_PROBABILITIES>
-{rate_move_probabilities}
-</RATE_MOVE_PROBABILITIES>
-
-</RESEARCH_OUTPUT>
-
-Ignore any other data in the Tool Context.
-
-Generate a short (1-2 page) report based on your analysis of the information you
-received. Be specific in your analysis; use specific numbers if available,
-instead of making general statements.
-"""
-
-AnalysisAgent = Agent(
-    model=MODEL,
-    name="analysis_agent",
-    description=(
-        "Analyze inputs and determine implications for future FOMC actions."
-    ),
-    instruction=PROMPT,
-    before_model_callback=rate_limit_callback,
-)
+    where positive_points, improvement_areas, specific_suggestions SHOULD be written in {chat_info.chat_language},
+    while other fields MUST be written in English only.    
+            """
+    return Agent(
+        model=MODEL,
+        name="chat_history_analysis",
+        description=f"Analyze Chat History and provide feedback in area of {analysis_area}",
+        instruction=instruction,
+        output_schema=SpecializedAssessment,
+        #before_model_callback=rate_limit_callback,
+    )
