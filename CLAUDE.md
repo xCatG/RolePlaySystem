@@ -144,6 +144,14 @@ make test-specific TEST_PATH="test/python/unit/chat/test_chat_logger.py"
 - [ ] Database: Future schema design
 - [ ] **Localization Completeness**: Complete ChatWindow.vue localization (message placeholders, session labels, timestamps still in English)
 - [ ] Additional Languages: Japanese (ja) content and UI translations
+- [ ] **Evaluation Module**: 
+  - [ ] Async job queue system for evaluation processing (polling-based for v1)
+  - [ ] Job status tracking endpoints (`POST /eval/session/{id}/evaluate`, `GET /eval/job/{job_id}/status`)
+  - [ ] Evaluation job storage in `users/{user_id}/evaluations/{job_id}.json`
+  - [ ] Frontend: Evaluation panel with job listing and progress tracking
+  - [ ] Frontend: Non-blocking UI with toast notifications for evaluation start
+  - [ ] Frontend: Header badge/indicator for pending evaluations
+  - [ ] Clean up old evaluation jobs periodically
 
 ### Read-Only Session History (Completed)
 - [x] Backend: Add `GET /chat/session/{session_id}/status` endpoint to check if session is active or ended
@@ -196,11 +204,19 @@ make test-specific TEST_PATH="test/python/unit/chat/test_chat_logger.py"
 - [x] **Impact**: ~300 lines duplicate code eliminated, better maintainability, all 241 tests passing
 - [x] **Critical Fix**: Resolved frontend data loading issues in Phase 3 refactoring (API response handling bugs)
 
+### Evaluation Module (Completed)
+- [x] **Evaluator Agent Integration**: Hooked up multi-agent evaluator workflow with EvaluationHandler
+- [x] **Structured Evaluation Endpoint**: `POST /api/eval/session/{session_id}/evaluate` returns FinalReviewReport
+- [x] **ChatLogger Enhancement**: Added JSON export format to `export_session_text(format="json")` for ChatInfo compatibility
+- [x] **Dynamic Agent Creation**: Evaluator agent created with user's language preference and proper ChatInfo structure
+- [x] **Response Parsing**: Extracts structured FinalReviewReport from agent output with fallback handling
+- [x] **Comprehensive Tests**: Unit tests for success cases, error handling, and fallback scenarios
+
 ### Pending Development
 - [x] Base Infrastructure: All common modules, cloud storage, distributed locking
 - [x] Server Core: Base classes, dependencies, config, user accounts
 - [x] Chat Module: ADK integration, JSONL logging, POC features
-- [x] Evaluation: Simple export implementation
+- [x] Evaluation: Simple export implementation + AI evaluator agent integration
 - [x] Config & Env: All YAML configs, env loading
 - [x] Testing: Unit tests, storage integration, test infrastructure, Makefile targets
 - [x] Core Docs: API.md, DEPLOYMENT.md, ENVIRONMENTS.md
@@ -216,7 +232,7 @@ make test-specific TEST_PATH="test/python/unit/chat/test_chat_logger.py"
 - **Server**: FastAPI with stateless handlers, JWT auth, CORS, environment configs
 - **Auth**: RoleChecker pattern (replaced decorators), role hierarchy, proper HTTP codes, language preferences
 - **Chat**: ADK integration, JSONL logging, singleton services, POC endpoints, language-aware content, refactored for maintainability
-- **Evaluation**: Simple text export from JSONL
+- **Evaluation**: Text/JSON export from JSONL, AI evaluator agent integration with structured FinalReviewReport output
 - **Testing**: 190+ tests, language functionality coverage (ContentLoader, auth, models), comprehensive Makefile targets
 - **Frontend**: Vue.js auth UI, i18n with Traditional Chinese, language switcher, reusable composables
 - **Localization**: Complete Traditional Chinese support with content isolation

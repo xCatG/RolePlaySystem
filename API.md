@@ -297,6 +297,39 @@ Content-Disposition: attachment; filename="session_d81ed7ec_transcript.txt"
 **Errors**
 - 404: Session not found
 
+#### POST /api/evaluation/session/{session_id}/evaluate
+Evaluate a roleplay session using AI evaluator agent with structured output. **Requires authentication (USER or higher).**
+
+**Response** (200 OK)
+```json
+{
+  "success": true,
+  "session_id": "d81ed7ec-338f-4ac0-9ab3-5c6b84b791f5",
+  "overall_score": 0.85,
+  "human_review_recommended": false,
+  "overall_assessment": "The trainee demonstrated excellent communication skills and stayed in character throughout the session. The roleplay scenario was handled professionally with appropriate empathy and problem-solving approaches.",
+  "key_strengths_demonstrated": [
+    "Clear and empathetic communication",
+    "Effective problem-solving approach",
+    "Maintained professional demeanor"
+  ],
+  "key_areas_for_development": [
+    "Could probe deeper for underlying concerns",
+    "Opportunity to provide more specific examples"
+  ],
+  "actionable_next_steps": [
+    "Practice active listening techniques",
+    "Review advanced questioning strategies",
+    "Try more complex scenarios"
+  ],
+  "progress_notes_from_past_feedback": "First evaluation for this session. No prior feedback to compare."
+}
+```
+
+**Errors**
+- 404: Session not found
+- 400: Session metadata not found or invalid
+
 ## Error Response Format
 
 All errors follow this format:

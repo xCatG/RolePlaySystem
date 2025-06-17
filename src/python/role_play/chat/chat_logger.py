@@ -319,8 +319,18 @@ class ChatLogger:
             logger.error(f"Error deleting session log for {session_id}: {e}")
             raise
 
-    async def export_session_text(self, user_id: str, session_id: str) -> str:
-        """Exports a session as a human-readable text transcript."""
+    async def export_session_text(self, user_id: str, session_id: str, format: str = "text") -> str:
+        """
+        Exports a session as either human-readable text or JSON.
+        
+        Args:
+            user_id: The user ID
+            session_id: The session ID
+            format: "text" for human-readable format, "json" for ChatInfo-compatible JSON
+            
+        Returns:
+            Formatted session data as string
+        """
         storage_path = self._get_chat_log_path(user_id, session_id)
         
         if not await self.storage.exists(storage_path):
@@ -348,7 +358,54 @@ class ChatLogger:
             logger.error(f"Error reading session file {storage_path} for export: {e}")
             return f"Error processing session file: {str(e)}"
 
-        # Format the transcript
+        # Return JSON format if requested
+        if format == "json":
+            # Build transcript text in simple format
+            transcript_lines = []
+            for msg in messages:
+                speaker_map = {
+                    "participant": session_info.get('participant_name', 'Participant'),
+                    "character": session_info.get('character_name', 'Character'),
+                    "system": "System"
+                }
+                speaker = speaker_map.get(msg.get("role", "unknown").lower(), msg.get("role", "Unknown"))
+                transcript_lines.append(f"{speaker}: {msg.get('content', '')}")
+            
+            # Create ChatInfo-compatible structure
+            chat_info = {
+                "chat_language": "en",  # Default, should be passed from session or user preference
+                "chat_session_id": session_info.get('app_session_id', session_id),
+                "scenario_info": {
+                    "id": session_info.get('scenario_id', ''),
+                    "name": session_info.get('scenario_name', ''),
+                    "description": "",  # Not stored in session, needs to be loaded separately
+                    "compatible_character_count": 1
+                },
+                "goal": session_info.get('goal', ''),
+                "char_info": {
+                    "id": session_info.get('character_id', ''),
+                    "name": session_info.get('character_name', ''),
+                    "description": ""  # Not stored in session, needs to be loaded separately
+                },
+                "transcript_text": "\n".join(transcript_lines),
+                "trainee_name": session_info.get('participant_name', 'Unknown')
+            }
+            
+            # Add session metadata
+            chat_info["_metadata"] = {
+                "user_id": session_info.get('user_id', ''),
+                "started_at": session_info.get('timestamp', ''),
+                "message_count": len(messages),
+                "is_ended": bool(session_ended_info),
+                "ended_at": session_ended_info.get('timestamp') if session_ended_info else None,
+                "ended_reason": session_ended_info.get('reason') if session_ended_info else None
+            }
+            
+            import json
+            return json.dumps(chat_info, indent=2)
+        
+        # Format as human-readable text (original format)
+        lines = []
         lines.append("=" * 70)
         lines.append("ROLEPLAY SESSION TRANSCRIPT")
         lines.append("=" * 70)
