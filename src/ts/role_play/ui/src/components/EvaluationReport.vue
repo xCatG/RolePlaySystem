@@ -113,6 +113,7 @@ defineEmits<{
   justify-content: center;
   z-index: 1000;
   padding: 20px;
+  backdrop-filter: blur(4px);
 }
 
 .evaluation-report {
@@ -127,21 +128,38 @@ defineEmits<{
   flex-direction: column;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
   position: relative;
+  transform: translateY(0);
+  animation: modalSlideIn 0.3s ease-out;
+}
+
+@keyframes modalSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-20px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 .report-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 24px;
+  padding: 24px 24px 24px 24px;
   border-bottom: 1px solid var(--color-border, #e9ecef);
   background: var(--color-background, #ffffff);
+  position: sticky;
+  top: 0;
+  z-index: 10;
 }
 
 .report-header h1 {
   margin: 0;
   font-size: 24px;
   color: var(--color-heading);
+  flex: 1;
 }
 
 .close-button {
@@ -149,13 +167,30 @@ defineEmits<{
   border: none;
   cursor: pointer;
   padding: 8px;
-  border-radius: 6px;
-  color: var(--color-text);
-  transition: background-color 0.2s;
+  border-radius: 8px;
+  color: var(--color-text, #6c757d);
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+  margin-left: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
 }
 
 .close-button:hover {
-  background-color: var(--color-background-soft);
+  background-color: var(--color-background-soft, #f8f9fa);
+  color: var(--color-text, #495057);
+}
+
+.close-button:active {
+  transform: scale(0.95);
+}
+
+.close-button svg {
+  width: 20px;
+  height: 20px;
 }
 
 .loading-container {
