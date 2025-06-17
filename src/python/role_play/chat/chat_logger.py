@@ -3,10 +3,12 @@ import json
 import uuid
 from typing import Dict, List, Tuple, Any, Optional
 import logging
-from pathlib import Path
 
+from . import ScenarioInfo, CharacterInfo
 from ..common.storage import StorageBackend, StorageError
 from ..common.time_utils import utc_now_isoformat
+# need to make sure we don't cause circular dependency
+from .models import ChatInfo
 
 logger = logging.getLogger(__name__)
 
@@ -18,14 +20,16 @@ class ChatLogger:
     with built-in locking support.
     """
 
-    def __init__(self, storage_backend: StorageBackend):
+    def __init__(self, storage_backend: StorageBackend, content_loader=None):
         """
-        Initialize ChatLogger with a storage backend.
+        Initialize ChatLogger with a storage backend and optional content loader.
 
         Args:
             storage_backend: The storage backend to use for all operations.
+            content_loader: Optional ContentLoader for loading scenario/character data.
         """
         self.storage = storage_backend
+        self.content_loader = content_loader
         logger.info(f"ChatLogger initialized with {type(storage_backend).__name__}")
 
     def _get_chat_log_path(self, user_id: str, session_id: str) -> str:
@@ -75,6 +79,7 @@ class ChatLogger:
         character_name: str,
         goal: Optional[str] = None,
         initial_settings: Optional[Dict[str, Any]] = None,
+        session_language="en"
     ) -> Tuple[str, str]:
         """
         Starts a new chat session log.
@@ -98,6 +103,7 @@ class ChatLogger:
             "scenario_name": scenario_name,
             "character_id": character_id,
             "character_name": character_name,
+            "session_language": session_language,
             "goal": goal,
             "initial_settings": initial_settings or {},
             "version": "1.0"
@@ -319,8 +325,11 @@ class ChatLogger:
             logger.error(f"Error deleting session log for {session_id}: {e}")
             raise
 
-    async def export_session_text(self, user_id: str, session_id: str) -> str:
-        """Exports a session as a human-readable text transcript."""
+    async def export_session_text(self, user_id: str, session_id: str, export_format: str = "text") -> str:
+        """Exports a session as a human-readable text transcript.
+
+        format: text or json
+        """
         storage_path = self._get_chat_log_path(user_id, session_id)
         
         if not await self.storage.exists(storage_path):
@@ -347,6 +356,71 @@ class ChatLogger:
         except Exception as e:
             logger.error(f"Error reading session file {storage_path} for export: {e}")
             return f"Error processing session file: {str(e)}"
+
+        speaker_map = {
+            "participant": session_info.get('participant_name', 'Participant'),
+            "character": session_info.get('character_name', 'Character'),
+            "system": "System"
+        }
+
+        if export_format == "json":
+            transcript_lines = []
+            for msg in messages:
+                speaker = speaker_map[msg["role"].lower()]
+                transcript_lines.append(f"{speaker}: {msg['content']}")
+
+            # Load full scenario and character data if content_loader is available
+            scenario_description = ""
+            character_description = ""
+            if self.content_loader:
+                session_language = session_info.get("session_language", "en")
+                scenario_data = self.content_loader.get_scenario_by_id(
+                    session_info.get("scenario_id", ""), session_language
+                )
+                character_data = self.content_loader.get_character_by_id(
+                    session_info.get("character_id", ""), session_language
+                )
+                if scenario_data:
+                    scenario_description = scenario_data.get("description", "")
+                if character_data:
+                    character_description = character_data.get("description", "")
+
+            scenario_info = ScenarioInfo(
+                id=session_info.get("scenario_id", ""),
+                name=session_info.get("scenario_name", ""),
+                description=scenario_description,
+                compatible_character_count=-1 # don't care for evaluation
+            )
+            goal = session_info.get("goal", "")
+            char_info = CharacterInfo(
+                id=session_info.get("character_id", ""),
+                name=session_info.get("character_name", ""),
+                description=character_description
+            )
+
+            # Map language codes to full names TODO make this available everywhere for consistency
+            language_names = {
+                "en": "English",
+                "zh-TW": "Traditional Chinese",
+                "ja": "Japanese"
+            }
+            session_language = session_info.get("session_language", "en")
+            chat_language = language_names.get(session_language, "English")
+
+            chat_info = ChatInfo(
+                chat_session_id=session_info.get("app_session_id", ""),
+                chat_language=chat_language,
+                scenario_info=scenario_info,
+                char_info=char_info,
+                goal=goal,
+                participant_name=session_info.get("participant_name", "Participant"),
+                transcript_text="\n".join(transcript_lines)
+            )
+
+            return json.dumps(chat_info.model_dump(), sort_keys=True)
+
+        # elif format != "text":
+        #     return f"Error invalid format {format}"
 
         # Format the transcript
         lines.append("=" * 70)

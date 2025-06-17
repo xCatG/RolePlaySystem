@@ -1,5 +1,5 @@
 """Data models for the chat module."""
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import List, Dict, Any, Optional
 from ..common.models import BaseResponse
 
@@ -36,6 +36,7 @@ class SessionInfo(BaseModel):
     message_count: int
     jsonl_filename: str
     is_active: bool = True  # Whether session exists in InMemorySessionService
+    goal: Optional[str] = Field(default=None, description="Goal of this session, could be written in local language.")
     ended_at: Optional[str] = None
     ended_reason: Optional[str] = None
 
@@ -57,8 +58,8 @@ class ScenarioListResponse(BaseResponse):
 class CharacterInfo(BaseModel):
     """Information about a character."""
     id: str
-    name: str
-    description: str
+    name: str = Field(description="The name of the character.")
+    description: str = Field(description="The description of the character. Could contain age, gender, character traits or brief bio")
 
 class CharacterListResponse(BaseResponse):
     """Response containing list of characters."""
@@ -81,3 +82,13 @@ class MessagesListResponse(BaseResponse):
     """Response containing list of messages for a session."""
     messages: List[Message]
     session_id: str
+
+
+class ChatInfo(BaseModel):
+    chat_language: str = Field(description="The language of the chat. Use full language name such as 'English' or 'Traditional Chinese'.")
+    chat_session_id: str
+    scenario_info: ScenarioInfo
+    goal: Optional[str] = Field(default=None, description="To goal or situation of this session. Could be in local language.")
+    char_info: CharacterInfo
+    transcript_text: str = Field(description="The text of the session transcript.")
+    participant_name: str = Field(description="The name of the participant")
