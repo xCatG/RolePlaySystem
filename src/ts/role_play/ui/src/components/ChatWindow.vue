@@ -70,13 +70,13 @@
       </form>
     </div>
     
-    <!-- Coming Soon Modal -->
-    <ConfirmModal
-      v-model="showEvaluationModal"
-      :message="$t('evaluation.comingSoonMessage')"
-      :title="$t('evaluation.comingSoonTitle')"
-      :confirm-text="$t('evaluation.ok')"
-      @confirm="showEvaluationModal = false"
+    <!-- Evaluation Report -->
+    <EvaluationReport
+      v-if="showEvaluationReport"
+      :report="evaluationReport"
+      :loading="evaluationLoading"
+      :error="evaluationError"
+      @close="showEvaluationReport = false"
     />
     
     <!-- End Session Confirmation Modal -->
@@ -104,13 +104,17 @@
 <script lang="ts">
 import { defineComponent, ref, nextTick, PropType, onMounted } from 'vue';
 import { chatApi } from '../services/chatApi';
+import { evaluationApi } from '../services/evaluationApi';
 import type { SessionInfo, Message } from '../types/chat';
+import type { FinalReviewReport } from '../types/evaluation';
 import ConfirmModal from './ConfirmModal.vue';
+import EvaluationReport from './EvaluationReport.vue';
 
 export default defineComponent({
   name: 'ChatWindow',
   components: {
-    ConfirmModal
+    ConfirmModal,
+    EvaluationReport
   },
   props: {
     session: {
@@ -124,9 +128,12 @@ export default defineComponent({
     const newMessage = ref('');
     const loading = ref(false);
     const messagesContainer = ref<HTMLElement>();
-    const showEvaluationModal = ref(false);
     const showDeleteModal = ref(false);
     const showEndModal = ref(false);
+    const showEvaluationReport = ref(false);
+    const evaluationReport = ref<FinalReviewReport | null>(null);
+    const evaluationLoading = ref(false);
+    const evaluationError = ref<string | null>(null);
 
     const scrollToBottom = () => {
       nextTick(() => {
@@ -192,8 +199,25 @@ export default defineComponent({
       return new Date(timestamp).toLocaleTimeString();
     };
 
-    const sendToEvaluation = () => {
-      showEvaluationModal.value = true;
+    const sendToEvaluation = async () => {
+      evaluationError.value = null;
+      evaluationReport.value = null;
+      showEvaluationReport.value = true;
+      evaluationLoading.value = true;
+      
+      try {
+        const response = await evaluationApi.evaluateSession(props.session.session_id);
+        if (response.success && (response.report || response.final_review_report)) {
+          evaluationReport.value = response.report || response.final_review_report!;
+        } else {
+          evaluationError.value = response.error || response.message || 'Failed to generate evaluation report';
+        }
+      } catch (error: any) {
+        console.error('Failed to evaluate session:', error);
+        evaluationError.value = error.message || 'Failed to generate evaluation report. Please try again.';
+      } finally {
+        evaluationLoading.value = false;
+      }
     };
 
     const formatDate = (dateString: string) => {
@@ -260,9 +284,12 @@ export default defineComponent({
       newMessage,
       loading,
       messagesContainer,
-      showEvaluationModal,
       showDeleteModal,
       showEndModal,
+      showEvaluationReport,
+      evaluationReport,
+      evaluationLoading,
+      evaluationError,
       sendMessage,
       exportChat,
       sendToEvaluation,

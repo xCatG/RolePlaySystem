@@ -53,7 +53,23 @@
   "evaluation": {
     "comingSoonTitle": "即將推出",
     "comingSoonMessage": "評估功能目前正在開發中，將很快推出。",
-    "ok": "確定"
+    "ok": "確定",
+    "title": "評估報告",
+    "close": "關閉",
+    "loading": "正在生成評估報告...",
+    "overallScore": "總體評分",
+    "humanReviewRecommended": "建議人工審核",
+    "overallAssessment": "總體評估",
+    "keyStrengths": "展現的主要優勢",
+    "areasForDevelopment": "需要改進的關鍵領域",
+    "actionableNextSteps": "可執行的下一步",
+    "progressNotes": "基於過往反饋的進度記錄",
+    "generateReport": "生成報告",
+    "regenerateReport": "重新生成報告",
+    "downloadPDF": "下載 PDF",
+    "share": "分享",
+    "yes": "是",
+    "no": "否"
   },
   "sessionActions": {
     "endSessionTitle": "結束對話",
