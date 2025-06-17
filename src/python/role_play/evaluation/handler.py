@@ -1,5 +1,7 @@
 """Evaluation handler for session analysis and export."""
 import logging
+import uuid
+import json
 from typing import List, Annotated, Optional
 
 from fastapi import HTTPException, Depends, APIRouter
@@ -12,6 +14,7 @@ from pydantic import BaseModel
 from ..chat.chat_logger import ChatLogger
 from ..common.models import BaseResponse, User
 from ..dev_agents.evaluator_agent.agent import evaluator_agent
+from ..dev_agents.evaluator_agent.model import FinalReviewReport
 from ..server.base_handler import BaseHandler
 from ..server.dependencies import require_user_or_higher, get_chat_logger, get_adk_session_service
 
@@ -38,6 +41,12 @@ class EvaluationRequest(BaseModel):
     custom_criteria: Optional[List[str]] = None
 
 
+class EvaluateTranscriptRequest(BaseModel):
+    chat_transcript: str
+    evaluation_type: str = "comprehensive"  # comprehensive, quick, custom
+    custom_criteria: Optional[List[str]] = None
+
+
 class EvaluationResponse(BaseResponse):
     """Response containing evaluation results."""
     session_id: str
@@ -56,6 +65,7 @@ class EvaluationHandler(BaseHandler):
         self._router.get("/sessions", response_model=SessionListResponse)(self.get_evaluation_sessions)
         self._router.get("/session/{session_id}/download")(self.download_session)
         self._router.post("/session/evaluate", response_model=EvaluationResponse)(self.evaluate_session)
+        self._router.post("/transcript", response_model=FinalReviewReport)(self.evaluate_transcript_endpoint)
 
         return self._router
 
@@ -272,3 +282,118 @@ Provide:
         except Exception as e:
             logger.error(f"Failed to evaluate session {request.session_id}: {e}", exc_info=True)
             raise HTTPException(status_code=500, detail="Failed to evaluate session")
+
+    async def evaluate_transcript_endpoint(
+        self,
+        request: EvaluateTranscriptRequest,
+        current_user: Annotated[User, Depends(require_user_or_higher)],
+        adk_session_service: Annotated[InMemorySessionService, Depends(get_adk_session_service)]
+    ) -> FinalReviewReport:
+        """Evaluates a raw transcript using the AI evaluator agent."""
+        try:
+            eval_session_id = f"eval_transcript_{uuid.uuid4()}"
+
+            # Initialize ADK session for evaluation
+            await adk_session_service.create_session(
+                app_name="roleplay_evaluator_transcript",
+                user_id=current_user.id,
+                session_id=eval_session_id,
+                state={"transcript": request.chat_transcript, "evaluation_type": request.evaluation_type}
+            )
+
+            # Create runner with evaluator agent
+            runner = Runner(
+                app_name="roleplay_evaluator_transcript",
+                agent=evaluator_agent,
+                session_service=adk_session_service
+            )
+
+            # Prepare evaluation prompt based on type
+            prompt = ""
+            if request.evaluation_type == "quick":
+                prompt = f"""Please provide a quick evaluation of this roleplay session transcript:
+
+{request.chat_transcript}
+
+Focus on the key strengths and areas for improvement. Provide numerical scores for:
+- Character Consistency (0-10)
+- Engagement Quality (0-10)
+- Scenario Adherence (0-10)
+- Overall Quality (0-10)"""
+            elif request.evaluation_type == "custom" and request.custom_criteria:
+                criteria_list = "\n".join(f"- {criterion}" for criterion in request.custom_criteria)
+                prompt = f"""Please evaluate this roleplay session transcript based on these specific criteria:
+
+{criteria_list}
+
+Transcript:
+{request.chat_transcript}
+
+Also provide standard numerical scores for character consistency, engagement quality, scenario adherence, and overall quality (0-10 scale)."""
+            else:  # comprehensive
+                prompt = f"""Please provide a comprehensive evaluation of this roleplay session transcript:
+
+{request.chat_transcript}
+
+Analyze:
+1. Character consistency and authenticity
+2. Quality of engagement and responses
+3. Adherence to the scenario
+4. Language appropriateness
+5. Immersion maintenance
+6. Conversation flow and pacing
+7. Meeting participant needs
+
+Provide:
+- Detailed feedback
+- Specific examples from the transcript
+- Numerical scores (0-10) for character consistency, engagement quality, scenario adherence, and overall quality
+- List of strengths
+- List of areas for improvement"""
+
+            # Execute evaluation
+            content = Content(role="user", parts=[Part(text=prompt)])
+            response_text = ""
+            try:
+                async for event in runner.run_async(
+                    new_message=content,
+                    session_id=eval_session_id,
+                    user_id=current_user.id
+                ):
+                    if event.content and event.content.parts:
+                        for part in event.content.parts:
+                            if part.text:
+                                response_text += part.text
+            finally:
+                # Clean up ADK session
+                await adk_session_service.delete_session(
+                    app_name="roleplay_evaluator_transcript",
+                    user_id=current_user.id,
+                    session_id=eval_session_id
+                )
+                if hasattr(runner, 'close') and callable(runner.close):
+                    try:
+                        await runner.close()
+                    except Exception as close_err:
+                        logger.error(f"Error closing evaluator runner: {close_err}")
+
+            if not response_text:
+                raise HTTPException(status_code=500, detail="Evaluation agent returned an empty response.")
+
+            try:
+                # Assuming response_text is a JSON string that can be parsed into FinalReviewReport
+                report_data = json.loads(response_text)
+                final_report = FinalReviewReport(**report_data)
+                return final_report
+            except json.JSONDecodeError:
+                logger.error(f"Failed to decode JSON response from evaluator: {response_text}")
+                raise HTTPException(status_code=500, detail="Failed to parse evaluation report from agent.")
+            except Exception as e: # Catch Pydantic validation errors too
+                logger.error(f"Failed to validate FinalReviewReport data: {e}, response: {response_text}")
+                raise HTTPException(status_code=500, detail=f"Invalid report structure from agent: {e}")
+
+        except HTTPException:
+            raise # Re-raise HTTPException directly
+        except Exception as e:
+            logger.error(f"Failed to evaluate transcript: {e}", exc_info=True)
+            raise HTTPException(status_code=500, detail=f"Failed to evaluate transcript: {e}")
