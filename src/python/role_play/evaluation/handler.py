@@ -12,6 +12,7 @@ from pydantic import BaseModel
 
 from ..chat.chat_logger import ChatLogger
 from ..common.models import BaseResponse, User
+from ..common.time_utils import utc_now_isoformat
 from ..dev_agents.evaluator_agent.agent import create_evaluator_agent
 from ..dev_agents.evaluator_agent.model import ChatInfo, FinalReviewReport
 from ..server.base_handler import BaseHandler
@@ -48,6 +49,8 @@ class EvaluationResponse(BaseResponse):
 
 class EvaluationHandler(BaseHandler):
     """Handler for evaluation-related endpoints."""
+
+    ADK_APP_NAME="roleplay_evaluator"
 
     @property
     def router(self) -> APIRouter:
@@ -203,8 +206,11 @@ class EvaluationHandler(BaseHandler):
         Returns:
             Evaluation results with scores and feedback
         """
+        eval_session_id = None
+        runner = None
+        
         try:
-            # Get the session data in ChatInfo format for the evaluator agent
+            # Validate session ownership and load session data
             chat_info_json = await chat_logger.export_session_text(
                 user_id=current_user.id,
                 session_id=request.session_id,
@@ -212,69 +218,61 @@ class EvaluationHandler(BaseHandler):
             )
             
             if chat_info_json == "Session log file not found.":
-                raise HTTPException(status_code=404, detail="Session not found")
+                raise HTTPException(status_code=404, detail="Session not found or access denied")
             
-            # Create a unique evaluation session ID
-            eval_session_id = f"eval_{request.session_id}"
+            # Parse and validate ChatInfo data
+            try:
+                chat_info_data = json.loads(chat_info_json)
+                chat_info = ChatInfo(**chat_info_data)
+            except (json.JSONDecodeError, ValueError) as parse_err:
+                logger.error(f"Failed to parse session data for {request.session_id}: {parse_err}")
+                raise HTTPException(status_code=500, detail="Invalid session data format")
             
-            # Parse the ChatInfo JSON for use with evaluator agent
-            chat_info_data = json.loads(chat_info_json)
-            chat_info = ChatInfo(**chat_info_data)
+            # Create unique evaluation session for ADK
+            eval_session_id = f"eval_{request.session_id}_{utc_now_isoformat()}"
             
-            # Initialize ADK session for evaluation
             current_session = await adk_session_service.create_session(
-                app_name="roleplay_evaluator",
+                app_name=EvaluationHandler.ADK_APP_NAME,
                 user_id=current_user.id,
                 session_id=eval_session_id,
                 state={"chat_info": chat_info_json, "evaluation_type": request.evaluation_type}
             )
 
+            # Create evaluator agent and runner
             evaluator_agent = create_evaluator_agent(chat_info.chat_language, chat_info)
-            # Create runner with evaluator agent
             runner = Runner(
-                app_name="roleplay_evaluator",
+                app_name=EvaluationHandler.ADK_APP_NAME,
                 agent=evaluator_agent,
                 session_service=adk_session_service
             )
-            # Execute evaluation
+            
+            # Execute evaluation with evaluator agent
             prompt = "Please evaluate this roleplay session and provide review."
             content = Content(role="user", parts=[Part(text=prompt)])
 
-            report_response = None
-            response_text = ""
+            async for event in runner.run_async(
+                new_message=content,
+                session_id=eval_session_id,
+                user_id=current_user.id
+            ):
+                # Process evaluation events (response text accumulated in agent state)
+                pass
+
+            # Retrieve final evaluation report from session state
+            completed_session = await adk_session_service.get_session(
+                app_name=EvaluationHandler.ADK_APP_NAME,
+                user_id=current_user.id,
+                session_id=eval_session_id
+            )
+            
+            if "final_report" not in completed_session.state:
+                raise HTTPException(status_code=500, detail="Evaluation agent failed to generate report")
+            
             try:
-                async for event in runner.run_async(
-                    new_message=content,
-                    session_id=eval_session_id,
-                    user_id=current_user.id
-                ):
-                    if event.content and event.content.parts:
-                        for part in event.content.parts:
-                            if part.text:
-                                response_text += part.text
-
-                completed_session = await adk_session_service.get_session(
-                    app_name="roleplay_evaluator",
-                    user_id=current_user.id,
-                    session_id=eval_session_id
-                )
-                # pull final report from session.state
                 report_response = FinalReviewReport(**completed_session.state["final_report"])
-            finally:
-                # Clean up
-                await adk_session_service.delete_session(
-                    app_name="roleplay_evaluator",
-                    user_id=current_user.id,
-                    session_id=eval_session_id
-                )
-                if hasattr(runner, 'close') and callable(runner.close):
-                    try:
-                        await runner.close()
-                    except Exception as close_err:
-                        logger.error(f"Error closing evaluator runner: {close_err}")
-
-            if report_response is None:
-                raise HTTPException(status_code=500, detail="Failed to get session data")
+            except ValueError as report_err:
+                logger.error(f"Invalid evaluation report format: {report_err}")
+                raise HTTPException(status_code=500, detail="Failed to parse evaluation report")
 
             return EvaluationResponse(
                 success=True,
@@ -288,3 +286,20 @@ class EvaluationHandler(BaseHandler):
         except Exception as e:
             logger.error(f"Failed to evaluate session {request.session_id}: {e}", exc_info=True)
             raise HTTPException(status_code=500, detail="Failed to evaluate session")
+        finally:
+            # Cleanup evaluation resources
+            if eval_session_id:
+                try:
+                    await adk_session_service.delete_session(
+                        app_name=EvaluationHandler.ADK_APP_NAME,
+                        user_id=current_user.id,
+                        session_id=eval_session_id
+                    )
+                except Exception as cleanup_err:
+                    logger.error(f"Failed to cleanup evaluation session {eval_session_id}: {cleanup_err}")
+            
+            if runner and hasattr(runner, 'close') and callable(runner.close):
+                try:
+                    await runner.close()
+                except Exception as close_err:
+                    logger.error(f"Error closing evaluator runner: {close_err}")
