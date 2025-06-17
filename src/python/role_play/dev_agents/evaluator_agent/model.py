@@ -7,7 +7,7 @@ the evaluation agents and for storing the final results.
 
 import sys
 from pathlib import Path
-from enum import IntEnum, Enum
+from enum import Enum
 from typing import List, Optional
 
 from pydantic import BaseModel, Field
@@ -16,24 +16,12 @@ from pydantic import BaseModel, Field
 PROJECT_ROOT = Path(__file__).parent.parent.parent.parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "src" / "python"))
 
-from role_play.chat.models import ScenarioInfo, CharacterInfo
-
-
 class Score(Enum):
     """Enumeration for skill assessment scoring."""
     low = "low"
     med = "med"
     high = "high"
 
-
-class ChatInfo(BaseModel):
-    chat_language: str = Field(description="The language of the chat. Use full language name such as 'English' or 'Traditional Chinese'.")
-    chat_session_id: str
-    scenario_info: ScenarioInfo
-    goal: Optional[str] = Field(default=None, description="To goal or situation of this session. Could be in local language.")
-    char_info: CharacterInfo
-    transcript_text: str = Field(description="The text of the session transcript.")
-    participant_name: str = Field(description="The name of the participant")
 
 class SpecializedAssessment(BaseModel):
     """

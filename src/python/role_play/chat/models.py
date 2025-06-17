@@ -82,3 +82,13 @@ class MessagesListResponse(BaseResponse):
     """Response containing list of messages for a session."""
     messages: List[Message]
     session_id: str
+
+
+class ChatInfo(BaseModel):
+    chat_language: str = Field(description="The language of the chat. Use full language name such as 'English' or 'Traditional Chinese'.")
+    chat_session_id: str
+    scenario_info: ScenarioInfo
+    goal: Optional[str] = Field(default=None, description="To goal or situation of this session. Could be in local language.")
+    char_info: CharacterInfo
+    transcript_text: str = Field(description="The text of the session transcript.")
+    participant_name: str = Field(description="The name of the participant")

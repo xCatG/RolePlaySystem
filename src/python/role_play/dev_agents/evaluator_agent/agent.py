@@ -9,9 +9,14 @@ from google.adk.agents import Agent, ParallelAgent, SequentialAgent
 from google.adk.tools import FunctionTool
 
 from . import MODEL
-from .model import ChatInfo
 from .sub_agents.analysis_agent import create_analysis_agent
 from .sub_agents.summarize_agent import create_summary_report_agent
+
+# Add project root to path; this will break if you run adk web from places OTHER than dev_agents dir
+PROJECT_ROOT = Path(__file__).parent.parent.parent.parent.parent.parent
+sys.path.insert(0, str(PROJECT_ROOT / "src" / "python"))
+
+from role_play.chat.models import ChatInfo
 
 evaluator_tools = []
 

@@ -8,7 +8,7 @@ from . import ScenarioInfo, CharacterInfo
 from ..common.storage import StorageBackend, StorageError
 from ..common.time_utils import utc_now_isoformat
 # need to make sure we don't cause circular dependency
-from ..dev_agents.evaluator_agent.model import ChatInfo
+from .models import ChatInfo
 
 logger = logging.getLogger(__name__)
 

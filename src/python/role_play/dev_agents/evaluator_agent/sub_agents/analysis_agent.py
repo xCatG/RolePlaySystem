@@ -1,9 +1,17 @@
-
+import sys
 from google.adk.agents import Agent, LlmAgent
+from pathlib import Path
 
 from .. import MODEL
 from ..library.callback import rate_limit_callback
-from ..model import SpecializedAssessment, ChatInfo
+from ..model import SpecializedAssessment
+
+# Add project root to path; this will break if you run adk web from places OTHER than dev_agents dir
+PROJECT_ROOT = Path(__file__).parent.parent.parent.parent.parent.parent.parent
+sys.path.insert(0, str(PROJECT_ROOT / "src" / "python"))
+
+from role_play.chat.models import ChatInfo
+
 
 def create_analysis_agent(analysis_area:str, chat_info=ChatInfo) -> Agent:
     instruction = f"""

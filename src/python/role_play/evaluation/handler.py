@@ -14,7 +14,8 @@ from ..chat.chat_logger import ChatLogger
 from ..common.models import BaseResponse, User
 from ..common.time_utils import utc_now_isoformat
 from ..dev_agents.evaluator_agent.agent import create_evaluator_agent
-from ..dev_agents.evaluator_agent.model import ChatInfo, FinalReviewReport
+from ..dev_agents.evaluator_agent.model import FinalReviewReport
+from ..chat.models import ChatInfo
 from ..server.base_handler import BaseHandler
 from ..server.dependencies import require_user_or_higher, get_chat_logger, get_adk_session_service
 
