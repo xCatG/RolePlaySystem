@@ -3,7 +3,6 @@ import json
 import uuid
 from typing import Dict, List, Tuple, Any, Optional
 import logging
-from pathlib import Path
 
 from . import ScenarioInfo, CharacterInfo
 from ..common.storage import StorageBackend, StorageError
@@ -399,7 +398,7 @@ class ChatLogger:
                 description=character_description
             )
 
-            # Map language codes to full names
+            # Map language codes to full names TODO make this available everywhere for consistency
             language_names = {
                 "en": "English",
                 "zh-TW": "Traditional Chinese",

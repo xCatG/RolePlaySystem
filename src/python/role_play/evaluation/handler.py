@@ -13,6 +13,7 @@ from pydantic import BaseModel
 from ..chat.chat_logger import ChatLogger
 from ..common.models import BaseResponse, User
 from ..dev_agents.evaluator_agent.agent import create_evaluator_agent
+from ..dev_agents.evaluator_agent.model import ChatInfo, FinalReviewReport
 from ..server.base_handler import BaseHandler
 from ..server.dependencies import require_user_or_higher, get_chat_logger, get_adk_session_service
 
@@ -35,7 +36,7 @@ class SessionListResponse(BaseResponse):
 class EvaluationRequest(BaseModel):
     """Request to evaluate a session."""
     session_id: str
-    evaluation_type: str = "comprehensive"  # comprehensive, quick, custom
+    evaluation_type: str = "comprehensive"  # comprehensive, quick, custom, currently ignored
     custom_criteria: Optional[List[str]] = None
 
 
@@ -43,8 +44,7 @@ class EvaluationResponse(BaseResponse):
     """Response containing evaluation results."""
     session_id: str
     evaluation_type: str
-    feedback: str
-    strengths: List[str]
+    report: FinalReviewReport
 
 class EvaluationHandler(BaseHandler):
     """Handler for evaluation-related endpoints."""
@@ -218,8 +218,6 @@ class EvaluationHandler(BaseHandler):
             eval_session_id = f"eval_{request.session_id}"
             
             # Parse the ChatInfo JSON for use with evaluator agent
-            import json
-            from ..dev_agents.evaluator_agent.model import ChatInfo
             chat_info_data = json.loads(chat_info_json)
             chat_info = ChatInfo(**chat_info_data)
             
