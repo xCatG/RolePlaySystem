@@ -13,7 +13,7 @@
 
       <div v-if="loading" class="loading-container">
         <div class="spinner"></div>
-        <p>{{ $t('evaluation.loading') }}</p>
+        <p>{{ isRetrying ? $t('evaluation.retrying') : $t('evaluation.loading') }}</p>
       </div>
 
       <div v-else-if="report" class="report-content">
@@ -80,7 +80,11 @@
       </div>
 
       <div v-else class="error-container">
-        <p>{{ error || 'Failed to load evaluation report' }}</p>
+        <div class="error-icon">⚠️</div>
+        <p class="error-message">{{ error || $t('evaluation.failed') }}</p>
+        <button @click="$emit('retry')" class="retry-button" :disabled="loading">
+          {{ $t('evaluation.retryButton') }}
+        </button>
       </div>
     </div>
   </div>
@@ -93,10 +97,12 @@ defineProps<{
   report: FinalReviewReport | null;
   loading: boolean;
   error: string | null;
+  isRetrying?: boolean;
 }>();
 
 defineEmits<{
   close: [];
+  retry: [];
 }>();
 </script>
 
@@ -377,8 +383,46 @@ defineEmits<{
   background: var(--color-background, #ffffff);
   min-height: 300px;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 20px;
+}
+
+.error-icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+}
+
+.error-message {
+  margin: 0;
+  font-size: 16px;
+  line-height: 1.5;
+  max-width: 400px;
+}
+
+.retry-button {
+  background: var(--color-primary, #007bff);
+  color: white;
+  border: none;
+  padding: 12px 24px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.2s;
+  margin-top: 8px;
+}
+
+.retry-button:hover:not(:disabled) {
+  background: var(--color-primary-dark, #0056b3);
+  transform: translateY(-1px);
+}
+
+.retry-button:disabled {
+  background: #ccc;
+  cursor: not-allowed;
+  transform: none;
 }
 
 @media (max-width: 640px) {

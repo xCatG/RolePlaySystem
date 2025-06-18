@@ -69,7 +69,12 @@
     "downloadPDF": "Download PDF",
     "share": "Share",
     "yes": "Yes",
-    "no": "No"
+    "no": "No",
+    "failed": "Failed to generate evaluation report",
+    "networkError": "Network error occurred. Please check your connection and try again.",
+    "serverError": "Server error occurred. Please try again later.",
+    "retryButton": "Retry",
+    "retrying": "Retrying..."
   },
   "sessionActions": {
     "endSessionTitle": "End Session",

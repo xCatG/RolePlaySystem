@@ -76,7 +76,9 @@
       :report="evaluationReport"
       :loading="evaluationLoading"
       :error="evaluationError"
+      :is-retrying="isRetrying"
       @close="showEvaluationReport = false"
+      @retry="retryEvaluation"
     />
     
     <!-- End Session Confirmation Modal -->
@@ -103,6 +105,7 @@
 
 <script lang="ts">
 import { defineComponent, ref, nextTick, PropType, onMounted } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { chatApi } from '../services/chatApi';
 import { evaluationApi } from '../services/evaluationApi';
 import type { SessionInfo, Message } from '../types/chat';
@@ -124,6 +127,7 @@ export default defineComponent({
   },
   emits: ['close', 'session-ended', 'session-deleted'],
   setup(props, { emit }) {
+    const { t } = useI18n();
     const messages = ref<Message[]>([]);
     const newMessage = ref('');
     const loading = ref(false);
@@ -134,6 +138,8 @@ export default defineComponent({
     const evaluationReport = ref<FinalReviewReport | null>(null);
     const evaluationLoading = ref(false);
     const evaluationError = ref<string | null>(null);
+    const evaluationRetryCount = ref(0);
+    const isRetrying = ref(false);
 
     const scrollToBottom = () => {
       nextTick(() => {
@@ -199,24 +205,105 @@ export default defineComponent({
       return new Date(timestamp).toLocaleTimeString();
     };
 
+    const getErrorMessage = (error: any): string => {
+      // Network errors (connection issues, timeouts)
+      if (!navigator.onLine) {
+        return t('evaluation.networkError');
+      }
+      
+      // Server errors (5xx status codes)
+      if (error.response?.status >= 500) {
+        return t('evaluation.serverError');
+      }
+      
+      // Client errors (4xx status codes)
+      if (error.response?.status >= 400) {
+        return error.response.data?.error || error.response.data?.message || t('evaluation.failed');
+      }
+      
+      // Network timeout or connection refused
+      if (error.code === 'NETWORK_ERROR' || error.code === 'TIMEOUT' || !error.response) {
+        return t('evaluation.networkError');
+      }
+      
+      // API response error messages
+      if (error.response?.data?.error) {
+        return error.response.data.error;
+      }
+      
+      if (error.response?.data?.message) {
+        return error.response.data.message;
+      }
+      
+      // JavaScript error messages
+      if (error.message) {
+        // Check if it's a network-related error
+        if (error.message.toLowerCase().includes('network') || 
+            error.message.toLowerCase().includes('fetch') ||
+            error.message.toLowerCase().includes('timeout')) {
+          return t('evaluation.networkError');
+        }
+        return error.message;
+      }
+      
+      // Fallback to localized generic error
+      return t('evaluation.failed');
+    };
+
+    const performEvaluation = async (): Promise<void> => {
+      try {
+        const response = await evaluationApi.evaluateSession(props.session.session_id);
+        if (response.success && (response.report || response.final_review_report)) {
+          evaluationReport.value = response.report || response.final_review_report!;
+          evaluationError.value = null;
+          evaluationRetryCount.value = 0; // Reset retry count on success
+        } else {
+          throw new Error(response.error || response.message || t('evaluation.failed'));
+        }
+      } catch (error: any) {
+        console.error('Failed to evaluate session:', error);
+        evaluationError.value = getErrorMessage(error);
+        throw error; // Re-throw to be handled by caller
+      }
+    };
+
     const sendToEvaluation = async () => {
       evaluationError.value = null;
       evaluationReport.value = null;
       showEvaluationReport.value = true;
       evaluationLoading.value = true;
+      isRetrying.value = false;
       
       try {
-        const response = await evaluationApi.evaluateSession(props.session.session_id);
-        if (response.success && (response.report || response.final_review_report)) {
-          evaluationReport.value = response.report || response.final_review_report!;
-        } else {
-          evaluationError.value = response.error || response.message || 'Failed to generate evaluation report';
-        }
-      } catch (error: any) {
-        console.error('Failed to evaluate session:', error);
-        evaluationError.value = error.message || 'Failed to generate evaluation report. Please try again.';
+        await performEvaluation();
+      } catch (error) {
+        // Error is already handled in performEvaluation
       } finally {
         evaluationLoading.value = false;
+      }
+    };
+
+    const retryEvaluation = async () => {
+      if (evaluationRetryCount.value >= 3) {
+        evaluationError.value = t('evaluation.failed') + ' ' + t('evaluation.networkError');
+        return;
+      }
+
+      evaluationRetryCount.value++;
+      evaluationError.value = null;
+      evaluationLoading.value = true;
+      isRetrying.value = true;
+      
+      // Add a small delay before retrying for better UX
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      try {
+        await performEvaluation();
+      } catch (error) {
+        // Error is already handled in performEvaluation
+      } finally {
+        evaluationLoading.value = false;
+        isRetrying.value = false;
       }
     };
 
@@ -290,9 +377,11 @@ export default defineComponent({
       evaluationReport,
       evaluationLoading,
       evaluationError,
+      isRetrying,
       sendMessage,
       exportChat,
       sendToEvaluation,
+      retryEvaluation,
       endSession,
       confirmEndSession,
       deleteSession,
