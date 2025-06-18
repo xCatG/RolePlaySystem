@@ -125,6 +125,58 @@ async def list_users(
 ADMIN > SCRIPTER > USER > GUEST
 ```
 
+## Evaluation System Implementation
+
+### Report Storage Pattern
+```python
+# Store evaluation reports with timestamp-based unique IDs
+timestamp = utc_now_isoformat()
+# Replace colons with underscores for filesystem compatibility
+safe_timestamp = timestamp.replace(':', '_')
+unique_id = str(uuid.uuid4())[:8]
+storage_id = f"{safe_timestamp}_{unique_id}"
+report_path = f"users/{user_id}/eval_reports/{session_id}/{storage_id}"
+
+# Report includes metadata and full evaluation
+report_data = {
+    "eval_session_id": eval_session_id,
+    "chat_session_id": session_id,
+    "user_id": user_id,
+    "created_at": timestamp,
+    "evaluation_type": "comprehensive",
+    "report": final_review_report.model_dump()
+}
+```
+
+### Evaluation Handler Patterns
+```python
+# Helper methods for report management
+async def _get_latest_report(user_id, session_id, storage):
+    """Get most recent report by sorting keys"""
+    prefix = f"users/{user_id}/eval_reports/{session_id}/"
+    keys = await storage.list_keys(prefix)
+    if not keys:
+        return None
+    latest_key = sorted(keys, reverse=True)[0]
+    return json.loads(await storage.read(latest_key))
+
+# Storage injection in handler methods
+async def evaluate_session(
+    self,
+    request: EvaluationRequest,
+    current_user: User = Depends(require_user_or_higher),
+    storage: StorageBackend = Depends(get_storage_backend)
+):
+    # Store report after generation
+    await storage.write(report_path, json.dumps(report_data))
+```
+
+### API Design for Report Retrieval
+- **GET /session/{id}/report**: Returns latest or 404 (check existing first)
+- **POST /session/{id}/evaluate**: Always creates new (explicit re-evaluation)
+- **GET /session/{id}/all_reports**: Historical reports list
+- **GET /reports/{report_id}**: Specific report by ID
+
 ## Common Pitfalls
 
 1. **Global State**: Never use global variables, use dependency injection
@@ -132,6 +184,7 @@ ADMIN > SCRIPTER > USER > GUEST
 3. **File Extensions in Keys**: Storage keys should be extension-free
 4. **Persistent Runners**: ADK Runners must be created per-message
 5. **Handler State**: Handlers must remain stateless
+6. **Report Storage**: Always include timestamps in report paths for uniqueness
 
 ## Performance Considerations
 
@@ -197,4 +250,26 @@ def _validate_languages(self, data: Dict) -> None:
         scenario_lang = scenario.get("language", "en")
         if scenario_lang not in self.supported_languages:
             raise ValueError(f"Unsupported language '{scenario_lang}'")
+```
+
+## Testing Patterns
+
+### Mock Storage for Evaluation Tests
+```python
+@pytest.fixture
+def mock_storage():
+    """Create mock storage backend for evaluation tests."""
+    storage = AsyncMock()
+    storage.write = AsyncMock()
+    storage.read = AsyncMock()
+    storage.list_keys = AsyncMock()
+    return storage
+
+# Inject into test methods
+async def test_evaluate_session(mock_storage):
+    response = await handler.evaluate_session(
+        request=request,
+        current_user=user,
+        storage=mock_storage
+    )
 ```

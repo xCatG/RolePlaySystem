@@ -132,6 +132,17 @@ make test-specific TEST_PATH="test/python/unit/chat/test_chat_logger.py"
 - [x] **Code Organization**: Added region comments, improved exception handling, proper resource cleanup
 - [x] **Testing Integration**: Added `/test/python/unit/evaluation/` structure following existing patterns
 
+### Evaluation Report Storage (Completed)
+- [x] **Backend Storage**: Reports stored at `users/{user_id}/eval_reports/{chat_session_id}/{timestamp}_{unique_id}` (timestamps use underscores instead of colons for filesystem compatibility)
+- [x] **Smart Loading**: Frontend checks for existing reports before generating new ones
+- [x] **Re-evaluation**: Users can trigger new evaluations via "Re-evaluate" button
+- [x] **API Endpoints**:
+  - `GET /api/eval/session/{session_id}/report` - Get latest report or 404
+  - `POST /api/eval/session/{session_id}/evaluate` - Always create new evaluation
+  - `GET /api/eval/session/{session_id}/all_reports` - List all reports for session
+  - `GET /api/eval/reports/{report_id}` - Get specific report by ID
+- [x] **Test Coverage**: 18 comprehensive unit tests for all evaluation functionality
+
 ### Pending Development
 - [ ] **Code Quality & Testing** (Post-refactoring improvements):
   - [ ] Implement API contract testing to prevent frontend/backend data structure mismatches
@@ -206,11 +217,12 @@ make test-specific TEST_PATH="test/python/unit/chat/test_chat_logger.py"
 - [x] Base Infrastructure: All common modules, cloud storage, distributed locking
 - [x] Server Core: Base classes, dependencies, config, user accounts
 - [x] Chat Module: ADK integration, JSONL logging, POC features
-- [x] Evaluation: Simple export implementation
+- [x] Evaluation: AI agent evaluation with persistent report storage
 - [x] Config & Env: All YAML configs, env loading
 - [x] Testing: Unit tests, storage integration, test infrastructure, Makefile targets
 - [x] Core Docs: API.md, DEPLOYMENT.md, ENVIRONMENTS.md
 - [x] Traditional Chinese Localization: Complete frontend/backend language support system
+- [x] Evaluation Report Storage: Persistent storage and retrieval of evaluation reports
 
 ## Implementation Phases
 1. Core Infrastructure → 2. Authentication → 3. Handlers → 4. WebSocket/Audio → 5. Polish
@@ -236,6 +248,7 @@ make test-specific TEST_PATH="test/python/unit/chat/test_chat_logger.py"
 - **Config**: YAML + env vars, dynamic handler loading, fail-fast validation
 - **Cloud**: GCS (async atomic ops), S3/Redis (stubs), env restrictions
 - **Language Architecture**: Per-language content files, fallback filtering, UI/backend sync, caching
+- **Evaluation Storage**: Persistent JSON reports with timestamps, re-evaluation support, efficient retrieval
 
 ## i18n/l10n Design Notes & Principles
 

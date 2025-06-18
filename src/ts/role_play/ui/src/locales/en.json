@@ -74,7 +74,8 @@
     "networkError": "Network error occurred. Please check your connection and try again.",
     "serverError": "Server error occurred. Please try again later.",
     "retryButton": "Retry",
-    "retrying": "Retrying..."
+    "retrying": "Retrying...",
+    "reevaluate": "Re-evaluate"
   },
   "sessionActions": {
     "endSessionTitle": "End Session",

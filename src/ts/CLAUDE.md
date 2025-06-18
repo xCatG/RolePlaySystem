@@ -306,3 +306,96 @@ interface GetScenariosParams {
   language?: string;  // Filter scenarios by language
 }
 ```
+
+## Evaluation System Integration
+
+### Evaluation API Types
+```typescript
+// Core evaluation types
+interface StoredEvaluationReport {
+  success: boolean;
+  report_id: string;
+  chat_session_id: string;
+  created_at: string;
+  evaluation_type: string;
+  report: FinalReviewReport;
+}
+
+interface EvaluationReportSummary {
+  report_id: string;
+  chat_session_id: string;
+  created_at: string;
+  evaluation_type: string;
+}
+
+interface EvaluationReportListResponse {
+  success: boolean;
+  reports: EvaluationReportSummary[];
+}
+```
+
+### Evaluation Service Implementation
+```typescript
+// evaluationApi.ts
+export const evaluationApi = {
+  // Check for existing report first
+  async getLatestReport(sessionId: string): Promise<StoredEvaluationReport | null> {
+    try {
+      const response = await axios.get(`/eval/session/${sessionId}/report`);
+      return response.data;
+    } catch (error: any) {
+      if (error.response?.status === 404) {
+        return null; // No report exists
+      }
+      throw error;
+    }
+  },
+
+  // Always creates new evaluation
+  async createNewEvaluation(sessionId: string): Promise<EvaluationResponse> {
+    const response = await axios.post(`/eval/session/${sessionId}/evaluate`);
+    return response.data;
+  },
+
+  // List all historical reports
+  async listAllReports(sessionId: string): Promise<EvaluationReportListResponse> {
+    const response = await axios.get(`/eval/session/${sessionId}/all_reports`);
+    return response.data;
+  }
+};
+```
+
+### Smart Report Loading Pattern
+```typescript
+// ChatWindow.vue
+const sendToEvaluation = async () => {
+  showEvaluationReport.value = true;
+  evaluationLoading.value = true;
+  
+  try {
+    // First check for existing report
+    const existingReport = await evaluationApi.getLatestReport(session.session_id);
+    
+    if (existingReport) {
+      evaluationReport.value = existingReport.report;
+      isExistingReport.value = true;
+    } else {
+      // Generate new report only if none exists
+      await performEvaluation();
+      isExistingReport.value = false;
+    }
+  } finally {
+    evaluationLoading.value = false;
+  }
+};
+```
+
+### Re-evaluation UI Pattern
+```vue
+<!-- EvaluationReport.vue -->
+<button v-if="isExistingReport"
+        @click="$emit('reevaluate')"
+        class="primary-button">
+  {{ $t('evaluation.reevaluate') }}
+</button>
+```

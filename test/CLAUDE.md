@@ -72,13 +72,50 @@ def valid_user_data():
 - **FileStorage**: 92% coverage (production ready)
 - **Auth/Models**: 80%+ coverage
 - **Cloud Storage**: 0% (stubs only, validated via integration tests)
-- **Total**: 150+ tests, 30% overall coverage
+- **Evaluation**: 73% coverage (18 comprehensive tests)
+- **Total**: 260+ tests, 54% overall coverage
+
+## Evaluation Testing Patterns
+
+### Mock Storage for Handler Tests
+```python
+@pytest.fixture
+def mock_storage():
+    """Create mock storage backend for evaluation tests."""
+    storage = AsyncMock()
+    storage.write = AsyncMock()
+    storage.read = AsyncMock() 
+    storage.list_keys = AsyncMock()
+    return storage
+```
+
+### UUID Mocking for Predictable Tests
+```python
+# Mock UUID generation for consistent test results
+with patch('role_play.evaluation.handler.uuid.uuid4') as mock_uuid:
+    mock_uuid.return_value = Mock(__str__=lambda self: "abcd1234")
+```
+
+### Evaluation Test Coverage
+- **Handler Tests**: Session evaluation flow, error handling, cleanup
+- **Endpoint Tests**: Report retrieval, listing, creation
+- **Storage Tests**: Report persistence, retrieval by ID
+- **Error Scenarios**: Missing reports, storage failures, malformed data
 
 ## Running Tests
 ```bash
-pytest                                    # All tests
-pytest test/python/unit/                  # Unit only
-pytest -m "not slow"                      # Skip slow tests
-pytest --cov=src/python/role_play         # With coverage
-pytest --cov-report=html                  # HTML coverage report
+# All tests
+pytest
+
+# Run with make targets
+make test                                 # Full suite with coverage
+make test-no-coverage                     # Fast execution
+make test-unit                            # Unit tests only
+make test-evaluation                      # Evaluation module only
+
+# Specific test execution
+make test-specific TEST_PATH=test/python/unit/evaluation/
+
+# Generate HTML coverage report
+make test-coverage-html
 ```

@@ -47,6 +47,15 @@ class TestEvaluationHandlerEvaluateSession:
         )
 
     @pytest.fixture
+    def mock_storage(self):
+        """Create mock storage backend."""
+        storage = AsyncMock()
+        storage.write = AsyncMock()
+        storage.read = AsyncMock()
+        storage.list_keys = AsyncMock()
+        return storage
+
+    @pytest.fixture
     def mock_chat_logger(self):
         """Create mock chat logger with valid session data."""
         logger = AsyncMock()
@@ -126,22 +135,26 @@ class TestEvaluationHandlerEvaluateSession:
         mock_user,
         mock_chat_logger,
         mock_adk_session_service,
-        mock_runner
+        mock_runner,
+        mock_storage
     ):
         """Test successful session evaluation."""
         with patch('role_play.evaluation.handler.create_evaluator_agent') as mock_create_agent, \
              patch('role_play.evaluation.handler.Runner') as mock_runner_class, \
-             patch('role_play.evaluation.handler.utc_now_isoformat') as mock_time:
+             patch('role_play.evaluation.handler.utc_now_isoformat') as mock_time, \
+             patch('role_play.evaluation.handler.uuid.uuid4') as mock_uuid:
             
             mock_create_agent.return_value = Mock()
             mock_runner_class.return_value = mock_runner
             mock_time.return_value = "2024-01-01T12:00:00Z"
+            mock_uuid.return_value = Mock(__str__=lambda self: "abcd1234-5678-90ef-ghij-klmnopqrstuv")
             
             response = await evaluation_handler.evaluate_session(
                 request=evaluation_request,
                 current_user=mock_user,
                 chat_logger=mock_chat_logger,
-                adk_session_service=mock_adk_session_service
+                adk_session_service=mock_adk_session_service,
+                storage=mock_storage
             )
         
         # Verify response structure
@@ -163,7 +176,7 @@ class TestEvaluationHandlerEvaluateSession:
         mock_adk_session_service.create_session.assert_called_once_with(
             app_name=EvaluationHandler.ADK_APP_NAME,
             user_id="test-user-123",
-            session_id="eval_test-session-123_2024-01-01T12:00:00Z",
+            session_id="eval_test-session-123_2024-01-01T12_00_00Z_abcd1234",
             state={"chat_info": mock_chat_logger.export_session_text.return_value, "evaluation_type": "comprehensive"}
         )
         
@@ -176,7 +189,8 @@ class TestEvaluationHandlerEvaluateSession:
         evaluation_handler,
         evaluation_request,
         mock_user,
-        mock_adk_session_service
+        mock_adk_session_service,
+        mock_storage
     ):
         """Test evaluation when session is not found."""
         mock_chat_logger = AsyncMock()
@@ -187,7 +201,8 @@ class TestEvaluationHandlerEvaluateSession:
                 request=evaluation_request,
                 current_user=mock_user,
                 chat_logger=mock_chat_logger,
-                adk_session_service=mock_adk_session_service
+                adk_session_service=mock_adk_session_service,
+                storage=mock_storage
             )
         
         assert exc_info.value.status_code == 404
@@ -199,7 +214,8 @@ class TestEvaluationHandlerEvaluateSession:
         evaluation_handler,
         evaluation_request,
         mock_user,
-        mock_adk_session_service
+        mock_adk_session_service,
+        mock_storage
     ):
         """Test evaluation when session data is invalid JSON."""
         mock_chat_logger = AsyncMock()
@@ -210,7 +226,8 @@ class TestEvaluationHandlerEvaluateSession:
                 request=evaluation_request,
                 current_user=mock_user,
                 chat_logger=mock_chat_logger,
-                adk_session_service=mock_adk_session_service
+                adk_session_service=mock_adk_session_service,
+                storage=mock_storage
             )
         
         assert exc_info.value.status_code == 500
@@ -222,7 +239,8 @@ class TestEvaluationHandlerEvaluateSession:
         evaluation_handler,
         evaluation_request,
         mock_user,
-        mock_adk_session_service
+        mock_adk_session_service,
+        mock_storage
     ):
         """Test evaluation when ChatInfo validation fails."""
         mock_chat_logger = AsyncMock()
@@ -235,7 +253,8 @@ class TestEvaluationHandlerEvaluateSession:
                 request=evaluation_request,
                 current_user=mock_user,
                 chat_logger=mock_chat_logger,
-                adk_session_service=mock_adk_session_service
+                adk_session_service=mock_adk_session_service,
+                storage=mock_storage
             )
         
         assert exc_info.value.status_code == 500
@@ -248,7 +267,8 @@ class TestEvaluationHandlerEvaluateSession:
         evaluation_request,
         mock_user,
         mock_chat_logger,
-        mock_runner
+        mock_runner,
+        mock_storage
     ):
         """Test evaluation when final report is missing from session state."""
         # Mock session service that returns session without final_report
@@ -261,17 +281,20 @@ class TestEvaluationHandlerEvaluateSession:
         mock_adk_session_service.delete_session.return_value = None
         
         with patch('role_play.evaluation.handler.create_evaluator_agent') as mock_create_agent, \
-             patch('role_play.evaluation.handler.Runner') as mock_runner_class:
+             patch('role_play.evaluation.handler.Runner') as mock_runner_class, \
+             patch('role_play.evaluation.handler.uuid.uuid4') as mock_uuid:
             
             mock_create_agent.return_value = Mock()
             mock_runner_class.return_value = mock_runner
+            mock_uuid.return_value = Mock(__str__=lambda self: "abcd1234")
             
             with pytest.raises(HTTPException) as exc_info:
                 await evaluation_handler.evaluate_session(
                     request=evaluation_request,
                     current_user=mock_user,
                     chat_logger=mock_chat_logger,
-                    adk_session_service=mock_adk_session_service
+                    adk_session_service=mock_adk_session_service,
+                    storage=mock_storage
                 )
         
         assert exc_info.value.status_code == 500
@@ -288,7 +311,8 @@ class TestEvaluationHandlerEvaluateSession:
         evaluation_request,
         mock_user,
         mock_chat_logger,
-        mock_runner
+        mock_runner,
+        mock_storage
     ):
         """Test evaluation when final report format is invalid."""
         # Mock session service with invalid report format
@@ -303,17 +327,20 @@ class TestEvaluationHandlerEvaluateSession:
         mock_adk_session_service.delete_session.return_value = None
         
         with patch('role_play.evaluation.handler.create_evaluator_agent') as mock_create_agent, \
-             patch('role_play.evaluation.handler.Runner') as mock_runner_class:
+             patch('role_play.evaluation.handler.Runner') as mock_runner_class, \
+             patch('role_play.evaluation.handler.uuid.uuid4') as mock_uuid:
             
             mock_create_agent.return_value = Mock()
             mock_runner_class.return_value = mock_runner
+            mock_uuid.return_value = Mock(__str__=lambda self: "abcd1234")
             
             with pytest.raises(HTTPException) as exc_info:
                 await evaluation_handler.evaluate_session(
                     request=evaluation_request,
                     current_user=mock_user,
                     chat_logger=mock_chat_logger,
-                    adk_session_service=mock_adk_session_service
+                    adk_session_service=mock_adk_session_service,
+                    storage=mock_storage
                 )
         
         assert exc_info.value.status_code == 500
@@ -330,7 +357,8 @@ class TestEvaluationHandlerEvaluateSession:
         evaluation_request,
         mock_user,
         mock_chat_logger,
-        mock_runner
+        mock_runner,
+        mock_storage
     ):
         """Test that cleanup happens even when exceptions occur."""
         # Mock session service that throws exception during evaluation
@@ -340,18 +368,21 @@ class TestEvaluationHandlerEvaluateSession:
         
         with patch('role_play.evaluation.handler.create_evaluator_agent') as mock_create_agent, \
              patch('role_play.evaluation.handler.Runner') as mock_runner_class, \
-             patch('role_play.evaluation.handler.utc_now_isoformat') as mock_time:
+             patch('role_play.evaluation.handler.utc_now_isoformat') as mock_time, \
+             patch('role_play.evaluation.handler.uuid.uuid4') as mock_uuid:
             
             mock_create_agent.return_value = Mock()
             mock_runner_class.return_value = mock_runner
             mock_time.return_value = "2024-01-01T12:00:00Z"
+            mock_uuid.return_value = Mock(__str__=lambda self: "abcd1234")
             
             with pytest.raises(HTTPException) as exc_info:
                 await evaluation_handler.evaluate_session(
                     request=evaluation_request,
                     current_user=mock_user,
                     chat_logger=mock_chat_logger,
-                    adk_session_service=mock_adk_session_service
+                    adk_session_service=mock_adk_session_service,
+                    storage=mock_storage
                 )
         
         assert exc_info.value.status_code == 500
@@ -368,7 +399,8 @@ class TestEvaluationHandlerEvaluateSession:
         evaluation_request,
         mock_user,
         mock_chat_logger,
-        mock_runner
+        mock_runner,
+        mock_storage
     ):
         """Test that cleanup errors are properly logged."""
         # Mock session service where cleanup operations fail
@@ -395,17 +427,20 @@ class TestEvaluationHandlerEvaluateSession:
         
         with patch('role_play.evaluation.handler.create_evaluator_agent') as mock_create_agent, \
              patch('role_play.evaluation.handler.Runner') as mock_runner_class, \
-             patch('role_play.evaluation.handler.logger') as mock_logger:
+             patch('role_play.evaluation.handler.logger') as mock_logger, \
+             patch('role_play.evaluation.handler.uuid.uuid4') as mock_uuid:
             
             mock_create_agent.return_value = Mock()
             mock_runner_class.return_value = mock_runner
+            mock_uuid.return_value = Mock(__str__=lambda self: "abcd1234")
             
             # Should still succeed despite cleanup errors
             response = await evaluation_handler.evaluate_session(
                 request=evaluation_request,
                 current_user=mock_user,
                 chat_logger=mock_chat_logger,
-                adk_session_service=mock_adk_session_service
+                adk_session_service=mock_adk_session_service,
+                storage=mock_storage
             )
         
         assert response.success is True
@@ -422,7 +457,8 @@ class TestEvaluationHandlerEvaluateSession:
         evaluation_request, 
         mock_user,
         mock_chat_logger,
-        mock_adk_session_service
+        mock_adk_session_service,
+        mock_storage
     ):
         """Test cleanup when runner doesn't have close method."""
         # Mock runner without close method  
@@ -441,17 +477,20 @@ class TestEvaluationHandlerEvaluateSession:
         del mock_runner.close  # Remove any auto-created close method
         
         with patch('role_play.evaluation.handler.create_evaluator_agent') as mock_create_agent, \
-             patch('role_play.evaluation.handler.Runner') as mock_runner_class:
+             patch('role_play.evaluation.handler.Runner') as mock_runner_class, \
+             patch('role_play.evaluation.handler.uuid.uuid4') as mock_uuid:
             
             mock_create_agent.return_value = Mock()
             mock_runner_class.return_value = mock_runner
+            mock_uuid.return_value = Mock(__str__=lambda self: "abcd1234")
             
             # Should succeed without trying to call close
             response = await evaluation_handler.evaluate_session(
                 request=evaluation_request,
                 current_user=mock_user,
                 chat_logger=mock_chat_logger,
-                adk_session_service=mock_adk_session_service
+                adk_session_service=mock_adk_session_service,
+                storage=mock_storage
             )
         
         assert response.success is True

@@ -28,3 +28,24 @@ export interface EvaluationResponse {
   final_review_report?: FinalReviewReport;
   error?: string;
 }
+
+export interface StoredEvaluationReport {
+  success: boolean;
+  report_id: string;
+  chat_session_id: string;
+  created_at: string;
+  evaluation_type: string;
+  report: FinalReviewReport;
+}
+
+export interface EvaluationReportSummary {
+  report_id: string;
+  chat_session_id: string;
+  created_at: string;
+  evaluation_type: string;
+}
+
+export interface EvaluationReportListResponse {
+  success: boolean;
+  reports: EvaluationReportSummary[];
+}

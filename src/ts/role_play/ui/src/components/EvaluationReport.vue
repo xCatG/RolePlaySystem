@@ -80,6 +80,11 @@
         </section>
 
         <div class="action-buttons">
+          <button v-if="isExistingReport"
+                  @click="$emit('reevaluate')"
+                  class="primary-button">
+            {{ $t('evaluation.reevaluate') || 'Re-evaluate' }}
+          </button>
           <button class="secondary-button" 
                   disabled
                   :title="$t('evaluation.comingSoonMessage')">
@@ -117,11 +122,13 @@ const props = defineProps<{
   error: string | null;
   isRetrying?: boolean;
   retryCount?: number;
+  isExistingReport?: boolean;
 }>();
 
 defineEmits<{
   close: [];
   retry: [];
+  reevaluate: [];
 }>();
 
 const modalRef = ref<HTMLElement>();
@@ -403,6 +410,22 @@ onMounted(async () => {
 .secondary-button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.primary-button {
+  padding: 10px 20px;
+  background: var(--color-primary, #007bff);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.primary-button:hover {
+  background: var(--color-primary-dark, #0056b3);
+  transform: translateY(-1px);
 }
 
 .error-container {
