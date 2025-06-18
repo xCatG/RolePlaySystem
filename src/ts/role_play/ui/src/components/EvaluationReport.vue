@@ -1,10 +1,20 @@
 <template>
-  <div class="evaluation-report-overlay" @click.self="$emit('close')">
-    <div class="evaluation-report">
+  <div class="evaluation-report-overlay" 
+       @click.self="$emit('close')"
+       role="dialog"
+       aria-labelledby="evaluation-title"
+       aria-modal="true">
+    <div ref="modalRef" 
+         class="evaluation-report"
+         tabindex="-1"
+         @keydown.escape="$emit('close')">
       <div class="report-header">
-        <h1>{{ $t('evaluation.title') }}</h1>
-        <button @click="$emit('close')" class="close-button">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <h1 id="evaluation-title">{{ $t('evaluation.title') }}</h1>
+        <button @click="$emit('close')" 
+                class="close-button"
+                :aria-label="$t('evaluation.close')"
+                type="button">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
             <line x1="18" y1="6" x2="6" y2="18"></line>
             <line x1="6" y1="6" x2="18" y2="18"></line>
           </svg>
@@ -34,10 +44,10 @@
 
         <section class="assessment-section">
           <h2>{{ $t('evaluation.overallAssessment') }}</h2>
-          <p class="assessment-text">{{ report.overall_assessment }}</p>
+          <p class="assessment-text">{{ report.overall_assessment || 'No assessment provided' }}</p>
         </section>
 
-        <section class="list-section">
+        <section v-if="report.key_strengths_demonstrated?.length" class="list-section">
           <h2>{{ $t('evaluation.keyStrengths') }}</h2>
           <ul class="styled-list">
             <li v-for="(strength, index) in report.key_strengths_demonstrated" :key="`strength-${index}`">
@@ -46,7 +56,7 @@
           </ul>
         </section>
 
-        <section class="list-section">
+        <section v-if="report.key_areas_for_development?.length" class="list-section">
           <h2>{{ $t('evaluation.areasForDevelopment') }}</h2>
           <ul class="styled-list development-areas">
             <li v-for="(area, index) in report.key_areas_for_development" :key="`area-${index}`">
@@ -55,7 +65,7 @@
           </ul>
         </section>
 
-        <section class="list-section">
+        <section v-if="report.actionable_next_steps?.length" class="list-section">
           <h2>{{ $t('evaluation.actionableNextSteps') }}</h2>
           <ol class="styled-list next-steps">
             <li v-for="(step, index) in report.actionable_next_steps" :key="`step-${index}`">
@@ -70,10 +80,14 @@
         </section>
 
         <div class="action-buttons">
-          <button class="secondary-button" disabled>
+          <button class="secondary-button" 
+                  disabled
+                  :title="$t('evaluation.comingSoonMessage')">
             {{ $t('evaluation.downloadPDF') }} ({{ $t('evaluation.comingSoonTitle') }})
           </button>
-          <button class="secondary-button" disabled>
+          <button class="secondary-button" 
+                  disabled
+                  :title="$t('evaluation.comingSoonMessage')">
             {{ $t('evaluation.share') }} ({{ $t('evaluation.comingSoonTitle') }})
           </button>
         </div>
@@ -82,8 +96,11 @@
       <div v-else class="error-container">
         <div class="error-icon">⚠️</div>
         <p class="error-message">{{ error || $t('evaluation.failed') }}</p>
-        <button @click="$emit('retry')" class="retry-button" :disabled="loading">
-          {{ $t('evaluation.retryButton') }}
+        <button @click="$emit('retry')" 
+                class="retry-button" 
+                :disabled="loading || (retryCount && retryCount >= 3)"
+                :aria-label="$t('evaluation.retryButton')">
+          {{ (retryCount && retryCount >= 3) ? 'Max retries reached' : $t('evaluation.retryButton') }}
         </button>
       </div>
     </div>
@@ -92,18 +109,30 @@
 
 <script setup lang="ts">
 import { FinalReviewReport } from '@/types/evaluation';
+import { nextTick, onMounted, ref } from 'vue';
 
-defineProps<{
+const props = defineProps<{
   report: FinalReviewReport | null;
   loading: boolean;
   error: string | null;
   isRetrying?: boolean;
+  retryCount?: number;
 }>();
 
 defineEmits<{
   close: [];
   retry: [];
 }>();
+
+const modalRef = ref<HTMLElement>();
+
+// Focus management for accessibility
+onMounted(async () => {
+  await nextTick();
+  if (modalRef.value) {
+    modalRef.value.focus();
+  }
+});
 </script>
 
 <style scoped>
@@ -426,17 +455,56 @@ defineEmits<{
 }
 
 @media (max-width: 640px) {
+  .evaluation-report-overlay {
+    padding: 0;
+    align-items: stretch;
+  }
+
   .evaluation-report {
     max-height: 100vh;
+    height: 100vh;
     border-radius: 0;
+    max-width: 100%;
+  }
+
+  .report-header {
+    padding: 16px;
+    position: sticky;
+    top: 0;
+    z-index: 20;
+  }
+
+  .report-header h1 {
+    font-size: 20px;
+  }
+
+  .report-content {
+    padding: 16px;
+    /* Ensure content is scrollable on mobile */
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
   }
 
   .score-section {
     flex-direction: column;
+    gap: 16px;
   }
 
   .score-value {
     font-size: 36px;
+  }
+
+  .action-buttons {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .loading-container {
+    padding: 40px 20px;
+  }
+
+  .error-container {
+    padding: 40px 20px;
   }
 }
 </style>

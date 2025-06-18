@@ -77,6 +77,7 @@
       :loading="evaluationLoading"
       :error="evaluationError"
       :is-retrying="isRetrying"
+      :retry-count="evaluationRetryCount"
       @close="showEvaluationReport = false"
       @retry="retryEvaluation"
     />
@@ -206,41 +207,55 @@ export default defineComponent({
     };
 
     const getErrorMessage = (error: any): string => {
+      // Log unexpected error structures for debugging
+      if (!error.response && !error.message && !error.code) {
+        console.error('Unexpected error structure:', error)
+      }
+      
       // Network errors (connection issues, timeouts)
       if (!navigator.onLine) {
         return t('evaluation.networkError');
       }
       
-      // Server errors (5xx status codes)
-      if (error.response?.status >= 500) {
-        return t('evaluation.serverError');
-      }
-      
-      // Client errors (4xx status codes)
-      if (error.response?.status >= 400) {
-        return error.response.data?.error || error.response.data?.message || t('evaluation.failed');
+      // Handle Axios errors with response
+      if (error.response) {
+        const status = error.response.status
+        
+        // Server errors (5xx status codes)
+        if (status >= 500) {
+          return t('evaluation.serverError');
+        }
+        
+        // Client errors (4xx status codes)
+        if (status >= 400) {
+          // Safely access nested response data
+          const errorData = error.response.data
+          if (errorData && typeof errorData === 'object') {
+            const detail = errorData.error || errorData.message || errorData.detail
+            if (detail && typeof detail === 'string') {
+              return detail
+            }
+          }
+          return t('evaluation.failed')
+        }
       }
       
       // Network timeout or connection refused
-      if (error.code === 'NETWORK_ERROR' || error.code === 'TIMEOUT' || !error.response) {
+      if (error.code === 'NETWORK_ERROR' || 
+          error.code === 'TIMEOUT' || 
+          error.code === 'ECONNREFUSED' ||
+          !error.response) {
         return t('evaluation.networkError');
       }
       
-      // API response error messages
-      if (error.response?.data?.error) {
-        return error.response.data.error;
-      }
-      
-      if (error.response?.data?.message) {
-        return error.response.data.message;
-      }
-      
-      // JavaScript error messages
-      if (error.message) {
+      // Handle error message strings
+      if (error.message && typeof error.message === 'string') {
         // Check if it's a network-related error
-        if (error.message.toLowerCase().includes('network') || 
-            error.message.toLowerCase().includes('fetch') ||
-            error.message.toLowerCase().includes('timeout')) {
+        const msg = error.message.toLowerCase()
+        if (msg.includes('network') || 
+            msg.includes('fetch') ||
+            msg.includes('timeout') ||
+            msg.includes('connection')) {
           return t('evaluation.networkError');
         }
         return error.message;
@@ -284,8 +299,9 @@ export default defineComponent({
     };
 
     const retryEvaluation = async () => {
+      // Disable retry if limit reached
       if (evaluationRetryCount.value >= 3) {
-        evaluationError.value = t('evaluation.failed') + ' ' + t('evaluation.networkError');
+        evaluationError.value = t('evaluation.failed') + ' (Max retries reached)';
         return;
       }
 
