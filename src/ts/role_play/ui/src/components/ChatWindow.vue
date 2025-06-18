@@ -70,13 +70,16 @@
       </form>
     </div>
     
-    <!-- Coming Soon Modal -->
-    <ConfirmModal
-      v-model="showEvaluationModal"
-      :message="$t('evaluation.comingSoonMessage')"
-      :title="$t('evaluation.comingSoonTitle')"
-      :confirm-text="$t('evaluation.ok')"
-      @confirm="showEvaluationModal = false"
+    <!-- Evaluation Report -->
+    <EvaluationReport
+      v-if="showEvaluationReport"
+      :report="evaluationReport"
+      :loading="evaluationLoading"
+      :error="evaluationError"
+      :is-retrying="isRetrying"
+      :retry-count="evaluationRetryCount"
+      @close="showEvaluationReport = false"
+      @retry="retryEvaluation"
     />
     
     <!-- End Session Confirmation Modal -->
@@ -103,14 +106,19 @@
 
 <script lang="ts">
 import { defineComponent, ref, nextTick, PropType, onMounted } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { chatApi } from '../services/chatApi';
+import { evaluationApi } from '../services/evaluationApi';
 import type { SessionInfo, Message } from '../types/chat';
+import type { FinalReviewReport } from '../types/evaluation';
 import ConfirmModal from './ConfirmModal.vue';
+import EvaluationReport from './EvaluationReport.vue';
 
 export default defineComponent({
   name: 'ChatWindow',
   components: {
-    ConfirmModal
+    ConfirmModal,
+    EvaluationReport
   },
   props: {
     session: {
@@ -120,13 +128,19 @@ export default defineComponent({
   },
   emits: ['close', 'session-ended', 'session-deleted'],
   setup(props, { emit }) {
+    const { t } = useI18n();
     const messages = ref<Message[]>([]);
     const newMessage = ref('');
     const loading = ref(false);
     const messagesContainer = ref<HTMLElement>();
-    const showEvaluationModal = ref(false);
     const showDeleteModal = ref(false);
     const showEndModal = ref(false);
+    const showEvaluationReport = ref(false);
+    const evaluationReport = ref<FinalReviewReport | null>(null);
+    const evaluationLoading = ref(false);
+    const evaluationError = ref<string | null>(null);
+    const evaluationRetryCount = ref(0);
+    const isRetrying = ref(false);
 
     const scrollToBottom = () => {
       nextTick(() => {
@@ -192,8 +206,121 @@ export default defineComponent({
       return new Date(timestamp).toLocaleTimeString();
     };
 
-    const sendToEvaluation = () => {
-      showEvaluationModal.value = true;
+    const getErrorMessage = (error: any): string => {
+      // Log unexpected error structures for debugging
+      if (!error.response && !error.message && !error.code) {
+        console.error('Unexpected error structure:', error)
+      }
+      
+      // Network errors (connection issues, timeouts)
+      if (!navigator.onLine) {
+        return t('evaluation.networkError');
+      }
+      
+      // Handle Axios errors with response
+      if (error.response) {
+        const status = error.response.status
+        
+        // Server errors (5xx status codes)
+        if (status >= 500) {
+          return t('evaluation.serverError');
+        }
+        
+        // Client errors (4xx status codes)
+        if (status >= 400) {
+          // Safely access nested response data
+          const errorData = error.response.data
+          if (errorData && typeof errorData === 'object') {
+            const detail = errorData.error || errorData.message || errorData.detail
+            if (detail && typeof detail === 'string') {
+              return detail
+            }
+          }
+          return t('evaluation.failed')
+        }
+      }
+      
+      // Network timeout or connection refused
+      if (error.code === 'NETWORK_ERROR' || 
+          error.code === 'TIMEOUT' || 
+          error.code === 'ECONNREFUSED' ||
+          !error.response) {
+        return t('evaluation.networkError');
+      }
+      
+      // Handle error message strings
+      if (error.message && typeof error.message === 'string') {
+        // Check if it's a network-related error
+        const msg = error.message.toLowerCase()
+        if (msg.includes('network') || 
+            msg.includes('fetch') ||
+            msg.includes('timeout') ||
+            msg.includes('connection')) {
+          return t('evaluation.networkError');
+        }
+        return error.message;
+      }
+      
+      // Fallback to localized generic error
+      return t('evaluation.failed');
+    };
+
+    const performEvaluation = async (): Promise<void> => {
+      try {
+        const response = await evaluationApi.evaluateSession(props.session.session_id);
+        if (response.success && (response.report || response.final_review_report)) {
+          evaluationReport.value = response.report || response.final_review_report!;
+          evaluationError.value = null;
+          evaluationRetryCount.value = 0; // Reset retry count on success
+        } else {
+          throw new Error(response.error || response.message || t('evaluation.failed'));
+        }
+      } catch (error: any) {
+        console.error('Failed to evaluate session:', error);
+        evaluationError.value = getErrorMessage(error);
+        throw error; // Re-throw to be handled by caller
+      }
+    };
+
+    const sendToEvaluation = async () => {
+      evaluationError.value = null;
+      evaluationReport.value = null;
+      showEvaluationReport.value = true;
+      evaluationLoading.value = true;
+      isRetrying.value = false;
+      
+      try {
+        await performEvaluation();
+      } catch (error) {
+        // Error is already handled in performEvaluation
+      } finally {
+        evaluationLoading.value = false;
+      }
+    };
+
+    const retryEvaluation = async () => {
+      // Disable retry if limit reached
+      if (evaluationRetryCount.value >= 3) {
+        evaluationError.value = t('evaluation.failed') + ' (Max retries reached)';
+        return;
+      }
+
+      evaluationRetryCount.value++;
+      evaluationError.value = null;
+      evaluationLoading.value = true;
+      isRetrying.value = true;
+      
+      // Add a small delay before retrying for better UX
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      try {
+        await performEvaluation();
+      } catch (error) {
+        // Error is already handled in performEvaluation
+      } finally {
+        evaluationLoading.value = false;
+        isRetrying.value = false;
+      }
     };
 
     const formatDate = (dateString: string) => {
@@ -260,12 +387,17 @@ export default defineComponent({
       newMessage,
       loading,
       messagesContainer,
-      showEvaluationModal,
       showDeleteModal,
       showEndModal,
+      showEvaluationReport,
+      evaluationReport,
+      evaluationLoading,
+      evaluationError,
+      isRetrying,
       sendMessage,
       exportChat,
       sendToEvaluation,
+      retryEvaluation,
       endSession,
       confirmEndSession,
       deleteSession,
