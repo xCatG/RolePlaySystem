@@ -4,7 +4,7 @@
 
 ## What Makes RPS Special
 
-**RPS is not just another chatbot platform.** It's a comprehensive ecosystem designed for **educational institutions, corporate training, and language learning** that provides:
+**RPS is not just another chatbot platform.** It's a comprehensive ecosystem designed for **educational institutions, corporate training, and other types of learning** that provides:
 
 - **LLM-Powered Characters**: Sophisticated role-play scenarios with Gemini 2.0 Flash integration
 - **Comprehensive Analytics**: Built-in evaluation system with detailed performance reports
@@ -29,10 +29,11 @@ graph TB
         BASE[Base Server<br/>FastAPI Core]
     end
     
-    subgraph "Business Logic"
+    subgraph "Business Logic Layer"
         CONTENT[Content Loader<br/>i18n Scenarios]
         LOGGER[Chat Logger<br/>JSONL Persistence]
         AUTHMGR[Auth Manager<br/>Multi-provider]
+        ADK[ADK Framework<br/>AI Agent Runtime]
     end
     
     subgraph "Storage Layer"
@@ -40,34 +41,53 @@ graph TB
         FILE[File Storage<br/>Development]
         GCS[Google Cloud Storage<br/>Production]
         S3[AWS S3<br/>Optional]
+        LOCK[Distributed Locking<br/>File/Object/Redis]
     end
     
-    subgraph "External Services"
-        GEMINI[Gemini 2.0 Flash<br/>AI Conversations]
-        VERTEX[Vertex AI<br/>Cloud Platform]
+    subgraph "External AI Services"
+        VERTEX[Vertex AI Platform<br/>Google Cloud]
+        GEMINI[Gemini 2.0 Flash<br/>LLM API]
         MONITOR[Cloud Monitoring<br/>& Logging]
     end
     
+    %% Frontend to API connections
     UI --> AUTH
     UI --> CHAT
     UI --> EVAL
     
+    %% API to Business Logic connections
     AUTH --> AUTHMGR
     CHAT --> CONTENT
     CHAT --> LOGGER
-    EVAL --> FACTORY
+    CHAT --> ADK
+    EVAL --> ADK
+    EVAL --> LOGGER
     
+    %% Business Logic to Storage connections
+    CONTENT --> FACTORY
+    LOGGER --> FACTORY
+    AUTHMGR --> FACTORY
+    
+    %% Storage implementation connections
     FACTORY --> FILE
     FACTORY --> GCS
     FACTORY --> S3
+    FACTORY --> LOCK
     
-    CHAT --> GEMINI
-    GEMINI --> VERTEX
+    %% ADK to External AI connections
+    ADK --> VERTEX
+    VERTEX --> GEMINI
+    
+    %% Monitoring connections
+    CHAT --> MONITOR
+    EVAL --> MONITOR
     
     style UI fill:#4FC08D
     style AUTH fill:#3B82F6
     style CHAT fill:#3B82F6
     style EVAL fill:#3B82F6
+    style ADK fill:#FF6B35
+    style VERTEX fill:#4285F4
     style GEMINI fill:#EA4335
     style GCS fill:#4285F4
 ```
