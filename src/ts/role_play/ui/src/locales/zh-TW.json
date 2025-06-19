@@ -74,7 +74,8 @@
     "networkError": "發生網路錯誤，請檢查您的網路連線並重試。",
     "serverError": "發生伺服器錯誤，請稍後重試。",
     "retryButton": "重試",
-    "retrying": "重試中..."
+    "retrying": "重試中...",
+    "reevaluate": "重新評估"
   },
   "sessionActions": {
     "endSessionTitle": "結束對話",

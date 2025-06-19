@@ -132,6 +132,17 @@ make test-specific TEST_PATH="test/python/unit/chat/test_chat_logger.py"
 - [x] **Code Organization**: Added region comments, improved exception handling, proper resource cleanup
 - [x] **Testing Integration**: Added `/test/python/unit/evaluation/` structure following existing patterns
 
+### Evaluation Report Storage (Completed)
+- [x] **Backend Storage**: Reports stored at `users/{user_id}/eval_reports/{chat_session_id}/{timestamp}_{unique_id}` (timestamps use underscores instead of colons for filesystem compatibility)
+- [x] **Smart Loading**: Frontend checks for existing reports before generating new ones
+- [x] **Re-evaluation**: Users can trigger new evaluations via "Re-evaluate" button
+- [x] **API Endpoints**:
+  - `GET /api/eval/session/{session_id}/report` - Get latest report or 404
+  - `POST /api/eval/session/{session_id}/evaluate` - Always create new evaluation
+  - `GET /api/eval/session/{session_id}/all_reports` - List all reports for session
+  - `GET /api/eval/reports/{report_id}` - Get specific report by ID
+- [x] **Test Coverage**: 18 comprehensive unit tests for all evaluation functionality
+
 ### Pending Development
 - [ ] **Code Quality & Testing** (Post-refactoring improvements):
   - [ ] Implement API contract testing to prevent frontend/backend data structure mismatches
@@ -139,12 +150,13 @@ make test-specific TEST_PATH="test/python/unit/chat/test_chat_logger.py"
   - [ ] Add caching layer for API responses to reduce redundant calls
   - [ ] Extract common error handling decorator for backend methods
   - [ ] Create utility functions for date formatting across components
+  - [ ] Add validation that session belongs to requesting user before creating evaluation reports
+  - [ ] Add retry logic for transient storage failures in evaluation system
 - [ ] WebSocket: `server/websocket.py` connection manager
 - [ ] Auth Module: Complete OAuth implementation
 - [ ] Scripter: Complete module implementation  
 - [ ] Frontend: Modular monolith restructure, chat/eval interfaces
 - [ ] Testing: integration/handlers/, e2e/api/
-- [ ] Cleanup: Remove deprecated auth_decorators.py and imports
 - [ ] Docs: README.md architecture, OAUTH_SETUP.md
 - [ ] User Management: Complete module
 - [ ] Database: Future schema design
@@ -202,15 +214,6 @@ make test-specific TEST_PATH="test/python/unit/chat/test_chat_logger.py"
 - [x] **Impact**: ~300 lines duplicate code eliminated, better maintainability, all 241 tests passing
 - [x] **Critical Fix**: Resolved frontend data loading issues in Phase 3 refactoring (API response handling bugs)
 
-### Pending Development
-- [x] Base Infrastructure: All common modules, cloud storage, distributed locking
-- [x] Server Core: Base classes, dependencies, config, user accounts
-- [x] Chat Module: ADK integration, JSONL logging, POC features
-- [x] Evaluation: Simple export implementation
-- [x] Config & Env: All YAML configs, env loading
-- [x] Testing: Unit tests, storage integration, test infrastructure, Makefile targets
-- [x] Core Docs: API.md, DEPLOYMENT.md, ENVIRONMENTS.md
-- [x] Traditional Chinese Localization: Complete frontend/backend language support system
 
 ## Implementation Phases
 1. Core Infrastructure → 2. Authentication → 3. Handlers → 4. WebSocket/Audio → 5. Polish
@@ -222,8 +225,8 @@ make test-specific TEST_PATH="test/python/unit/chat/test_chat_logger.py"
 - **Server**: FastAPI with stateless handlers, JWT auth, CORS, environment configs
 - **Auth**: RoleChecker pattern (replaced decorators), role hierarchy, proper HTTP codes, language preferences
 - **Chat**: ADK integration, JSONL logging, singleton services, POC endpoints, language-aware content, refactored for maintainability
-- **Evaluation**: AI agent evaluation system with comprehensive error handling, session validation, and resource cleanup (71% test coverage)
-- **Testing**: 190+ tests, language functionality coverage (ContentLoader, auth, models), evaluation module unit tests, comprehensive Makefile targets
+- **Evaluation**: AI agent evaluation system with persistent storage, comprehensive error handling, session validation, and resource cleanup
+- **Testing**: 240+ tests, language functionality coverage (ContentLoader, auth, models), evaluation module unit tests, comprehensive Makefile targets
 - **Frontend**: Vue.js auth UI, i18n with Traditional Chinese, language switcher, reusable composables
 - **Localization**: Complete Traditional Chinese support with content isolation
 - **Code Quality**: Simplified architecture with extracted utilities, focused methods, reduced duplication
@@ -236,6 +239,7 @@ make test-specific TEST_PATH="test/python/unit/chat/test_chat_logger.py"
 - **Config**: YAML + env vars, dynamic handler loading, fail-fast validation
 - **Cloud**: GCS (async atomic ops), S3/Redis (stubs), env restrictions
 - **Language Architecture**: Per-language content files, fallback filtering, UI/backend sync, caching
+- **Evaluation Storage**: Persistent JSON reports with timestamps, re-evaluation support, efficient retrieval
 
 ## i18n/l10n Design Notes & Principles
 

@@ -78,8 +78,10 @@
       :error="evaluationError"
       :is-retrying="isRetrying"
       :retry-count="evaluationRetryCount"
+      :is-existing-report="isExistingReport"
       @close="showEvaluationReport = false"
       @retry="retryEvaluation"
+      @reevaluate="reevaluateSession"
     />
     
     <!-- End Session Confirmation Modal -->
@@ -110,7 +112,7 @@ import { useI18n } from 'vue-i18n';
 import { chatApi } from '../services/chatApi';
 import { evaluationApi } from '../services/evaluationApi';
 import type { SessionInfo, Message } from '../types/chat';
-import type { FinalReviewReport } from '../types/evaluation';
+import type { FinalReviewReport, StoredEvaluationReport } from '../types/evaluation';
 import ConfirmModal from './ConfirmModal.vue';
 import EvaluationReport from './EvaluationReport.vue';
 
@@ -141,6 +143,7 @@ export default defineComponent({
     const evaluationError = ref<string | null>(null);
     const evaluationRetryCount = ref(0);
     const isRetrying = ref(false);
+    const isExistingReport = ref(false);
 
     const scrollToBottom = () => {
       nextTick(() => {
@@ -267,7 +270,7 @@ export default defineComponent({
 
     const performEvaluation = async (): Promise<void> => {
       try {
-        const response = await evaluationApi.evaluateSession(props.session.session_id);
+        const response = await evaluationApi.createNewEvaluation(props.session.session_id);
         if (response.success && (response.report || response.final_review_report)) {
           evaluationReport.value = response.report || response.final_review_report!;
           evaluationError.value = null;
@@ -290,9 +293,22 @@ export default defineComponent({
       isRetrying.value = false;
       
       try {
-        await performEvaluation();
+        // First, check if there's an existing report
+        const existingReport = await evaluationApi.getLatestReport(props.session.session_id);
+        
+        if (existingReport) {
+          // Load the existing report
+          evaluationReport.value = existingReport.report;
+          evaluationError.value = null;
+          isExistingReport.value = true;
+        } else {
+          // No existing report, generate a new one
+          isExistingReport.value = false;
+          await performEvaluation();
+        }
       } catch (error) {
-        // Error is already handled in performEvaluation
+        console.error('Failed to check/generate evaluation:', error);
+        evaluationError.value = getErrorMessage(error);
       } finally {
         evaluationLoading.value = false;
       }
@@ -378,6 +394,21 @@ export default defineComponent({
       }
     };
 
+    const reevaluateSession = async () => {
+      evaluationError.value = null;
+      evaluationLoading.value = true;
+      isRetrying.value = false;
+      isExistingReport.value = false;
+      
+      try {
+        await performEvaluation();
+      } catch (error) {
+        // Error is already handled in performEvaluation
+      } finally {
+        evaluationLoading.value = false;
+      }
+    };
+
     onMounted(() => {
       loadMessageHistory();
     });
@@ -394,6 +425,7 @@ export default defineComponent({
       evaluationLoading,
       evaluationError,
       isRetrying,
+      isExistingReport,
       sendMessage,
       exportChat,
       sendToEvaluation,
@@ -403,7 +435,8 @@ export default defineComponent({
       deleteSession,
       confirmDeleteSession,
       formatTimestamp,
-      formatDate
+      formatDate,
+      reevaluateSession
     };
   }
 });

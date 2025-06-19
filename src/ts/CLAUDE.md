@@ -3,55 +3,21 @@
 ## Directory Rules
 ONLY create TypeScript source code files under this directory.
 
-## Modular Monolith Architecture
+## Architecture Overview
 
-### Philosophy
-- **Start Simple**: Single module with domain boundaries to minimize complexity
-- **Built-in Seams**: Structure for future module splitting from day one
-- **Progressive Complexity**: Split only when file count, team conflicts, or build time demands it
+### Current Structure
+- **Domain-Based Organization**: Separated by feature (auth/, chat/, evaluation/)
+- **Composable Patterns**: Reusable Vue composables for common workflows
+- **Type Safety**: Full TypeScript with backend Pydantic model sync
 
-### Domain-Based Organization
+### Domain Organization
 ```
 src/ts/role_play/
-├── types/          # Domain-separated types
-│   ├── auth.ts     # Auth-specific types
-│   ├── chat.ts     # Chat-specific types
-│   ├── evaluation.ts
-│   └── shared.ts   # Cross-domain types
-├── services/       # API clients by domain
-│   ├── auth-api.ts
-│   ├── chat-api.ts
-│   └── evaluation-api.ts
-├── stores/         # Domain-specific state
-│   ├── auth.ts
-│   ├── chat.ts
-│   └── evaluation.ts
-├── components/     # Grouped by domain
-│   ├── shared/     # Cross-domain components
-│   ├── auth/
-│   ├── chat/
-│   └── evaluation/
+├── types/          # TypeScript interfaces
+├── services/       # API clients
+├── composables/    # Reusable Vue logic
+├── components/     # UI components by domain
 └── views/          # Page-level components
-    ├── auth/
-    ├── chat/
-    └── evaluation/
-```
-
-### Evolution Path
-1. **Current**: All code in one module with domain folders
-2. **Future**: Mechanical migration when needed:
-   - Move domain folder to separate module
-   - Update import paths only
-   - No structural changes required
-
-### Domain Boundaries
-Each domain exports through `index.ts`:
-```typescript
-// auth/index.ts
-export * from './components'
-export * from './services'
-export * from './stores'
-export * from './types'
 ```
 
 ## Type Synchronization
@@ -86,6 +52,47 @@ interface ApiResponse<T> {
   data?: T;
   error?: string;
   status: number;
+}
+```
+
+## Composable Patterns
+
+### Reusable Vue Composables
+```typescript
+// composables/useAsyncOperation.ts
+export function useAsyncOperation<T>() {
+  const loading = ref(false);
+  const error = ref<string | null>(null);
+  
+  const execute = async (operation: () => Promise<T>): Promise<T | null> => {
+    loading.value = true;
+    error.value = null;
+    try {
+      return await operation();
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Unknown error';
+      return null;
+    } finally {
+      loading.value = false;
+    }
+  };
+  
+  return { loading: readonly(loading), error: readonly(error), execute };
+}
+
+// composables/useConfirmModal.ts
+export function useConfirmModal() {
+  const showModal = ref(false);
+  const modalConfig = ref<ConfirmModalConfig>({});
+  
+  const confirm = (config: ConfirmModalConfig): Promise<boolean> => {
+    return new Promise((resolve) => {
+      modalConfig.value = { ...config, onConfirm: () => resolve(true), onCancel: () => resolve(false) };
+      showModal.value = true;
+    });
+  };
+  
+  return { showModal, modalConfig, confirm };
 }
 ```
 
@@ -305,4 +312,134 @@ interface UpdateLanguageResponse {
 interface GetScenariosParams {
   language?: string;  // Filter scenarios by language
 }
+```
+
+## Evaluation System Integration
+
+### Evaluation API Types
+```typescript
+// Core evaluation types
+interface StoredEvaluationReport {
+  success: boolean;
+  report_id: string;
+  chat_session_id: string;
+  created_at: string;
+  evaluation_type: string;
+  report: FinalReviewReport;
+}
+
+interface EvaluationReportSummary {
+  report_id: string;
+  chat_session_id: string;
+  created_at: string;
+  evaluation_type: string;
+}
+
+interface EvaluationReportListResponse {
+  success: boolean;
+  reports: EvaluationReportSummary[];
+}
+```
+
+### Evaluation Service Implementation
+```typescript
+// services/evaluationApi.ts
+export const evaluationApi = {
+  // Check for existing report first
+  async getLatestReport(sessionId: string): Promise<StoredEvaluationReport | null> {
+    try {
+      const response = await fetch(`/api/eval/session/${sessionId}/report`, {
+        headers: { 'Authorization': `Bearer ${authStore.token}` }
+      });
+      if (response.status === 404) return null;
+      if (!response.ok) throw new Error('Failed to fetch report');
+      return await response.json();
+    } catch (error) {
+      throw error;
+    }
+  },
+
+  // Always creates new evaluation
+  async createNewEvaluation(sessionId: string, evaluationType = 'comprehensive'): Promise<EvaluationResponse> {
+    const response = await fetch(`/api/eval/session/${sessionId}/evaluate?evaluation_type=${evaluationType}`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${authStore.token}` }
+    });
+    if (!response.ok) throw new Error('Failed to create evaluation');
+    return await response.json();
+  },
+
+  // List all historical reports
+  async listAllReports(sessionId: string): Promise<EvaluationReportListResponse> {
+    const response = await fetch(`/api/eval/session/${sessionId}/all_reports`, {
+      headers: { 'Authorization': `Bearer ${authStore.token}` }
+    });
+    if (!response.ok) throw new Error('Failed to list reports');
+    return await response.json();
+  }
+};
+```
+
+### Smart Report Loading Pattern
+```typescript
+// Using composables for evaluation workflow
+const { loading: evaluationLoading, execute } = useAsyncOperation();
+const { confirm } = useConfirmModal();
+
+const sendToEvaluation = async () => {
+  showEvaluationReport.value = true;
+  
+  const result = await execute(async () => {
+    // First check for existing report
+    const existingReport = await evaluationApi.getLatestReport(session.session_id);
+    
+    if (existingReport) {
+      evaluationReport.value = existingReport.report;
+      isExistingReport.value = true;
+      return existingReport;
+    } else {
+      // Generate new report only if none exists
+      const newReport = await evaluationApi.createNewEvaluation(session.session_id);
+      evaluationReport.value = newReport.report;
+      isExistingReport.value = false;
+      return newReport;
+    }
+  });
+  
+  if (!result) {
+    showEvaluationReport.value = false; // Hide on error
+  }
+};
+```
+
+### Re-evaluation UI Pattern
+```vue
+<!-- EvaluationReport.vue -->
+<template>
+  <div class="evaluation-report">
+    <div v-if="isExistingReport" class="report-actions">
+      <button @click="handleReevaluate" 
+              :disabled="loading" 
+              class="primary-button">
+        {{ $t('evaluation.reevaluate') }}
+      </button>
+    </div>
+  </div>
+</template>
+
+<script setup lang="ts">
+const { loading, execute } = useAsyncOperation();
+const { confirm } = useConfirmModal();
+
+const handleReevaluate = async () => {
+  const confirmed = await confirm({
+    title: t('evaluation.confirmReevaluate'),
+    message: t('evaluation.reevaluateWarning')
+  });
+  
+  if (confirmed) {
+    await execute(() => evaluationApi.createNewEvaluation(sessionId));
+  }
+};
+</script>
 ```

@@ -125,6 +125,111 @@ async def list_users(
 ADMIN > SCRIPTER > USER > GUEST
 ```
 
+## Evaluation System Implementation
+
+### Report Storage Pattern
+```python
+# Store evaluation reports with timestamp-based unique IDs
+timestamp = utc_now_isoformat()
+# Replace colons with underscores for filesystem compatibility
+safe_timestamp = timestamp.replace(':', '_')
+unique_id = str(uuid.uuid4())[:8]
+storage_id = f"{safe_timestamp}_{unique_id}"
+report_path = f"users/{user_id}/eval_reports/{session_id}/{storage_id}"
+
+# Report includes metadata and full evaluation
+report_data = {
+    "eval_session_id": eval_session_id,
+    "chat_session_id": session_id,
+    "user_id": user_id,
+    "created_at": timestamp,
+    "evaluation_type": "comprehensive",
+    "report": final_review_report.model_dump()
+}
+```
+
+### Evaluation Handler Patterns
+```python
+# Helper methods for report management
+async def _get_latest_report(user_id, session_id, storage):
+    """Get most recent report by sorting keys"""
+    prefix = f"users/{user_id}/eval_reports/{session_id}/"
+    keys = await storage.list_keys(prefix)
+    if not keys:
+        return None
+    latest_key = sorted(keys, reverse=True)[0]
+    return json.loads(await storage.read(latest_key))
+
+# Storage injection in handler methods
+async def evaluate_session(
+    self,
+    request: EvaluationRequest,
+    current_user: User = Depends(require_user_or_higher),
+    storage: StorageBackend = Depends(get_storage_backend)
+):
+    # Store report after generation
+    await storage.write(report_path, json.dumps(report_data))
+```
+
+### API Design for Report Retrieval
+- **GET /session/{id}/report**: Returns latest or 404 (check existing first)
+- **POST /session/{id}/evaluate**: Always creates new (explicit re-evaluation)
+- **GET /session/{id}/all_reports**: Historical reports list
+- **GET /reports/{report_id}**: Specific report by ID
+
+### Evaluation Error Handling
+```python
+# Session ownership validation
+async def _validate_session_ownership(user_id: str, session_id: str, chat_logger: ChatLogger):
+    """Validate that session belongs to user before evaluation."""
+    sessions = await chat_logger.list_user_sessions(user_id)
+    session_ids = {s["session_id"] for s in sessions}
+    if session_id not in session_ids:
+        raise HTTPException(status_code=403, detail="Session access denied")
+
+# Storage error handling with retry
+async def _store_report_with_retry(storage: StorageBackend, path: str, data: str, max_retries: int = 3):
+    """Store evaluation report with retry logic for transient failures."""
+    for attempt in range(max_retries):
+        try:
+            await storage.write(path, data)
+            return
+        except Exception as e:
+            if attempt == max_retries - 1:
+                raise HTTPException(status_code=500, detail="Failed to store evaluation report")
+            logger.warning(f"Storage attempt {attempt + 1} failed: {e}")
+            await asyncio.sleep(2 ** attempt)  # Exponential backoff
+```
+
+### Callback Implementation Patterns
+```python
+# TODO completion pattern for agents
+def agent_callback(callback_context: CallbackContext, llm_response: LlmResponse) -> Optional[LlmResponse]:
+    """Post-process agent responses to complete TODOs and aggregate data."""
+    if not llm_response.content or not llm_response.content.parts:
+        return None
+    
+    try:
+        # Parse structured output
+        response_data = json.loads(llm_response.content.parts[0].text)
+        
+        # Complete missing fields from callback state
+        if "area_assessments" not in response_data or not response_data["area_assessments"]:
+            response_data["area_assessments"] = _extract_assessments_from_state(callback_context.state)
+        
+        # Calculate derived fields (e.g., overall_score)
+        response_data["overall_score"] = _calculate_overall_score(response_data["area_assessments"])
+        
+        # Return modified response
+        modified_parts = [copy.deepcopy(part) for part in llm_response.content.parts]
+        modified_parts[0].text = json.dumps(response_data)
+        return LlmResponse(content=types.Content(role="model", parts=modified_parts))
+        
+    except Exception as e:
+        logger.error(f"Callback processing failed: {e}")
+        return None  # Return original response on error
+```
+
 ## Common Pitfalls
 
 1. **Global State**: Never use global variables, use dependency injection
@@ -132,6 +237,9 @@ ADMIN > SCRIPTER > USER > GUEST
 3. **File Extensions in Keys**: Storage keys should be extension-free
 4. **Persistent Runners**: ADK Runners must be created per-message
 5. **Handler State**: Handlers must remain stateless
+6. **Report Storage**: Always include timestamps in report paths for uniqueness
+7. **Session Validation**: Always validate session ownership before operations
+8. **Storage Failures**: Handle transient storage errors with retry logic
 
 ## Performance Considerations
 
@@ -197,4 +305,26 @@ def _validate_languages(self, data: Dict) -> None:
         scenario_lang = scenario.get("language", "en")
         if scenario_lang not in self.supported_languages:
             raise ValueError(f"Unsupported language '{scenario_lang}'")
+```
+
+## Testing Patterns
+
+### Mock Storage for Evaluation Tests
+```python
+@pytest.fixture
+def mock_storage():
+    """Create mock storage backend for evaluation tests."""
+    storage = AsyncMock()
+    storage.write = AsyncMock()
+    storage.read = AsyncMock()
+    storage.list_keys = AsyncMock()
+    return storage
+
+# Inject into test methods
+async def test_evaluate_session(mock_storage):
+    response = await handler.evaluate_session(
+        request=request,
+        current_user=user,
+        storage=mock_storage
+    )
 ```
