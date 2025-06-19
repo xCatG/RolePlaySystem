@@ -312,11 +312,11 @@ class EvaluationHandler(BaseHandler):
                 "user_id": current_user.id,
                 "created_at": timestamp,
                 "evaluation_type": request.evaluation_type,
-                "report": report_response.model_dump()
+                "report": report_response.model_dump(mode="json")
             }
             
             try:
-                await storage.write(report_path, json.dumps(report_data, indent=2))
+                await storage.write(report_path, json.dumps(report_data, sort_keys=True))
                 logger.info(f"Stored evaluation report at {report_path}")
             except Exception as store_err:
                 # Log error but don't fail the request since report was generated
