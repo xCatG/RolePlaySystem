@@ -44,9 +44,9 @@ graph TB
         LOCK[Distributed Locking<br/>File/Object/Redis]
     end
     
-    subgraph "External AI Services"
+    subgraph "External Services"
         VERTEX[Vertex AI Platform<br/>Google Cloud]
-        GEMINI[Gemini 2.0 Flash<br/>LLM API]
+        GEMINI[Gemini API]
         MONITOR[Cloud Monitoring<br/>& Logging]
     end
     
