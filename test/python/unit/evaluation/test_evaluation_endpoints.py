@@ -303,3 +303,95 @@ class TestEvaluationEndpoints:
         # Should skip the failed read and return the successful one
         assert len(reports) == 1
         assert reports[0].report_id == "2024-01-01T10_00_00Z_xyz789"
+
+    @pytest.mark.asyncio
+    async def test_get_latest_report_race_condition_retry(
+        self,
+        evaluation_handler,
+        mock_user,
+        mock_storage,
+        sample_report_data
+    ):
+        """Test race condition handling when first report is deleted between list and read."""
+        mock_storage.list_keys.return_value = [
+            "users/test-user-123/eval_reports/test-session-123/2024-01-01T10_00_00Z_xyz789",
+            "users/test-user-123/eval_reports/test-session-123/2024-01-01T12_00_00Z_abcd1234"
+        ]
+        
+        # First read fails (race condition), second succeeds
+        older_report = sample_report_data.copy()
+        older_report["created_at"] = "2024-01-01T10:00:00Z"
+        
+        mock_storage.read.side_effect = [
+            Exception("File not found"),  # Race condition - file deleted
+            json.dumps(older_report)       # Second file reads successfully
+        ]
+
+        result = await evaluation_handler._get_latest_report(
+            user_id="test-user-123",
+            session_id="test-session-123",
+            storage=mock_storage
+        )
+
+        # Should successfully return the second report
+        assert result is not None
+        assert result['report_id'] == "2024-01-01T10_00_00Z_xyz789"
+        assert result['created_at'] == "2024-01-01T10:00:00Z"
+        
+        # Verify both reads were attempted
+        assert mock_storage.read.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_get_latest_report_all_reads_fail(
+        self,
+        evaluation_handler,
+        mock_user,
+        mock_storage
+    ):
+        """Test when all report reads fail due to race conditions or storage issues."""
+        # First list shows reports exist
+        mock_storage.list_keys.return_value = [
+            "users/test-user-123/eval_reports/test-session-123/2024-01-01T10_00_00Z_xyz789",
+            "users/test-user-123/eval_reports/test-session-123/2024-01-01T12_00_00Z_abcd1234"
+        ]
+        
+        # All reads fail
+        mock_storage.read.side_effect = [
+            Exception("File not found"),
+            Exception("File not found")
+        ]
+
+        # Call the endpoint which should distinguish between no reports vs read failures
+        with pytest.raises(HTTPException) as exc_info:
+            await evaluation_handler.get_latest_report_endpoint(
+                session_id="test-session-123",
+                current_user=mock_user,
+                storage=mock_storage
+            )
+
+        # Should return 500 (not 404) since reports exist but can't be read
+        assert exc_info.value.status_code == 500
+        assert "Failed to read evaluation reports" in str(exc_info.value.detail)
+        assert "concurrent deletion" in str(exc_info.value.detail)
+
+    @pytest.mark.asyncio
+    async def test_get_latest_report_list_keys_failure(
+        self,
+        evaluation_handler,
+        mock_user,
+        mock_storage
+    ):
+        """Test when list_keys itself fails in the endpoint."""
+        # list_keys fails
+        mock_storage.list_keys.side_effect = Exception("Storage service unavailable")
+
+        with pytest.raises(HTTPException) as exc_info:
+            await evaluation_handler.get_latest_report_endpoint(
+                session_id="test-session-123",
+                current_user=mock_user,
+                storage=mock_storage
+            )
+
+        # Should return 500 for storage access failure
+        assert exc_info.value.status_code == 500
+        assert "Failed to access evaluation reports" in str(exc_info.value.detail)

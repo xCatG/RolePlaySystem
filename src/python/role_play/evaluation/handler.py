@@ -80,7 +80,14 @@ class EvaluationHandler(BaseHandler):
         session_id: str, 
         storage: StorageBackend
     ) -> Optional[Dict[str, Any]]:
-        """Get the latest evaluation report for a session."""
+        """Get the latest evaluation report for a session.
+        
+        Handles race conditions where a report might be deleted between listing
+        and reading by trying the next most recent report.
+        
+        Returns:
+            Report data dict if found, None if no reports exist or all reads failed
+        """
         try:
             reports_prefix = f"users/{user_id}/eval_reports/{session_id}/"
             report_keys = await storage.list_keys(reports_prefix)
@@ -90,19 +97,38 @@ class EvaluationHandler(BaseHandler):
             
             # Sort by key (timestamp is part of the key) and get latest
             sorted_keys = sorted(report_keys, reverse=True)
-            latest_key = sorted_keys[0]
             
-            report_json = await storage.read(latest_key)
-            report_data = json.loads(report_json)
+            # Try to read reports in order, handling race conditions
+            for i, key in enumerate(sorted_keys):
+                try:
+                    report_json = await storage.read(key)
+                    report_data = json.loads(report_json)
+                    
+                    # Extract report ID from the path
+                    report_id = key.split('/')[-1]
+                    report_data['report_id'] = report_id
+                    
+                    return report_data
+                    
+                except Exception as read_error:
+                    # Log the race condition or read failure
+                    logger.warning(
+                        f"Failed to read report {key} (attempt {i+1}/{len(sorted_keys)}): {read_error}. "
+                        f"Possible race condition - report may have been deleted."
+                    )
+                    # Continue to try the next most recent report
+                    continue
             
-            # Extract report ID from the path
-            report_id = latest_key.split('/')[-1]
-            report_data['report_id'] = report_id
-            
-            return report_data
+            # If we exhausted all keys without success, it's a server error
+            logger.error(
+                f"Failed to read any evaluation report for session {session_id} after {len(sorted_keys)} attempts. "
+                f"All reads failed, indicating a storage issue or race condition."
+            )
+            # Return None here to let the caller handle it as 500, not 404
+            return None
             
         except Exception as e:
-            logger.error(f"Failed to get latest report: {e}")
+            logger.error(f"Failed to list evaluation reports: {e}")
             return None
     
     async def _list_reports(
@@ -333,10 +359,29 @@ class EvaluationHandler(BaseHandler):
         storage: Annotated[StorageBackend, Depends(get_storage_backend)]
     ) -> StoredEvaluationReport:
         """Get the latest evaluation report for a session, or 404 if none exists."""
+        # First check if any reports exist
+        reports_prefix = f"users/{current_user.id}/eval_reports/{session_id}/"
+        try:
+            report_keys = await storage.list_keys(reports_prefix)
+            if not report_keys:
+                # No reports exist - return 404
+                raise HTTPException(status_code=404, detail="No evaluation report found for this session")
+        except HTTPException:
+            # Re-raise HTTP exceptions (like 404) without wrapping them
+            raise
+        except Exception as e:
+            logger.error(f"Failed to list reports for session {session_id}: {e}")
+            raise HTTPException(status_code=500, detail="Failed to access evaluation reports")
+        
+        # Reports exist, try to get the latest one
         report_data = await self._get_latest_report(current_user.id, session_id, storage)
         
         if not report_data:
-            raise HTTPException(status_code=404, detail="No evaluation report found for this session")
+            # We know reports exist but couldn't read any - this is a 500 error
+            raise HTTPException(
+                status_code=500, 
+                detail="Failed to read evaluation reports. Possible storage issue or concurrent deletion."
+            )
         
         return StoredEvaluationReport(
             success=True,
