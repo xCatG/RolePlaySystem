@@ -177,6 +177,59 @@ async def evaluate_session(
 - **GET /session/{id}/all_reports**: Historical reports list
 - **GET /reports/{report_id}**: Specific report by ID
 
+### Evaluation Error Handling
+```python
+# Session ownership validation
+async def _validate_session_ownership(user_id: str, session_id: str, chat_logger: ChatLogger):
+    """Validate that session belongs to user before evaluation."""
+    sessions = await chat_logger.list_user_sessions(user_id)
+    session_ids = {s["session_id"] for s in sessions}
+    if session_id not in session_ids:
+        raise HTTPException(status_code=403, detail="Session access denied")
+
+# Storage error handling with retry
+async def _store_report_with_retry(storage: StorageBackend, path: str, data: str, max_retries: int = 3):
+    """Store evaluation report with retry logic for transient failures."""
+    for attempt in range(max_retries):
+        try:
+            await storage.write(path, data)
+            return
+        except Exception as e:
+            if attempt == max_retries - 1:
+                raise HTTPException(status_code=500, detail="Failed to store evaluation report")
+            logger.warning(f"Storage attempt {attempt + 1} failed: {e}")
+            await asyncio.sleep(2 ** attempt)  # Exponential backoff
+```
+
+### Callback Implementation Patterns
+```python
+# TODO completion pattern for agents
+def agent_callback(callback_context: CallbackContext, llm_response: LlmResponse) -> Optional[LlmResponse]:
+    """Post-process agent responses to complete TODOs and aggregate data."""
+    if not llm_response.content or not llm_response.content.parts:
+        return None
+    
+    try:
+        # Parse structured output
+        response_data = json.loads(llm_response.content.parts[0].text)
+        
+        # Complete missing fields from callback state
+        if "area_assessments" not in response_data or not response_data["area_assessments"]:
+            response_data["area_assessments"] = _extract_assessments_from_state(callback_context.state)
+        
+        # Calculate derived fields (e.g., overall_score)
+        response_data["overall_score"] = _calculate_overall_score(response_data["area_assessments"])
+        
+        # Return modified response
+        modified_parts = [copy.deepcopy(part) for part in llm_response.content.parts]
+        modified_parts[0].text = json.dumps(response_data)
+        return LlmResponse(content=types.Content(role="model", parts=modified_parts))
+        
+    except Exception as e:
+        logger.error(f"Callback processing failed: {e}")
+        return None  # Return original response on error
+```
+
 ## Common Pitfalls
 
 1. **Global State**: Never use global variables, use dependency injection
@@ -185,6 +238,8 @@ async def evaluate_session(
 4. **Persistent Runners**: ADK Runners must be created per-message
 5. **Handler State**: Handlers must remain stateless
 6. **Report Storage**: Always include timestamps in report paths for uniqueness
+7. **Session Validation**: Always validate session ownership before operations
+8. **Storage Failures**: Handle transient storage errors with retry logic
 
 ## Performance Considerations
 
