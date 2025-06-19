@@ -82,4 +82,5 @@ class FinalReviewReport(BaseModel):
     progress_notes_from_past_feedback: str = Field(
         description="Notes on the user's progress or recurring themes when compared to past feedback, in localized language."
     )
+    area_assessments: Optional[List[SpecializedAssessment]] = Field(description="List of specialized assessments.", default=[])
 

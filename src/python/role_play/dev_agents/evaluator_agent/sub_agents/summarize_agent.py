@@ -13,13 +13,18 @@
 # limitations under the License.
 
 """Summarize the content of the FOMC meeting transcript."""
+import copy
+import json
 
 from google.adk.agents import Agent, LlmAgent
+from google.adk.agents.callback_context import CallbackContext
+from google.adk.models import LlmRequest, LlmResponse
+from google.genai import types
 
 from .. import MODEL
 from ..library.callback import rate_limit_callback
-from ..model import FinalReviewReport
-
+from ..model import FinalReviewReport, SpecializedAssessment, Score
+from typing import Optional
 
 def create_summary_report_agent(language:str) -> Agent:
     instruction = f"""
@@ -36,6 +41,59 @@ Please make sure to return values of overall_assessment, key_strengths_demonstra
         description="Summarize the area specific analysis reports into one coherent report.",
         instruction=instruction,
         output_schema=FinalReviewReport,
-        output_key="final_report"
-        #before_model_callback=rate_limit_callback,
+        output_key="final_report",
+        # before_model_callback=rate_limit_callback,
+        after_model_callback=report_storage_callback,
+        # after_agent_callback=after_agent_callback
     )
+
+def report_storage_callback(
+    callback_context: CallbackContext, llm_response: LlmResponse
+) -> Optional[LlmResponse]:
+    """
+    store individual reports from the state into final report object?
+    Also need to do majority voting on the individual scores
+    """
+    original_text = ""
+    if (llm_response.content is not None) and (llm_response.content.parts is not None) and ( len(llm_response.content.parts) > 0):
+        # now check if part 1 is text
+        if (llm_response.content.parts[0].text is not None) and (len(llm_response.content.parts[0].text.strip()) > 0):
+            original_text = llm_response.content.parts[0].text.strip()
+
+    # nothing to modify
+    if len(original_text) == 0:
+        return None
+
+    try:
+        final_report = FinalReviewReport(**json.loads(original_text))
+        final_report.overall_score = -1.0
+
+        if (final_report.area_assessments is None) or (len(final_report.area_assessments) == 0):
+            # need to grab the individual assessments and fill them in here
+            print(f"No assessments found in final report, need to backfill from state")
+            # TODO look in callback_context.state for all items key with report_* and convert them into SpecializedAssessment one by one
+
+        # calculate score via majority voting; low means 1 out of 3 possible points, med means 2 out of 3, high means 3 out of 3
+        # we loop through all reports and add up all the scores and divide by the total possible points then that's the overall score
+        score_map = {Score.low: (1,3), Score.med: (2,3), Score.high: (3,3)}
+        score_part = 0
+        score_denominator = 0
+        for report in final_report.area_assessments:
+            p, d = score_map[report.score]
+            score_part += p
+            score_denominator += d
+
+        final_report.overall_score = score_part / score_denominator
+
+        updated_final_report = final_report.model_dump_json()
+        modified_parts = [copy.deepcopy(part) for part in llm_response.content.parts]
+        modified_parts[0].text = updated_final_report
+
+        new_response = LlmResponse(
+            content=types.Content(role="model", parts=modified_parts),
+            # copy other parts if necessary
+        )
+        return new_response
+    except Exception as e:
+        # swallow all exceptions and don't modify output
+        return None

@@ -171,10 +171,6 @@ class EvaluationHandler(BaseHandler):
         if self._router is None:
             self._router = APIRouter()
 
-        self._router.get("/sessions", response_model=SessionListResponse)(self.get_evaluation_sessions)
-        self._router.get("/session/{session_id}/download")(self.download_session)
-        self._router.get("/session/{session_id}/chat-info")(self.get_session_chat_info)
-        
         # New API design endpoints
         self._router.get("/session/{session_id}/report", response_model=StoredEvaluationReport)(self.get_latest_report_endpoint)
         self._router.post("/session/{session_id}/evaluate", response_model=EvaluationResponse)(self.create_new_evaluation)
@@ -187,125 +183,6 @@ class EvaluationHandler(BaseHandler):
     def prefix(self) -> str:
         return "/eval"
     
-    async def get_evaluation_sessions(
-        self, 
-        current_user: Annotated[User, Depends(require_user_or_higher)],
-        chat_logger: Annotated[ChatLogger, Depends(get_chat_logger)]
-    ) -> SessionListResponse:
-        """Get all sessions available for evaluation.
-        
-        Args:
-            current_user: Authenticated user
-            chat_logger: Chat logger instance
-            
-        Returns:
-            List of sessions ready for evaluation
-        """
-        try:
-            # Get all sessions for the current user from ChatLogger
-            sessions_data = await chat_logger.list_user_sessions(current_user.id)
-            
-            sessions = []
-            for session_data in sessions_data:
-                sessions.append(SessionSummary(
-                    success=True,
-                    session_id=session_data["session_id"],
-                    participant=session_data.get("participant_name", "Unknown"),
-                    scenario=session_data.get("scenario_name", "Unknown"),
-                    character=session_data.get("character_name", "Unknown"),
-                    message_count=session_data.get("message_count", 0),
-                    started=session_data.get("created_at", "Unknown"),
-                    storage_path=session_data.get("storage_path", "")
-                ))
-            
-            return SessionListResponse(
-                success=True,
-                sessions=sessions
-            )
-            
-        except Exception as e:
-            logger.error(f"Failed to get evaluation sessions: {e}")
-            raise HTTPException(status_code=500, detail="Failed to get sessions")
-    
-    async def download_session(
-        self,
-        session_id: str,
-        current_user: Annotated[User, Depends(require_user_or_higher)],
-        chat_logger: Annotated[ChatLogger, Depends(get_chat_logger)]
-    ):
-        """Download session transcript as text file.
-        
-        Args:
-            session_id: ID of the session to download
-            current_user: Authenticated user
-            chat_logger: Chat logger instance
-            
-        Returns:
-            Text file download response
-        """
-        try:
-            # Export session as text using ChatLogger
-            text_content = await chat_logger.export_session_text(
-                user_id=current_user.id,
-                session_id=session_id
-            )
-            
-            if text_content == "Session log file not found.":
-                raise HTTPException(status_code=404, detail="Session not found")
-            
-            # Return as downloadable text file
-            return PlainTextResponse(
-                content=text_content,
-                media_type="text/plain",
-                headers={
-                    "Content-Disposition": f"attachment; filename=transcript_{session_id}.txt"
-                }
-            )
-            
-        except HTTPException:
-            raise
-        except Exception as e:
-            logger.error(f"Failed to download session: {e}")
-            raise HTTPException(status_code=500, detail="Failed to download session")
-    
-    async def get_session_chat_info(
-        self,
-        session_id: str,
-        current_user: Annotated[User, Depends(require_user_or_higher)],
-        chat_logger: Annotated[ChatLogger, Depends(get_chat_logger)]
-    ):
-        """Get session data in ChatInfo format for evaluator agent.
-        
-        Args:
-            session_id: ID of the session to get
-            current_user: Authenticated user
-            chat_logger: Chat logger instance
-            
-        Returns:
-            Session data formatted as ChatInfo JSON
-        """
-        try:
-            # Export session as JSON format with complete data
-            chat_info_json = await chat_logger.export_session_text(
-                user_id=current_user.id,
-                session_id=session_id,
-                export_format="json"
-            )
-            
-            if chat_info_json == "Session log file not found.":
-                raise HTTPException(status_code=404, detail="Session not found")
-            
-            return {
-                "success": True,
-                "session_id": session_id,
-                "chat_info": chat_info_json
-            }
-            
-        except HTTPException:
-            raise
-        except Exception as e:
-            logger.error(f"Failed to get session chat info: {e}")
-            raise HTTPException(status_code=500, detail="Failed to get session data")
 
     async def evaluate_session(
         self,
