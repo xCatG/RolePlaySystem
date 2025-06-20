@@ -70,9 +70,14 @@ class ContentLoader:
             if c.get("language", "en") == language
         ]
         
+        filtered_scripts = [
+            s for s in data.get("scripts", [])
+            if s.get("language", "en") == language
+        ]
         return {
             "scenarios": filtered_scenarios,
-            "characters": filtered_characters
+            "characters": filtered_characters,
+            "scripts": filtered_scripts  # Add this
         }
     
     def load_data(self, language: str = "en") -> Dict:
@@ -124,7 +129,7 @@ class ContentLoader:
             Dictionary with normalized language codes
         """
         # Create a copy to avoid mutating the original data
-        normalized_data = {"scenarios": [], "characters": []}
+        normalized_data = {"scenarios": [], "characters": [], "scripts": []} # Add "scripts"
         
         # Normalize scenarios
         for scenario in data.get("scenarios", []):
@@ -142,6 +147,14 @@ class ContentLoader:
                 character_copy["language"] = "zh-TW"
             normalized_data["characters"].append(character_copy)
         
+        # Normalize scripts
+        for script_item in data.get("scripts", []): # Use a different variable name like script_item
+            script_copy = script_item.copy()
+            script_lang = script_copy.get("language", "en")
+            if script_lang == "zh_tw":
+                script_copy["language"] = "zh-TW"
+            normalized_data["scripts"].append(script_copy)
+
         return normalized_data
     
     def _validate_languages(self, data: Dict) -> None:
@@ -165,6 +178,15 @@ class ContentLoader:
             if character_lang not in self.supported_languages:
                 raise ValueError(
                     f"Character '{character.get('id', 'unknown')}' has unsupported language '{character_lang}'. "
+                    f"Supported languages: {self.supported_languages}"
+                )
+
+        # Validate scripts
+        for script_item in data.get("scripts", []): # Use a different variable name like script_item
+            script_lang = script_item.get("language", "en")
+            if script_lang not in self.supported_languages:
+                raise ValueError(
+                    f"Script '{script_item.get('id', 'unknown')}' has unsupported language '{script_lang}'. "
                     f"Supported languages: {self.supported_languages}"
                 )
     
@@ -253,6 +275,29 @@ class ContentLoader:
         """
         return [c for c in self.get_characters() if c.get("language", "en") == language]
     
+    def get_scripts(self, language: str = "en") -> List[Dict]:
+        """Get all available scripts for a specific language.
+
+        Args:
+            language: Language code (defaults to "en")
+
+        Returns:
+            List of script dictionaries
+        """
+        return self.load_data(language).get("scripts", []) # Add .get("scripts", [])
+
+    def get_script_by_id(self, script_id: str, language: str = "en") -> Optional[Dict]:
+        """Get a specific script by ID for a specific language.
+
+        Args:
+            script_id: The script ID to look up
+            language: Language code (defaults to "en")
+
+        Returns:
+            Script dictionary or None if not found
+        """
+        return next((s for s in self.get_scripts(language) if s["id"] == script_id), None)
+
     def get_scenario_characters_by_language(self, scenario_id: str, language: str = "en") -> List[Dict]:
         """Get all characters compatible with a scenario in a specific language.
         

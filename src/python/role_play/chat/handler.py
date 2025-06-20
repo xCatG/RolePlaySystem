@@ -5,9 +5,12 @@ from fastapi.responses import PlainTextResponse
 from google.adk.runners import Runner
 from google.adk.agents import Agent
 from google.adk.sessions import InMemorySessionService
-from google.genai.types import Content, Part
+# Attempt to import Content, Part from the proto library path
+from google.ai.generativelanguage.v1beta.types import Content, Part
+import google.generativeai.types as genai_types # Keep for other types if needed
 import logging
 import os
+import json # Make sure json is imported
 from pathlib import Path
 
 from ..dev_agents.roleplay_agent.agent import RolePlayAgent
@@ -143,9 +146,14 @@ class ChatHandler(BaseHandler):
 
     async def _generate_character_response(self, adk_session: Any, message: str, user_id: str,
                                           session_id: str, character_dict: Dict, scenario_dict: Dict,
-                                          adk_session_service: InMemorySessionService) -> str:
+                                          adk_session_service: InMemorySessionService,
+                                          content_loader: ContentLoader) -> str: # Added content_loader
         """Generate character response using ADK Runner."""
-        agent = self._create_roleplay_agent(character_dict, scenario_dict)
+        agent = self._create_roleplay_agent(
+            character_dict, scenario_dict,
+            adk_session_state=adk_session.state, # Pass adk_session.state
+            content_loader=content_loader # Pass content_loader
+        )
         runner = Runner(
             app_name="roleplay_chat", agent=agent, session_service=adk_session_service
         )
@@ -153,7 +161,7 @@ class ChatHandler(BaseHandler):
         response_text = ""
         try:
             # Create Content object with the user's message
-            content = Content(role="user", parts=[Part(text=message)])
+            content = Content(role="user", parts=[Part(text=message)]) # Use directly imported Content, Part
             async for event in runner.run_async(
                 new_message=content, session_id=session_id, user_id=user_id
             ):
@@ -176,7 +184,7 @@ class ChatHandler(BaseHandler):
         
         return response_text
 
-    def _create_roleplay_agent(self, character: Dict, scenario: Dict) -> Agent:
+    def _create_roleplay_agent(self, character: Dict, scenario: Dict, adk_session_state: Optional[Dict] = None, content_loader: Optional[ContentLoader] = None) -> Agent:
         """Helper to create an ADK agent configured for a specific character and scenario."""
         # Get language information
         character_language = character.get("language", "en")
@@ -198,6 +206,17 @@ class ChatHandler(BaseHandler):
 -   **IMPORTANT: Respond in {language_name} language as specified by your character and scenario.**
 -   Engage with the user's messages within the roleplay context.
 """
+        if adk_session_state and adk_session_state.get("script_id") and content_loader:
+            script_id = adk_session_state["script_id"]
+            language = adk_session_state.get("language", "en")
+            script_data = content_loader.get_script_by_id(script_id, language) # content_loader needs to be available here
+            if script_data and "script" in script_data:
+                script_json_dump = json.dumps(script_data["script"], indent=2)
+                system_prompt += f"\n\n**SCRIPT GUIDANCE MODE**\n"
+                system_prompt += "You are following a pre-written script. When you reach a turn with `{\"action\": \"stop\"}` in the script, you MUST respond with the special sequence \"STOP_SEQUENCE\" and nothing else.\n"
+                system_prompt += "\nHere is the script:\n"
+                system_prompt += script_json_dump
+
         agent = RolePlayAgent(
             name=f"roleplay_{character.get('id', 'unknown')}_{scenario.get('id', 'unknown')}",
             model=DEFAULT_MODEL,
@@ -302,6 +321,15 @@ class ChatHandler(BaseHandler):
                 "session_creation_time_iso": utc_now_isoformat()
             }
 
+            if request.script_id:
+                script = content_loader.get_script_by_id(request.script_id, user_language)
+                if not script:
+                    raise HTTPException(status_code=400, detail=f"Invalid script ID: {request.script_id}")
+                initial_adk_state["script_id"] = request.script_id
+                initial_adk_state["script_progress"] = 0
+                # Optional: store script goal if needed for SessionInfo later
+                # initial_adk_state["script_goal"] = script.get("goal")
+
             await adk_session_service.create_session(
                 app_name="roleplay_chat",
                 user_id=current_user.id,
@@ -396,17 +424,94 @@ class ChatHandler(BaseHandler):
             
             # Load session content
             character_dict, scenario_dict = await self._load_session_content(adk_session, content_loader)
-            
+
+            # --- Script Handling Logic ---
+            if adk_session.state.get("script_id"):
+                script_id = adk_session.state["script_id"]
+                script_progress = adk_session.state.get("script_progress", 0)
+                language = adk_session.state.get("language", "en")
+                script_data = content_loader.get_script_by_id(script_id, language)
+
+                if script_data and "script" in script_data and script_progress < len(script_data["script"]):
+                    current_line = script_data["script"][script_progress]
+                    if current_line.get("speaker") == "participant":
+                        # If it's participant's turn as per script, we just processed their message.
+                        # We might want to validate if request.message matches current_line.get("line")
+                        # For now, we assume participant is following the script or it's free-form input.
+                        # Increment progress because the participant has "spoken".
+                        adk_session.state["script_progress"] = script_progress + 1
+                        script_progress +=1 # update local copy for next check
+
+                    # Check if next line is LLM's and if it's a stop action
+                    if script_progress < len(script_data["script"]):
+                        next_line = script_data["script"][script_progress]
+                        if next_line.get("speaker") == "llm" and next_line.get("action") == "stop":
+                            # The agent's prompt will instruct it to say "STOP_SEQUENCE"
+                            # We will check for this response *after* generation
+                            pass # Let the agent generate the response
+                    elif script_progress >= len(script_data["script"]):
+                        # Script ended after participant's turn
+                        await self.end_session(session_id, current_user, chat_logger, adk_session_service, reason="Script completed")
+                        return ChatMessageResponse(success=True, response="Session ended: Script completed.", session_id=session_id, message_count=adk_session.state["message_count"])
+
             # Generate character response
             response_text = await self._generate_character_response(
-                adk_session, request.message, current_user.id, session_id, 
-                character_dict, scenario_dict, adk_session_service
+                adk_session, request.message, current_user.id, session_id,
+                character_dict, scenario_dict, adk_session_service, content_loader # Pass content_loader
             )
-            
+
+            # --- STOP_SEQUENCE Handling ---
+            if response_text == "STOP_SEQUENCE":
+                await self.end_session(session_id, current_user, chat_logger, adk_session_service, reason="Script ended by LLM stop action")
+                # Log the "STOP_SEQUENCE" as the character's final message before ending.
+                # Use a more user-friendly message for the actual response.
+                final_char_message = "Okay, that's all for this part of our conversation." # Or get from script if available
+
+                # Check if the script had a final character line associated with the stop action.
+                # This part assumes the 'stop' action might be on a character line.
+                if adk_session.state.get("script_id"):
+                    script_id = adk_session.state["script_id"]
+                    script_progress = adk_session.state.get("script_progress", 0) # This progress is before incrementing for this turn
+                    language = adk_session.state.get("language", "en")
+                    script_data = content_loader.get_script_by_id(script_id, language)
+                    if script_data and "script" in script_data and script_progress < len(script_data["script"]):
+                        current_script_line_for_llm = script_data["script"][script_progress]
+                        if current_script_line_for_llm.get("speaker") == "character" and current_script_line_for_llm.get("line"):
+                             final_char_message = current_script_line_for_llm.get("line")
+                        elif current_script_line_for_llm.get("speaker") == "llm" and current_script_line_for_llm.get("action") == "stop":
+                            # If the stop was on an LLM action, search for previous character line if any.
+                            if script_progress > 0 and script_data["script"][script_progress-1].get("speaker") == "character":
+                                final_char_message = script_data["script"][script_progress-1].get("line","Okay, that's all for this part of our conversation.")
+
+                await self._log_character_message(
+                    adk_session, final_char_message, current_user.id, session_id, chat_logger
+                )
+                return ChatMessageResponse(success=True, response=final_char_message, session_id=session_id, message_count=adk_session.state["message_count"])
+
             # Log character response
             await self._log_character_message(
                 adk_session, response_text, current_user.id, session_id, chat_logger
             )
+
+            # Increment script_progress if it's a scripted session and not ended
+            if adk_session.state.get("script_id"):
+                current_progress = adk_session.state.get("script_progress", 0)
+                # Only increment if the character has just spoken.
+                # If participant spoke, it was incremented above.
+                # This assumes a strict turn-based script: P -> C -> P -> C ...
+                # If script_data exists and current_progress is valid index and it was character's turn
+                script_data = content_loader.get_script_by_id(adk_session.state["script_id"], adk_session.state.get("language","en"))
+                if script_data and "script" in script_data and \
+                   current_progress < len(script_data["script"]) and \
+                   script_data["script"][current_progress].get("speaker") in ["character", "llm"]: # llm action means character turn
+                    adk_session.state["script_progress"] = current_progress + 1
+
+                # Check if script ended after character's turn
+                if adk_session.state["script_progress"] >= len(script_data["script"]):
+                    await self.end_session(session_id, current_user, chat_logger, adk_session_service, reason="Script completed")
+                    # The response_text already contains the character's last scripted line (or generated one if script was malformed)
+                    # No need to return a different message here, the session will be marked as ended.
+
 
             return ChatMessageResponse(
                 success=True, response=response_text, session_id=session_id,
@@ -424,6 +529,7 @@ class ChatHandler(BaseHandler):
         current_user: Annotated[User, Depends(require_user_or_higher)],
         chat_logger: Annotated[ChatLogger, Depends(get_chat_logger)],
         adk_session_service: Annotated[InMemorySessionService, Depends(get_adk_session_service)],
+        reason: Optional[str] = None  # Add this
     ):
         """Ends a chat session, logging it and removing from ADK InMemory service."""
         try:
@@ -453,7 +559,7 @@ class ChatHandler(BaseHandler):
                 session_id=session_id,
                 total_messages=message_count,
                 duration_seconds=duration_seconds,
-                reason="User ended session"
+                reason=reason or "User ended session" # Modify this line
             )
 
             await adk_session_service.delete_session(

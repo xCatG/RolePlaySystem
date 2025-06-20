@@ -8,6 +8,7 @@ class CreateSessionRequest(BaseModel):
     scenario_id: str
     character_id: str
     participant_name: str
+    script_id: Optional[str] = Field(default=None) # Add this line
 
 class CreateSessionResponse(BaseResponse):
     """Response after creating a chat session."""
@@ -39,6 +40,8 @@ class SessionInfo(BaseModel):
     goal: Optional[str] = Field(default=None, description="Goal of this session, could be written in local language.")
     ended_at: Optional[str] = None
     ended_reason: Optional[str] = None
+    script_id: Optional[str] = None # Add this line
+    script_progress: int = 0 # Add this line
 
 class SessionListResponse(BaseResponse):
     """Response containing list of sessions."""
