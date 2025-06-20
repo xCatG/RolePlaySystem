@@ -65,5 +65,35 @@
       "description": "資深軟體工程師",
       "system_prompt": "你是黃工程師，一位資深軟體工程師負責技術面試。你會問具體的技術問題，測試問題解決能力和程式設計知識。要專業且注重細節。用繁體中文回應。"
     }
+  ],
+  "scripts": [
+    {
+      "id": "medical_acute_frustration_simple_zh_tw",
+      "scenario_id": "medical_interview_zh_tw",
+      "character_id": "patient_acute_zh_tw",
+      "language": "zh-TW",
+      "goal": "練習處理淡化疼痛程度的病患",
+      "script": [
+        { "speaker": "character", "line": "我沒事，醫生。只是有點不舒服而已。" },
+        { "speaker": "participant", "line": "請描述一下您的疼痛。" },
+        { "speaker": "character", "line": "（嘆氣）好吧，其實是刺痛感。大概有6到7分的痛。" },
+        { "speaker": "llm", "action": "stop" }
+      ]
+    },
+    {
+      "id": "customer_angry_refund_basic_zh_tw",
+      "scenario_id": "customer_service_zh_tw",
+      "character_id": "angry_customer_zh_tw",
+      "language": "zh-TW",
+      "goal": "練習緩解憤怒客戶尋求退款的情況",
+      "script": [
+        { "speaker": "character", "line": "這太離譜了！我的訂單已經遲了兩個禮拜，我現在就要退款！" },
+        { "speaker": "participant", "line": "我了解您的不滿。讓我為您查詢一下。" },
+        { "speaker": "character", "line": "你最好不只是查詢而已。我要立即全額退款！" },
+        { "speaker": "participant", "line": "我現在就可以為您處理退款。" },
+        { "speaker": "character", "line": "終於有人願意幫忙了。謝謝你。" },
+        { "speaker": "llm", "action": "stop" }
+      ]
+    }
   ]
 }

@@ -145,7 +145,8 @@ class ChatHandler(BaseHandler):
                                           session_id: str, character_dict: Dict, scenario_dict: Dict,
                                           adk_session_service: InMemorySessionService) -> str:
         """Generate character response using ADK Runner."""
-        agent = self._create_roleplay_agent(character_dict, scenario_dict)
+        script_content = adk_session.state.get("script_content")
+        agent = self._create_roleplay_agent(character_dict, scenario_dict, script_content)
         runner = Runner(
             app_name="roleplay_chat", agent=agent, session_service=adk_session_service
         )
@@ -176,7 +177,7 @@ class ChatHandler(BaseHandler):
         
         return response_text
 
-    def _create_roleplay_agent(self, character: Dict, scenario: Dict) -> Agent:
+    def _create_roleplay_agent(self, character: Dict, scenario: Dict, script_content: Optional[List[Dict]] = None) -> Agent:
         """Helper to create an ADK agent configured for a specific character and scenario."""
         # Get language information
         character_language = character.get("language", "en")
@@ -198,6 +199,22 @@ class ChatHandler(BaseHandler):
 -   **IMPORTANT: Respond in {language_name} language as specified by your character and scenario.**
 -   Engage with the user's messages within the roleplay context.
 """
+        
+        # Add script guidance if provided
+        if script_content:
+            import json
+            script_prompt = """
+
+**SCRIPT GUIDANCE MODE**
+You are following a pre-written script. When you reach a turn with {"action": "stop"}, 
+you MUST respond with the special sequence "STOP_SEQUENCE" and nothing else.
+
+Here is the script:
+""" + json.dumps(script_content, indent=2) + """
+
+Follow this script closely while maintaining natural conversation flow.
+"""
+            system_prompt = system_prompt + script_prompt
         agent = RolePlayAgent(
             name=f"roleplay_{character.get('id', 'unknown')}_{scenario.get('id', 'unknown')}",
             model=DEFAULT_MODEL,
@@ -277,6 +294,18 @@ class ChatHandler(BaseHandler):
 
             if request.character_id not in scenario.get("compatible_characters", []):
                 raise HTTPException(status_code=400, detail="Character not compatible with scenario")
+            
+            # Validate script if provided
+            script_content = None
+            script_goal = None
+            if request.script_id:
+                script = content_loader.get_script_by_id(request.script_id, user_language)
+                if not script:
+                    raise HTTPException(status_code=400, detail=f"Invalid script ID: {request.script_id}")
+                if script["scenario_id"] != request.scenario_id or script["character_id"] != request.character_id:
+                    raise HTTPException(status_code=400, detail="Script not compatible with scenario/character")
+                script_content = script["script"]
+                script_goal = script.get("goal")
 
             app_session_id, storage_path = await chat_logger.start_session(
                 user_id=current_user.id,
@@ -299,7 +328,11 @@ class ChatHandler(BaseHandler):
                 "character_name": character["name"],
                 "language": user_language,
                 "message_count": 0,
-                "session_creation_time_iso": utc_now_isoformat()
+                "session_creation_time_iso": utc_now_isoformat(),
+                "script_id": request.script_id,
+                "script_progress": 0,
+                "script_content": script_content,
+                "script_goal": script_goal
             }
 
             await adk_session_service.create_session(
@@ -346,10 +379,19 @@ class ChatHandler(BaseHandler):
                 # If session is not active, try to get end info
                 ended_at = None
                 ended_reason = None
+                script_id = None
+                script_progress = 0
+                goal = None
+                
                 if not is_active:
                     end_info = await chat_logger.get_session_end_info(current_user.id, session_id)
                     ended_at = end_info.get("ended_at")
                     ended_reason = end_info.get("reason")
+                else:
+                    # Get script info from active session
+                    script_id = adk_session.state.get("script_id")
+                    script_progress = adk_session.state.get("script_progress", 0)
+                    goal = adk_session.state.get("script_goal")
                 
                 session_info = SessionInfo(
                     session_id=session_id,
@@ -361,7 +403,10 @@ class ChatHandler(BaseHandler):
                     jsonl_filename=s_data.get("storage_path", ""),
                     is_active=is_active,
                     ended_at=ended_at,
-                    ended_reason=ended_reason
+                    ended_reason=ended_reason,
+                    script_id=script_id,
+                    script_progress=script_progress,
+                    goal=goal
                 )
                 session_infos.append(session_info)
             
@@ -407,6 +452,15 @@ class ChatHandler(BaseHandler):
             await self._log_character_message(
                 adk_session, response_text, current_user.id, session_id, chat_logger
             )
+            
+            # Check for STOP_SEQUENCE if this is a scripted session
+            if adk_session.state.get("script_id") and "STOP_SEQUENCE" in response_text:
+                # End the session automatically
+                await self.end_session(session_id, current_user, chat_logger, adk_session_service)
+            else:
+                # Update script progress if applicable
+                if adk_session.state.get("script_id"):
+                    adk_session.state["script_progress"] += 1
 
             return ChatMessageResponse(
                 success=True, response=response_text, session_id=session_id,

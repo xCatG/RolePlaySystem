@@ -44,5 +44,35 @@
       "description": "Elderly customer needing help",
       "system_prompt": "You are Betty, a 70-year-old customer confused about a product. Ask lots of questions and need step-by-step explanations. Be polite but easily overwhelmed."
     }
+  ],
+  "scripts": [
+    {
+      "id": "medical_acute_frustration_simple",
+      "scenario_id": "medical_interview",
+      "character_id": "patient_acute",
+      "language": "en",
+      "goal": "Practice handling a patient who is downplaying their pain.",
+      "script": [
+        { "speaker": "character", "line": "I'm fine, doc. Just a little tweak." },
+        { "speaker": "participant", "line": "Describe the pain for me." },
+        { "speaker": "character", "line": "(Sighs) Okay, it's more of a sharp pain. A 6 or 7 maybe." },
+        { "speaker": "llm", "action": "stop" }
+      ]
+    },
+    {
+      "id": "customer_angry_refund_basic",
+      "scenario_id": "customer_service",
+      "character_id": "angry_customer",
+      "language": "en",
+      "goal": "Practice de-escalating an angry customer seeking a refund.",
+      "script": [
+        { "speaker": "character", "line": "This is ridiculous! My order is 2 weeks late and I want my money back NOW!" },
+        { "speaker": "participant", "line": "I understand your frustration. Let me look into this for you." },
+        { "speaker": "character", "line": "You better do more than look into it. I want a full refund immediately!" },
+        { "speaker": "participant", "line": "I can process that refund for you right away." },
+        { "speaker": "character", "line": "Finally! Someone who actually helps. Thank you." },
+        { "speaker": "llm", "action": "stop" }
+      ]
+    }
   ]
 }
