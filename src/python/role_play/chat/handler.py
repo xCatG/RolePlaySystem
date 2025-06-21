@@ -9,6 +9,7 @@ from google.genai.types import Content, Part
 import logging
 import os
 from pathlib import Path
+import json
 
 from ..dev_agents.roleplay_agent.agent import RolePlayAgent
 from ..server.base_handler import BaseHandler
@@ -141,11 +142,30 @@ class ChatHandler(BaseHandler):
             raise HTTPException(status_code=500, detail="Failed to load session character/scenario configuration.")
         return character_dict, scenario_dict
 
+    def _get_session_info(self, s_data: Dict, is_active: bool, ended_at: Optional[str], ended_reason: Optional[str]) -> SessionInfo:
+        """Build SessionInfo from session summary and status."""
+        return SessionInfo(
+            session_id=s_data["session_id"],
+            scenario_name=s_data.get("scenario_name", "Unknown"),
+            character_name=s_data.get("character_name", "Unknown"),
+            participant_name=s_data.get("participant_name", "Unknown"),
+            created_at=s_data.get("created_at", ""),
+            message_count=s_data.get("message_count", 0),
+            jsonl_filename=s_data.get("storage_path", ""),
+            is_active=is_active,
+            ended_at=ended_at,
+            ended_reason=ended_reason,
+            goal=s_data.get("goal"),
+            script_id=s_data.get("script_id"),
+            script_progress=s_data.get("script_progress", 0),
+        )
+
     async def _generate_character_response(self, adk_session: Any, message: str, user_id: str,
                                           session_id: str, character_dict: Dict, scenario_dict: Dict,
                                           adk_session_service: InMemorySessionService) -> str:
         """Generate character response using ADK Runner."""
-        agent = self._create_roleplay_agent(character_dict, scenario_dict)
+        script_content = adk_session.state.get("script_content")
+        agent = self._create_roleplay_agent(character_dict, scenario_dict, script_content)
         runner = Runner(
             app_name="roleplay_chat", agent=agent, session_service=adk_session_service
         )
@@ -176,7 +196,7 @@ class ChatHandler(BaseHandler):
         
         return response_text
 
-    def _create_roleplay_agent(self, character: Dict, scenario: Dict) -> Agent:
+    def _create_roleplay_agent(self, character: Dict, scenario: Dict, script_content: Optional[List[Dict[str, str]]] = None) -> Agent:
         """Helper to create an ADK agent configured for a specific character and scenario."""
         # Get language information
         character_language = character.get("language", "en")
@@ -198,6 +218,15 @@ class ChatHandler(BaseHandler):
 -   **IMPORTANT: Respond in {language_name} language as specified by your character and scenario.**
 -   Engage with the user's messages within the roleplay context.
 """
+
+        if script_content:
+            script_prompt = """SCRIPT GUIDANCE MODE
+You are following a pre-written script. When you reach a turn with {\"action\": \"stop\"},
+you MUST respond with the special sequence \"STOP_SEQUENCE\" and nothing else.
+
+Here is the script:
+{}""".format(json.dumps(script_content, indent=2))
+            system_prompt = script_prompt + "\n\n" + system_prompt
         agent = RolePlayAgent(
             name=f"roleplay_{character.get('id', 'unknown')}_{scenario.get('id', 'unknown')}",
             model=DEFAULT_MODEL,
@@ -278,6 +307,17 @@ class ChatHandler(BaseHandler):
             if request.character_id not in scenario.get("compatible_characters", []):
                 raise HTTPException(status_code=400, detail="Character not compatible with scenario")
 
+            script_content = None
+            script = None
+            if request.script_id:
+                script = content_loader.get_script_by_id(request.script_id, user_language)
+                if not script:
+                    raise HTTPException(status_code=400, detail=f"Invalid script ID: {request.script_id}")
+                if script.get("scenario_id") != request.scenario_id or script.get("character_id") != request.character_id:
+                    raise HTTPException(status_code=400, detail="Script not compatible with scenario/character")
+                script_content = script.get("script")
+
+            initial_settings = {"script_id": request.script_id, "script_progress": 0} if request.script_id else None
             app_session_id, storage_path = await chat_logger.start_session(
                 user_id=current_user.id,
                 participant_name=request.participant_name,
@@ -285,7 +325,9 @@ class ChatHandler(BaseHandler):
                 scenario_name=scenario["name"],
                 character_id=request.character_id,
                 character_name=character["name"],
-                session_language=user_language
+                goal=script.get("goal") if request.script_id else None,
+                session_language=user_language,
+                initial_settings=initial_settings
             )
 
             initial_adk_state = {
@@ -299,7 +341,10 @@ class ChatHandler(BaseHandler):
                 "character_name": character["name"],
                 "language": user_language,
                 "message_count": 0,
-                "session_creation_time_iso": utc_now_isoformat()
+                "session_creation_time_iso": utc_now_isoformat(),
+                "script_id": request.script_id,
+                "script_progress": 0,
+                "script_content": script_content
             }
 
             await adk_session_service.create_session(
@@ -351,19 +396,9 @@ class ChatHandler(BaseHandler):
                     ended_at = end_info.get("ended_at")
                     ended_reason = end_info.get("reason")
                 
-                session_info = SessionInfo(
-                    session_id=session_id,
-                    scenario_name=s_data.get("scenario_name", "Unknown"),
-                    character_name=s_data.get("character_name", "Unknown"),
-                    participant_name=s_data.get("participant_name", "Unknown"),
-                    created_at=s_data.get("created_at", ""),
-                    message_count=s_data.get("message_count", 0),
-                    jsonl_filename=s_data.get("storage_path", ""),
-                    is_active=is_active,
-                    ended_at=ended_at,
-                    ended_reason=ended_reason
+                session_infos.append(
+                    self._get_session_info(s_data, is_active, ended_at, ended_reason)
                 )
-                session_infos.append(session_info)
             
             return SessionListResponse(success=True, sessions=session_infos)
         except Exception as e:
@@ -407,6 +442,11 @@ class ChatHandler(BaseHandler):
             await self._log_character_message(
                 adk_session, response_text, current_user.id, session_id, chat_logger
             )
+
+            if adk_session.state.get("script_content"):
+                adk_session.state["script_progress"] = adk_session.state.get("script_progress", 0) + 1
+                if "STOP_SEQUENCE" in response_text:
+                    await self.end_session(session_id, current_user, chat_logger, adk_session_service)
 
             return ChatMessageResponse(
                 success=True, response=response_text, session_id=session_id,
@@ -453,7 +493,11 @@ class ChatHandler(BaseHandler):
                 session_id=session_id,
                 total_messages=message_count,
                 duration_seconds=duration_seconds,
-                reason="User ended session"
+                reason="User ended session",
+                final_state={
+                    "script_progress": adk_session.state.get("script_progress", 0),
+                    "script_id": adk_session.state.get("script_id")
+                }
             )
 
             await adk_session_service.delete_session(

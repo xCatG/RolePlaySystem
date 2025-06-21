@@ -52,14 +52,14 @@ class ContentLoader:
             raise FileNotFoundError(f"Could not load resource '{resource_name}': {e}")
     
     def _filter_by_language(self, data: Dict, language: str) -> Dict:
-        """Filter scenarios and characters by language from combined data.
+        """Filter scenarios, characters and scripts by language from combined data.
         
         Args:
             data: Dictionary containing scenarios and characters
             language: Language code to filter by
             
         Returns:
-            Dictionary with filtered scenarios and characters
+            Dictionary with filtered scenarios, characters and scripts
         """
         filtered_scenarios = [
             s for s in data.get("scenarios", []) 
@@ -70,9 +70,15 @@ class ContentLoader:
             if c.get("language", "en") == language
         ]
         
+        filtered_scripts = [
+            s for s in data.get("scripts", [])
+            if s.get("language", "en") == language
+        ]
+
         return {
             "scenarios": filtered_scenarios,
-            "characters": filtered_characters
+            "characters": filtered_characters,
+            "scripts": filtered_scripts,
         }
     
     def load_data(self, language: str = "en") -> Dict:
@@ -82,7 +88,7 @@ class ContentLoader:
             language: Language code (defaults to "en")
             
         Returns:
-            Dictionary containing scenarios and characters for the language
+            Dictionary containing scenarios, characters and scripts for the language
             
         Raises:
             FileNotFoundError: If resource doesn't exist
@@ -124,7 +130,7 @@ class ContentLoader:
             Dictionary with normalized language codes
         """
         # Create a copy to avoid mutating the original data
-        normalized_data = {"scenarios": [], "characters": []}
+        normalized_data = {"scenarios": [], "characters": [], "scripts": []}
         
         # Normalize scenarios
         for scenario in data.get("scenarios", []):
@@ -141,6 +147,14 @@ class ContentLoader:
             if character_lang == "zh_tw":
                 character_copy["language"] = "zh-TW"
             normalized_data["characters"].append(character_copy)
+
+        # Normalize scripts
+        for script in data.get("scripts", []):
+            script_copy = script.copy()
+            script_lang = script_copy.get("language", "en")
+            if script_lang == "zh_tw":
+                script_copy["language"] = "zh-TW"
+            normalized_data["scripts"].append(script_copy)
         
         return normalized_data
     
@@ -165,6 +179,15 @@ class ContentLoader:
             if character_lang not in self.supported_languages:
                 raise ValueError(
                     f"Character '{character.get('id', 'unknown')}' has unsupported language '{character_lang}'. "
+                    f"Supported languages: {self.supported_languages}"
+                )
+
+        # Validate scripts
+        for script in data.get("scripts", []):
+            script_lang = script.get("language", "en")
+            if script_lang not in self.supported_languages:
+                raise ValueError(
+                    f"Script '{script.get('id', 'unknown')}' has unsupported language '{script_lang}'. "
                     f"Supported languages: {self.supported_languages}"
                 )
     
@@ -230,6 +253,14 @@ class ContentLoader:
         
         compatible_chars = scenario.get("compatible_characters", [])
         return [c for c in self.get_characters(language) if c["id"] in compatible_chars]
+
+    def get_scripts(self, language: str = "en") -> List[Dict]:
+        """Get all available scripts for a specific language."""
+        return self.load_data(language).get("scripts", [])
+
+    def get_script_by_id(self, script_id: str, language: str = "en") -> Optional[Dict]:
+        """Get a specific script by ID for a specific language."""
+        return next((s for s in self.get_scripts(language) if s["id"] == script_id), None)
     
     def get_scenarios_by_language(self, language: str = "en") -> List[Dict]:
         """Get all scenarios for a specific language.

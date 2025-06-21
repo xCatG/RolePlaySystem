@@ -232,7 +232,10 @@ class ChatLogger:
                             "character_name": start_event.get("character_name"),
                             "created_at": start_event.get("timestamp"),
                             "storage_path": log_key,
-                            "message_count": message_count
+                            "message_count": message_count,
+                            "goal": start_event.get("goal"),
+                            "script_id": start_event.get("initial_settings", {}).get("script_id"),
+                            "script_progress": start_event.get("initial_settings", {}).get("script_progress", 0)
                         })
             except Exception as e:
                 logger.error(f"Error reading session summary from {log_key}: {e}")

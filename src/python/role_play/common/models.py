@@ -2,7 +2,7 @@
 
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, List
 from pydantic import BaseModel, Field
 
 
@@ -130,3 +130,15 @@ class Environment(str, Enum):
     DEV = "dev"
     BETA = "beta"
     PROD = "prod"
+
+
+class Script(BaseModel):
+    """Pre-written script for guided roleplay sessions."""
+
+    id: str
+    scenario_id: str
+    character_id: str
+    language: str = Field(default="en")
+    goal: str
+    script: List[Dict[str, str]]  # {"speaker": str, "line": str} or {"speaker": "llm", "action": "stop"}
+

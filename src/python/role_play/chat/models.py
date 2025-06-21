@@ -8,6 +8,7 @@ class CreateSessionRequest(BaseModel):
     scenario_id: str
     character_id: str
     participant_name: str
+    script_id: Optional[str] = Field(default=None)
 
 class CreateSessionResponse(BaseResponse):
     """Response after creating a chat session."""
@@ -37,6 +38,8 @@ class SessionInfo(BaseModel):
     jsonl_filename: str
     is_active: bool = True  # Whether session exists in InMemorySessionService
     goal: Optional[str] = Field(default=None, description="Goal of this session, could be written in local language.")
+    script_id: Optional[str] = None
+    script_progress: int = 0
     ended_at: Optional[str] = None
     ended_reason: Optional[str] = None
 
