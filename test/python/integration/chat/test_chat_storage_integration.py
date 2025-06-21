@@ -448,3 +448,43 @@ class TestChatLoggerPerformance:
             # Export should complete in reasonable time (< 10 seconds)
             assert export_duration < 10.0
             assert "Performance test message 99" in transcript
+
+    @pytest.mark.asyncio
+    async def test_script_logging(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config = FileStorageConfig(type="file", base_dir=temp_dir)
+            storage = FileStorage(config)
+            chat_logger = ChatLogger(storage)
+
+            session_id, path = await chat_logger.start_session(
+                user_id="user_script",
+                participant_name="Tester",
+                scenario_id="medical_interview",
+                scenario_name="Medical",
+                character_id="patient_acute",
+                character_name="John",
+                goal="Follow script",
+                initial_settings={"script_id": "script1", "script_progress": 0}
+            )
+
+            await chat_logger.log_message(
+                user_id="user_script",
+                session_id=session_id,
+                role="character",
+                content="Hi",
+                message_number=1
+            )
+
+            await chat_logger.end_session(
+                user_id="user_script",
+                session_id=session_id,
+                total_messages=1,
+                duration_seconds=1.0,
+                reason="done",
+                final_state={"script_progress": 1}
+            )
+
+            sessions = await chat_logger.list_user_sessions("user_script")
+            assert sessions[0]["script_id"] == "script1"
+            assert sessions[0]["script_progress"] == 0
+
