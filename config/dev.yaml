@@ -67,3 +67,7 @@ supported_languages:
   - "en"
   - "zh-TW"
   - "ja"
+
+# Resource configuration
+resources:
+  base_prefix: "resources/"

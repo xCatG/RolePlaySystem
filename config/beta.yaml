@@ -44,6 +44,10 @@ enabled_handlers:
   evaluation: "role_play.evaluation.handler.EvaluationHandler"
   # scripter: "role_play.scripter.handler.ScripterHandler"  # Enable when ready
 
+# Resource configuration
+resources:
+  base_prefix: "resources/"
+
 # Logging configuration
 logging:
   level: "${LOG_LEVEL:INFO}"

@@ -283,7 +283,15 @@ run-local-docker: build-docker
 		-e GIT_VERSION=$(GIT_VERSION) \
 		-e SERVICE_NAME=$(SERVICE_NAME) \
 		-e PORT=8080 \
-		$$IMAGE_TO_RUN
+		$IMAGE_TO_RUN
+
+# --- Local Development ---
+.PHONY: deploy-dev-resources
+deploy-dev-resources:
+	@echo "Deploying development resources to ./data/resources..."
+	@mkdir -p ./data/resources/scenarios
+	@cp src/resources/scenarios/*.json ./data/resources/scenarios/
+	@echo "Development resources deployed."
 
 # --- Release Management ---
 .PHONY: tag-git-release
