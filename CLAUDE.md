@@ -160,6 +160,10 @@ make test-specific TEST_PATH="test/python/unit/chat/test_chat_logger.py"
   - `make deploy-with-resources` - Deploy app and upload resources together
 - [x] **GCS Testing**: Successfully tested resource loading from beta GCS bucket (`rps-app-data-beta`)
 - [x] **Dev Setup**: Created `make dev-setup` to handle storage path configuration (resolves ~/data/rps_dev vs ./data issue)
+- [x] **Storage Monitoring Integration**: Integrated StorageMonitor into storage backends for I/O and lock operation metrics
+- [x] **Script Refactoring**: Refactored validation and metadata scripts to be object-oriented with asyncio support
+- [x] **Resource Loading Fix**: Fixed GCS path issue in Makefile, hardened path handling with forward slashes
+- [x] **Integration Testing**: Replaced test script with proper pytest integration test for resource loading
 
 ### Pending Development
 - [ ] **Resource Architecture for Script Creator**:
