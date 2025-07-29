@@ -114,3 +114,37 @@ async def test_get_character_by_id_not_found(mock_storage):
     character = await loader.get_character_by_id("c99", language="en")
 
     assert character is None
+
+
+# TODO: Add missing test cases for comprehensive coverage:
+
+# TODO: Error Handling Tests
+# - test_storage_read_failure: Mock storage.read() to raise exception
+# - test_malformed_json: Mock storage.read() to return invalid JSON
+# - test_storage_list_keys_failure: Mock storage.list_keys() to raise exception
+# - test_missing_resource_key: Return JSON without expected key (e.g., missing "scenarios")
+
+# TODO: Edge Cases
+# - test_empty_resource_list: Test with {"scenarios": []}
+# - test_no_files_found_fallback: Test fallback to English when language file not found
+# - test_invalid_language_code: Test with unsupported language codes
+# - test_multiple_language_files: Test when multiple files match language pattern
+
+# TODO: Cache Tests
+# - test_invalidate_all_cache: Test invalidate_cache() with no arguments
+# - test_invalidate_nonexistent_path: Test invalidating path not in cache
+# - test_concurrent_cache_access: Test multiple simultaneous reads of same resource
+
+# TODO: Character Loading Tests
+# - test_get_characters_success: Test successful character loading
+# - test_get_characters_language_specific: Test loading characters for different languages
+# - test_get_character_by_id_found: Test finding existing character
+
+# TODO: Resource Path Discovery Tests
+# - test_find_resource_path_no_files: Test when no files exist in directory
+# - test_find_resource_path_mixed_files: Test with non-JSON files in directory
+# - test_custom_base_prefix: Test ResourceLoader with different base_prefix values
+
+# TODO: Integration-like Tests (still mocked but more realistic)
+# - test_full_workflow: Load scenarios, then characters, with caching
+# - test_language_switching: Load resources in one language, then switch to another
