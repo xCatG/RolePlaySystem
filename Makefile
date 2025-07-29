@@ -109,6 +109,7 @@ help:
 	@echo "    NEW_GIT_TAG         : Version for 'make tag-git-release' (e.g., v1.2.3)."
 	@echo "------------------------------------------------------------------------------------"
 	@echo "  MAIN TARGETS:"
+	@echo "    make dev-setup            Set up development environment (copy resources to storage path)."
 	@echo "    make build-docker         Build the Docker image tagged with current IMAGE_TAG."
 	@echo "    make push-docker          Push current IMAGE_TAG to Artifact Registry for current ENV's project."
 	@echo "    make deploy               Build, push, and deploy current IMAGE_TAG to Cloud Run for current ENV."
@@ -293,12 +294,42 @@ run-local-docker: build-docker
 		$IMAGE_TO_RUN
 
 # --- Local Development ---
+.PHONY: dev-setup
+dev-setup: load-env-mk validate-resources
+	@echo "=== Setting up development environment ==="
+	@echo ""
+	@# Determine storage path from config
+	@STORAGE_PATH=$$(bash -c "source venv/bin/activate && python scripts/get_storage_path.py"); \
+	echo "Storage path: $$STORAGE_PATH"; \
+	echo ""; \
+	if [ ! -d "$$STORAGE_PATH" ]; then \
+		echo "Creating storage directory: $$STORAGE_PATH"; \
+		mkdir -p "$$STORAGE_PATH"; \
+	fi; \
+	if [ "$$(realpath data)" = "$$(realpath $$STORAGE_PATH)" ]; then \
+		echo "Storage path is the same as project data directory - resources already in place"; \
+	else \
+		echo "Copying resources to $$STORAGE_PATH/resources..."; \
+		mkdir -p "$$STORAGE_PATH/resources"; \
+		cp -r data/resources/* "$$STORAGE_PATH/resources/" 2>/dev/null || true; \
+	fi; \
+	echo ""; \
+	echo "Resources copied successfully!"; \
+	echo ""; \
+	echo "Storage structure:"; \
+	find "$$STORAGE_PATH/resources" -type f -name "*.json" | sort; \
+	echo ""; \
+	echo "=== Development setup complete ==="
+	@echo ""
+	@echo "You can now run the server with:"
+	@echo "  source venv/bin/activate && python src/python/run_server.py"
+	@echo ""
+	@echo "Or use PyCharm to run src/python/run_server.py"
+
 .PHONY: deploy-dev-resources
 deploy-dev-resources:
-	@echo "Deploying development resources to ./data/resources..."
-	@mkdir -p ./data/resources/scenarios
-	@cp src/resources/scenarios/*.json ./data/resources/scenarios/
-	@echo "Development resources deployed."
+	@echo "DEPRECATED: Use 'make dev-setup' instead"
+	@$(MAKE) dev-setup
 
 # --- Release Management ---
 .PHONY: tag-git-release

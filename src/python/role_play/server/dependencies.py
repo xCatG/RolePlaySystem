@@ -59,8 +59,8 @@ def get_resource_loader() -> ResourceLoader:
     """
     config = get_server_config()
     storage = get_storage_backend()
-    resource_paths = config.resources.model_dump() if config.resources else {}
-    return ResourceLoader(storage, resource_paths)
+    # ResourceLoader expects base_prefix as a string, not a dict
+    return ResourceLoader(storage, "resources/")
 
 
 def get_auth_manager(

@@ -55,7 +55,9 @@ class ResourceLoader:
         Example: resource_type='scenarios', language='zh-TW' -> 'resources/scenarios/scenarios_zh-TW.json'
         """
         prefix = os.path.join(self.base_prefix, resource_type)
+        logger.debug(f"Looking for {resource_type} resources with prefix: {prefix}")
         all_files = await self.storage.list_keys(prefix)
+        logger.debug(f"Found files: {all_files}")
 
         # Try to find a language-specific file
         lang_suffix = f"_{language}.json"
@@ -74,7 +76,9 @@ class ResourceLoader:
     async def _get_all_from_resource_type(self, resource_type: str, language: str = "en") -> list[dict]:
         """Generic function to load all items from a resource type (e.g., all scenarios)."""
         path = await self._find_resource_path(resource_type, language)
+        logger.debug(f"Resource path for {resource_type}/{language}: {path}")
         if not path:
+            logger.warning(f"No resource file found for {resource_type} in language {language}")
             return []
         
         data = await self._load_and_cache_json(path)

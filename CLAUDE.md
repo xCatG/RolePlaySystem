@@ -8,6 +8,7 @@ Guidance for Claude Code when working with this RolePlay System repository.
 # Backend
 python3 -m venv venv && source venv/bin/activate  # Setup
 pip install -r src/python/requirements.txt
+make dev-setup                                     # Set up dev environment & copy resources
 python src/python/run_server.py                    # Run server
 make test                                          # Run tests with coverage
 
@@ -151,12 +152,14 @@ make test-specific TEST_PATH="test/python/unit/chat/test_chat_logger.py"
 - [x] **Validation Script**: Created `validate_resources.py` for JSON syntax, metadata, and cross-reference checking
 - [x] **Metadata Update Script**: Created `update_resource_metadata.py` for manual editors to update timestamps
 - [x] **Makefile Targets**: 
+  - `make dev-setup` - Set up dev environment by copying resources to configured storage path
   - `make validate-resources` - Validate all resource JSON files
   - `make update-resource-metadata` - Update timestamps after manual edits
   - `make upload-resources` - Upload resources to GCS bucket
   - `make download-resources` - Download resources from GCS bucket
   - `make deploy-with-resources` - Deploy app and upload resources together
 - [x] **GCS Testing**: Successfully tested resource loading from beta GCS bucket (`rps-app-data-beta`)
+- [x] **Dev Setup**: Created `make dev-setup` to handle storage path configuration (resolves ~/data/rps_dev vs ./data issue)
 
 ### Pending Development
 - [ ] **Resource Architecture for Script Creator**:
