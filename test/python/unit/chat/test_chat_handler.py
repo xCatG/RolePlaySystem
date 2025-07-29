@@ -5,6 +5,11 @@ from unittest.mock import Mock, patch, AsyncMock
 from role_play.chat.handler import ChatHandler
 
 
+@pytest.fixture
+def mock_resource_loader():
+    """Mock ResourceLoader."""
+    return AsyncMock()
+
 class TestChatHandlerSystemPrompt:
     """Test cases for ChatHandler system prompt generation."""
 
@@ -55,8 +60,9 @@ class TestChatHandlerSystemPrompt:
             "description": "Practice taking medical history from a patient"
         }
 
-    def test_system_prompt_english_character(self, chat_handler, sample_english_character, sample_scenario):
+    def test_system_prompt_english_character(self, sample_english_character, sample_scenario):
         """Test system prompt generation for English character."""
+        chat_handler = ChatHandler()
         agent = chat_handler._create_roleplay_agent(sample_english_character, sample_scenario)
         
         # Check that agent was created
@@ -71,8 +77,9 @@ class TestChatHandlerSystemPrompt:
         assert "Stay fully in character" in instruction
         assert "Do NOT break character" in instruction
 
-    def test_system_prompt_chinese_character(self, chat_handler, sample_chinese_character, sample_scenario):
+    def test_system_prompt_chinese_character(self, sample_chinese_character, sample_scenario):
         """Test system prompt generation for Traditional Chinese character."""
+        chat_handler = ChatHandler()
         agent = chat_handler._create_roleplay_agent(sample_chinese_character, sample_scenario)
         
         # Check that agent was created
@@ -86,8 +93,9 @@ class TestChatHandlerSystemPrompt:
         assert "Respond in Traditional Chinese language" in instruction
         assert "Stay fully in character" in instruction
 
-    def test_system_prompt_japanese_character(self, chat_handler, sample_japanese_character, sample_scenario):
+    def test_system_prompt_japanese_character(self, sample_japanese_character, sample_scenario):
         """Test system prompt generation for Japanese character."""
+        chat_handler = ChatHandler()
         agent = chat_handler._create_roleplay_agent(sample_japanese_character, sample_scenario)
         
         # Check that agent was created
@@ -101,8 +109,9 @@ class TestChatHandlerSystemPrompt:
         assert "Respond in Japanese language" in instruction
         assert "Stay fully in character" in instruction
 
-    def test_system_prompt_character_without_language_defaults_to_english(self, chat_handler, sample_scenario):
+    def test_system_prompt_character_without_language_defaults_to_english(self, sample_scenario):
         """Test system prompt generation for character without language field (defaults to English)."""
+        chat_handler = ChatHandler()
         character_no_lang = {
             "id": "patient_no_lang",
             "name": "Test Patient", 
@@ -120,8 +129,9 @@ class TestChatHandlerSystemPrompt:
         assert "You are a test patient." in instruction
         assert "Respond in English language" in instruction
 
-    def test_system_prompt_unsupported_language_defaults_to_english(self, chat_handler, sample_scenario):
+    def test_system_prompt_unsupported_language_defaults_to_english(self, sample_scenario):
         """Test system prompt generation for character with unsupported language (defaults to English)."""
+        chat_handler = ChatHandler()
         character_unsupported = {
             "id": "patient_fr",
             "language": "fr",  # Unsupported language
@@ -140,8 +150,9 @@ class TestChatHandlerSystemPrompt:
         assert "Vous êtes un patient français." in instruction
         assert "Respond in English language" in instruction  # Should default to English
 
-    def test_system_prompt_structure(self, chat_handler, sample_english_character, sample_scenario):
+    def test_system_prompt_structure(self, sample_english_character, sample_scenario):
         """Test the overall structure of the generated system prompt."""
+        chat_handler = ChatHandler()
         agent = chat_handler._create_roleplay_agent(sample_english_character, sample_scenario)
         instruction = agent.instruction
         
@@ -156,8 +167,9 @@ class TestChatHandlerSystemPrompt:
         assert "IMPORTANT: Respond in" in instruction  # Language instruction
         assert "Engage with the user's messages within the roleplay context" in instruction
 
-    def test_system_prompt_with_missing_fields(self, chat_handler):
+    def test_system_prompt_with_missing_fields(self):
         """Test system prompt generation with minimal character and scenario data."""
+        chat_handler = ChatHandler()
         minimal_character = {"id": "min_char"}
         minimal_scenario = {"id": "min_scenario"}
         
@@ -206,8 +218,9 @@ class TestChatHandlerReadOnlySession:
         return ChatHandler()
 
     @pytest.mark.asyncio
-    async def test_get_session_status_active_session(self, chat_handler, mock_user, mock_adk_session_service, mock_chat_logger):
+    async def test_get_session_status_active_session(self, mock_user, mock_adk_session_service, mock_chat_logger):
         """Test getting status for an active session."""
+        chat_handler = ChatHandler()
         # Mock active session
         mock_session = Mock()
         mock_adk_session_service.get_session.return_value = mock_session
@@ -232,8 +245,9 @@ class TestChatHandlerReadOnlySession:
         )
 
     @pytest.mark.asyncio
-    async def test_get_session_status_ended_session(self, chat_handler, mock_user, mock_adk_session_service, mock_chat_logger):
+    async def test_get_session_status_ended_session(self, mock_user, mock_adk_session_service, mock_chat_logger):
         """Test getting status for an ended session."""
+        chat_handler = ChatHandler()
         # Mock no active session
         mock_adk_session_service.get_session.return_value = None
         
@@ -265,8 +279,9 @@ class TestChatHandlerReadOnlySession:
         )
 
     @pytest.mark.asyncio
-    async def test_get_session_status_ended_session_no_reason(self, chat_handler, mock_user, mock_adk_session_service, mock_chat_logger):
+    async def test_get_session_status_ended_session_no_reason(self, mock_user, mock_adk_session_service, mock_chat_logger):
         """Test getting status for an ended session without specific reason."""
+        chat_handler = ChatHandler()
         # Mock no active session
         mock_adk_session_service.get_session.return_value = None
         
@@ -290,8 +305,9 @@ class TestChatHandlerReadOnlySession:
         assert response.ended_reason == "Session ended"  # Default reason
 
     @pytest.mark.asyncio
-    async def test_get_session_status_service_error(self, chat_handler, mock_user, mock_adk_session_service, mock_chat_logger):
+    async def test_get_session_status_service_error(self, mock_user, mock_adk_session_service, mock_chat_logger):
         """Test error handling in get_session_status."""
+        chat_handler = ChatHandler()
         # Mock exception in ADK service
         mock_adk_session_service.get_session.side_effect = Exception("ADK service error")
 
@@ -304,8 +320,9 @@ class TestChatHandlerReadOnlySession:
             )
 
     @pytest.mark.asyncio
-    async def test_get_session_messages_success(self, chat_handler, mock_user, mock_chat_logger):
+    async def test_get_session_messages_success(self, mock_user, mock_chat_logger):
         """Test successfully getting session messages."""
+        chat_handler = ChatHandler()
         # Mock message data
         mock_messages = [
             {
@@ -355,8 +372,9 @@ class TestChatHandlerReadOnlySession:
         )
 
     @pytest.mark.asyncio
-    async def test_get_session_messages_empty_session(self, chat_handler, mock_user, mock_chat_logger):
+    async def test_get_session_messages_empty_session(self, mock_user, mock_chat_logger):
         """Test getting messages from an empty session."""
+        chat_handler = ChatHandler()
         # Mock empty message list
         mock_chat_logger.get_session_messages.return_value = []
 
@@ -371,8 +389,9 @@ class TestChatHandlerReadOnlySession:
         assert len(response.messages) == 0
 
     @pytest.mark.asyncio
-    async def test_get_session_messages_service_error(self, chat_handler, mock_user, mock_chat_logger):
+    async def test_get_session_messages_service_error(self, mock_user, mock_chat_logger):
         """Test error handling in get_session_messages."""
+        chat_handler = ChatHandler()
         # Mock exception in chat logger
         mock_chat_logger.get_session_messages.side_effect = Exception("Chat logger error")
 
@@ -384,8 +403,9 @@ class TestChatHandlerReadOnlySession:
             )
 
     @pytest.mark.asyncio
-    async def test_delete_session_active_session(self, chat_handler, mock_user, mock_adk_session_service, mock_chat_logger):
+    async def test_delete_session_active_session(self, mock_user, mock_adk_session_service, mock_chat_logger):
         """Test deleting an active session."""
+        chat_handler = ChatHandler()
         # Mock active session
         mock_session = Mock()
         mock_adk_session_service.get_session.return_value = mock_session
@@ -414,8 +434,9 @@ class TestChatHandlerReadOnlySession:
         )
 
     @pytest.mark.asyncio
-    async def test_delete_session_ended_session(self, chat_handler, mock_user, mock_adk_session_service, mock_chat_logger):
+    async def test_delete_session_ended_session(self, mock_user, mock_adk_session_service, mock_chat_logger):
         """Test deleting an ended session (not in ADK memory)."""
+        chat_handler = ChatHandler()
         # Mock no active session
         mock_adk_session_service.get_session.return_value = None
         mock_chat_logger.delete_session.return_value = None
@@ -438,8 +459,9 @@ class TestChatHandlerReadOnlySession:
         )
 
     @pytest.mark.asyncio
-    async def test_delete_session_adk_error_continues_to_file_deletion(self, chat_handler, mock_user, mock_adk_session_service, mock_chat_logger):
+    async def test_delete_session_adk_error_continues_to_file_deletion(self, mock_user, mock_adk_session_service, mock_chat_logger):
         """Test that file deletion continues even if ADK deletion fails."""
+        chat_handler = ChatHandler()
         # Mock active session but deletion fails
         mock_session = Mock()
         mock_adk_session_service.get_session.return_value = mock_session
@@ -455,8 +477,9 @@ class TestChatHandlerReadOnlySession:
             )
 
     @pytest.mark.asyncio
-    async def test_delete_session_file_error(self, chat_handler, mock_user, mock_adk_session_service, mock_chat_logger):
+    async def test_delete_session_file_error(self, mock_user, mock_adk_session_service, mock_chat_logger):
         """Test error handling when file deletion fails."""
+        chat_handler = ChatHandler()
         # Mock no active session
         mock_adk_session_service.get_session.return_value = None
         # Mock file deletion error
@@ -471,8 +494,9 @@ class TestChatHandlerReadOnlySession:
             )
 
     @pytest.mark.asyncio
-    async def test_send_message_to_ended_session_blocked(self, chat_handler, mock_user, mock_adk_session_service, mock_chat_logger):
+    async def test_send_message_to_ended_session_blocked(self, mock_user, mock_adk_session_service, mock_chat_logger, mock_resource_loader):
         """Test that sending messages to ended sessions is blocked."""
+        chat_handler = ChatHandler()
         # Mock no active session
         mock_adk_session_service.get_session.return_value = None
         
@@ -493,7 +517,7 @@ class TestChatHandlerReadOnlySession:
                 current_user=mock_user,
                 chat_logger=mock_chat_logger,
                 adk_session_service=mock_adk_session_service,
-                content_loader=Mock()
+                resource_loader=mock_resource_loader
             )
 
         # Verify session end info was checked (send_message uses positional args)
@@ -503,8 +527,9 @@ class TestChatHandlerReadOnlySession:
         )
 
     @pytest.mark.asyncio
-    async def test_read_only_session_integration_workflow(self, chat_handler, mock_user, mock_adk_session_service, mock_chat_logger):
+    async def test_read_only_session_integration_workflow(self, mock_user, mock_adk_session_service, mock_chat_logger):
         """Integration test for complete read-only session workflow."""
+        chat_handler = ChatHandler()
         session_id = "integration_test_session"
         
         # 1. Test active session status

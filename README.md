@@ -60,6 +60,37 @@ npm install && npm run dev
 
 ---
 
+## Resource Management
+
+The character and scenario content for the application is stored in JSON files located in `data/resources/`. To ensure these files are consistent, up-to-date, and synchronized with cloud storage, a set of management scripts and `Makefile` targets are provided.
+
+### Key Scripts
+
+- **`scripts/validate_resources.py`**: Checks all resource files for correct syntax, required fields, and valid cross-references between scenarios and characters.
+- **`scripts/update_resource_metadata.py`**: Automatically updates the `last_modified` timestamp and can bump the `resource_version` for any changed files.
+
+### Makefile Commands
+
+The `Makefile` provides convenient targets for the entire resource lifecycle:
+
+```bash
+# Validate all resource files
+make validate-resources
+
+# Update timestamps and versions for modified files
+make update-resource-metadata
+
+# Upload resources to the configured cloud storage (GCS/S3)
+make upload-resources ENV=beta
+
+# Download resources from the cloud to your local environment
+make download-resources ENV=beta
+```
+
+This workflow ensures that developers can easily maintain high-quality resource data and keep development and production environments in sync.
+
+---
+
 ## Key Features & Innovation
 
 ### **Educational Scenarios**

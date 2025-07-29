@@ -14,8 +14,8 @@ from ..common.storage_factory import create_storage_backend
 from ..common.models import User, UserRole, Environment
 from ..common.exceptions import AuthenticationError, TokenExpiredError
 from .config_loader import get_config, ServerConfig
-from ..chat.content_loader import ContentLoader
 from ..chat.chat_logger import ChatLogger
+from ..common.resource_loader import ResourceLoader
 
 import logging
 logger = logging.getLogger(__name__)
@@ -49,6 +49,18 @@ def get_storage_backend() -> StorageBackend:
         return create_storage_backend(config.storage, env_enum)
     else:
         raise ValueError("Storage configuration is required")
+
+
+@lru_cache
+def get_resource_loader() -> ResourceLoader:
+    """
+    Singleton factory for the ResourceLoader.
+    Reads resource paths from the main config.
+    """
+    config = get_server_config()
+    storage = get_storage_backend()
+    # ResourceLoader expects base_prefix as a string, not a dict
+    return ResourceLoader(storage, "resources/")
 
 
 def get_auth_manager(
@@ -156,24 +168,14 @@ require_user_or_higher = RoleChecker({UserRole.USER, UserRole.SCRIPTER, UserRole
 # These use @lru_cache(maxsize=None) to ensure only one instance
 # of each service is created and shared across requests.
 
-@lru_cache(maxsize=None)
-def get_content_loader() -> ContentLoader:
-    """
-    Provides a singleton instance of ContentLoader with language validation.
-    """
-    config = get_server_config()
-    return ContentLoader(supported_languages=config.supported_languages)
-
-
 def get_chat_logger(
-    storage: Annotated[StorageBackend, Depends(get_storage_backend)],
-    content_loader: Annotated[ContentLoader, Depends(get_content_loader)]
+    storage: Annotated[StorageBackend, Depends(get_storage_backend)]
 ) -> ChatLogger:
     """
-    Provides a ChatLogger instance with injected storage backend and content loader.
+    Provides a ChatLogger instance with injected storage backend.
     Note: This is NOT a singleton as it depends on the storage backend.
     """
-    return ChatLogger(storage_backend=storage, content_loader=content_loader)
+    return ChatLogger(storage_backend=storage)
 
 
 @lru_cache(maxsize=None)

@@ -1,11 +1,12 @@
 """Storage and locking performance monitoring (STUB IMPLEMENTATION)."""
 
 import time
-from contextlib import contextmanager
-from typing import Dict, Any, Optional, Generator
+import asyncio
+from contextlib import contextmanager, asynccontextmanager
+from typing import Dict, Any, Optional, Generator, AsyncGenerator
 from dataclasses import dataclass, field
 from collections import defaultdict, deque
-from threading import Lock
+from asyncio import Lock
 
 from .exceptions import StorageError
 
@@ -74,12 +75,12 @@ class StorageMonitor:
         self._storage_metrics = StorageMetrics()
         self._start_time = time.time()
 
-    @contextmanager
-    def monitor_lock_acquisition(
+    @asynccontextmanager
+    async def monitor_lock_acquisition(
         self, 
         resource_name: str, 
         lock_strategy: str = "unknown"
-    ) -> Generator[None, None, None]:
+    ) -> AsyncGenerator[None, None]:
         """
         Monitor lock acquisition performance.
         
@@ -93,7 +94,7 @@ class StorageMonitor:
         metric_key = f"{lock_strategy}:{resource_name}"
         start_time = time.time()
         
-        with self._lock:
+        async with self._lock:
             self._lock_metrics[metric_key].acquisition_attempts += 1
         
         success = False
@@ -105,7 +106,7 @@ class StorageMonitor:
             hold_start_time = time.time()
             
         except Exception:
-            with self._lock:
+            async with self._lock:
                 self._lock_metrics[metric_key].acquisition_failures += 1
             raise
             
@@ -113,7 +114,7 @@ class StorageMonitor:
             end_time = time.time()
             acquisition_time = (hold_start_time or end_time) - start_time
             
-            with self._lock:
+            async with self._lock:
                 metrics = self._lock_metrics[metric_key]
                 
                 if success:
@@ -126,11 +127,11 @@ class StorageMonitor:
                         metrics.total_hold_time += hold_time
                         metrics.recent_hold_times.append(hold_time)
 
-    @contextmanager 
-    def monitor_storage_operation(
+    @asynccontextmanager 
+    async def monitor_storage_operation(
         self, 
         operation_type: str
-    ) -> Generator[None, None, None]:
+    ) -> AsyncGenerator[None, None]:
         """
         Monitor storage operation performance.
         
@@ -148,7 +149,7 @@ class StorageMonitor:
             success = True
             
         except Exception:
-            with self._lock:
+            async with self._lock:
                 if operation_type == "read":
                     self._storage_metrics.read_errors += 1
                 elif operation_type == "write":
@@ -158,7 +159,7 @@ class StorageMonitor:
         finally:
             operation_time = time.time() - start_time
             
-            with self._lock:
+            async with self._lock:
                 if success:
                     if operation_type == "read":
                         self._storage_metrics.read_operations += 1
@@ -171,25 +172,25 @@ class StorageMonitor:
                     elif operation_type == "list":
                         self._storage_metrics.list_operations += 1
 
-    def record_connection_error(self, backend_type: str) -> None:
+    async def record_connection_error(self, backend_type: str) -> None:
         """Record a connection error for monitoring."""
-        with self._lock:
+        async with self._lock:
             self._storage_metrics.connection_errors += 1
 
-    def record_lock_expiry(self, resource_name: str, lock_strategy: str) -> None:
+    async def record_lock_expiry(self, resource_name: str, lock_strategy: str) -> None:
         """Record a lock expiry event."""
         metric_key = f"{lock_strategy}:{resource_name}"
-        with self._lock:
+        async with self._lock:
             self._lock_metrics[metric_key].expired_locks += 1
 
-    def get_lock_metrics_summary(self) -> Dict[str, Any]:
+    async def get_lock_metrics_summary(self) -> Dict[str, Any]:
         """
         Get summary of lock metrics.
         
         Returns:
             dict: Summary of lock performance metrics
         """
-        with self._lock:
+        async with self._lock:
             total_attempts = sum(m.acquisition_attempts for m in self._lock_metrics.values())
             total_successes = sum(m.acquisition_successes for m in self._lock_metrics.values())
             total_failures = sum(m.acquisition_failures for m in self._lock_metrics.values())
@@ -215,17 +216,17 @@ class StorageMonitor:
                 "active_strategies": list(set(
                     key.split(':')[0] for key in self._lock_metrics.keys()
                 )),
-                "most_contended_resources": self._get_most_contended_resources()
+                "most_contended_resources": await self._get_most_contended_resources()
             }
 
-    def get_storage_metrics_summary(self) -> Dict[str, Any]:
+    async def get_storage_metrics_summary(self) -> Dict[str, Any]:
         """
         Get summary of storage metrics.
         
         Returns:
             dict: Summary of storage performance metrics
         """
-        with self._lock:
+        async with self._lock:
             total_ops = (
                 self._storage_metrics.read_operations +
                 self._storage_metrics.write_operations +
@@ -257,7 +258,7 @@ class StorageMonitor:
                 "uptime_seconds": round(time.time() - self._start_time, 2)
             }
 
-    def _get_most_contended_resources(self, limit: int = 5) -> list:
+    async def _get_most_contended_resources(self, limit: int = 5) -> list:
         """Get the most contended resources by attempt count."""
         sorted_resources = sorted(
             self._lock_metrics.items(),
@@ -275,7 +276,7 @@ class StorageMonitor:
             for key, metrics in sorted_resources[:limit]
         ]
 
-    def export_metrics_for_prometheus(self) -> str:
+    async def export_metrics_for_prometheus(self) -> str:
         """
         Export metrics in Prometheus format (STUB).
         
@@ -283,8 +284,8 @@ class StorageMonitor:
             str: Metrics in Prometheus exposition format
         """
         # TODO: Implement actual Prometheus metric formatting
-        lock_summary = self.get_lock_metrics_summary()
-        storage_summary = self.get_storage_metrics_summary()
+        lock_summary = await self.get_lock_metrics_summary()
+        storage_summary = await self.get_storage_metrics_summary()
         
         return f"""
 # HELP storage_lock_attempts_total Total number of lock acquisition attempts
@@ -304,9 +305,9 @@ storage_operations_total {storage_summary['total_operations']}
 storage_errors_total {storage_summary['read_errors'] + storage_summary['write_errors']}
 """.strip()
 
-    def reset_metrics(self) -> None:
+    async def reset_metrics(self) -> None:
         """Reset all metrics (useful for testing)."""
-        with self._lock:
+        async with self._lock:
             self._lock_metrics.clear()
             self._storage_metrics = StorageMetrics()
             self._start_time = time.time()

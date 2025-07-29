@@ -16,7 +16,7 @@ from ..server.dependencies import (
     require_user_or_higher,
     get_chat_logger,
     get_adk_session_service,
-    get_content_loader,
+    get_resource_loader,
 )
 from ..common.models import User
 from ..common.time_utils import utc_now_isoformat, parse_utc_datetime, utc_now
@@ -35,7 +35,7 @@ from .models import (
     Message,
     MessagesListResponse
 )
-from .content_loader import ContentLoader
+from ..common.resource_loader import ResourceLoader
 from .chat_logger import ChatLogger
 
 logger = logging.getLogger(__name__)
@@ -46,11 +46,8 @@ DEFAULT_MODEL = os.getenv("ADK_MODEL", "gemini-2.0-flash-lite-001")
 class ChatHandler(BaseHandler):
     """Handler for chat-related endpoints - Simplified & Stateless."""
 
-    def __init__(self):
-        """Initialize chat handler (now stateless)."""
-        super().__init__()
-        # All dependencies (ContentLoader, ChatLogger, InMemorySessionService)
-        # will be injected via FastAPI's Depends in the route methods.
+    # All dependencies (ResourceLoader, ChatLogger, InMemorySessionService)
+    # will be injected via FastAPI's Depends in the route methods.
 
     @property
     def router(self) -> APIRouter:
@@ -127,13 +124,13 @@ class ChatHandler(BaseHandler):
         )
         return character_msg_num
 
-    async def _load_session_content(self, adk_session: Any, content_loader: ContentLoader) -> tuple[Dict, Dict]:
+    async def _load_session_content(self, adk_session: Any, resource_loader: ResourceLoader) -> tuple[Dict, Dict]:
         """Load and validate scenario and character content for the session."""
-        character_dict = content_loader.get_character_by_id(
+        character_dict = await resource_loader.get_character_by_id(
             adk_session.state.get("character_id"), 
             adk_session.state.get("language", "en")
         )
-        scenario_dict = content_loader.get_scenario_by_id(
+        scenario_dict = await resource_loader.get_scenario_by_id(
             adk_session.state.get("scenario_id"),
             adk_session.state.get("language", "en")
         )
@@ -209,12 +206,12 @@ class ChatHandler(BaseHandler):
     async def get_scenarios(
         self,
         current_user: Annotated[User, Depends(require_user_or_higher)],
-        content_loader: Annotated[ContentLoader, Depends(get_content_loader)],
+        resource_loader: Annotated[ResourceLoader, Depends(get_resource_loader)],
         language: str = Query("en", description="Language code for scenarios"),
     ) -> ScenarioListResponse:
         """Get all available scenarios for the specified language."""
         try:
-            scenarios = content_loader.get_scenarios(language)
+            scenarios = await resource_loader.get_scenarios(language)
             scenario_infos = [
                 ScenarioInfo(
                     id=scenario["id"],
@@ -232,20 +229,25 @@ class ChatHandler(BaseHandler):
         self,
         scenario_id: str,
         current_user: Annotated[User, Depends(require_user_or_higher)],
-        content_loader: Annotated[ContentLoader, Depends(get_content_loader)],
+        resource_loader: Annotated[ResourceLoader, Depends(get_resource_loader)],
         language: str = Query("en", description="Language code for characters"),
     ) -> CharacterListResponse:
         """Get characters compatible with a scenario for the specified language."""
         try:
-            characters = content_loader.get_scenario_characters(scenario_id, language)
-            if not characters:
-                scenario = content_loader.get_scenario_by_id(scenario_id, language)
-                if not scenario:
-                    raise HTTPException(status_code=404, detail=f"Scenario with ID '{scenario_id}' not found.")
+            scenario = await resource_loader.get_scenario_by_id(scenario_id, language)
+            if not scenario:
+                raise HTTPException(status_code=404, detail=f"Scenario with ID '{scenario_id}' not found.")
+
+            compatible_character_ids = scenario.get("compatible_characters", [])
+            all_characters = await resource_loader.get_characters(language)
+            
+            compatible_characters = [
+                char for char in all_characters if char["id"] in compatible_character_ids
+            ]
             
             character_infos = [
                 CharacterInfo(id=char["id"], name=char["name"], description=char["description"])
-                for char in characters
+                for char in compatible_characters
             ]
             return CharacterListResponse(success=True, characters=character_infos)
         except HTTPException:
@@ -260,18 +262,18 @@ class ChatHandler(BaseHandler):
         current_user: Annotated[User, Depends(require_user_or_higher)],
         chat_logger: Annotated[ChatLogger, Depends(get_chat_logger)],
         adk_session_service: Annotated[InMemorySessionService, Depends(get_adk_session_service)],
-        content_loader: Annotated[ContentLoader, Depends(get_content_loader)],
+        resource_loader: Annotated[ResourceLoader, Depends(get_resource_loader)],
     ) -> CreateSessionResponse:
         """Create a new chat session (ADK session in memory, log via ChatLogger)."""
         try:
             # Use user's preferred language for content loading
             user_language = getattr(current_user, 'preferred_language', 'en')
             
-            scenario = content_loader.get_scenario_by_id(request.scenario_id, user_language)
+            scenario = await resource_loader.get_scenario_by_id(request.scenario_id, user_language)
             if not scenario:
                 raise HTTPException(status_code=400, detail=f"Invalid scenario ID: {request.scenario_id}")
 
-            character = content_loader.get_character_by_id(request.character_id, user_language)
+            character = await resource_loader.get_character_by_id(request.character_id, user_language)
             if not character:
                 raise HTTPException(status_code=400, detail=f"Invalid character ID: {request.character_id}")
 
@@ -377,7 +379,7 @@ class ChatHandler(BaseHandler):
         current_user: Annotated[User, Depends(require_user_or_higher)],
         chat_logger: Annotated[ChatLogger, Depends(get_chat_logger)],
         adk_session_service: Annotated[InMemorySessionService, Depends(get_adk_session_service)],
-        content_loader: Annotated[ContentLoader, Depends(get_content_loader)],
+        resource_loader: Annotated[ResourceLoader, Depends(get_resource_loader)],
     ) -> ChatMessageResponse:
         """Send a message, creating the Runner on-demand."""
         try:
@@ -395,7 +397,7 @@ class ChatHandler(BaseHandler):
             )
             
             # Load session content
-            character_dict, scenario_dict = await self._load_session_content(adk_session, content_loader)
+            character_dict, scenario_dict = await self._load_session_content(adk_session, resource_loader)
             
             # Generate character response
             response_text = await self._generate_character_response(

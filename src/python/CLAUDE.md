@@ -248,6 +248,41 @@ def agent_callback(callback_context: CallbackContext, llm_response: LlmResponse)
 - **Lock Tuning**: Lease duration (60-300s) vs acquisition timeout (5-30s)
 - **Async Everything**: All I/O operations should be async
 
+## Storage Monitoring
+
+### StorageMonitor Integration
+```python
+# Storage backends automatically use global StorageMonitor
+from role_play.common.storage_monitoring import get_storage_monitor
+
+# Monitor tracks operations automatically
+async with storage.read("key") as data:
+    # Read operation is monitored
+    pass
+
+async with storage.lock("resource") as lock:
+    # Lock acquisition/hold times tracked
+    pass
+```
+
+### Monitoring Metrics
+- **Lock Metrics**: Acquisition attempts, successes, failures, timing
+- **Storage Metrics**: Read/write/delete operations, error rates, latencies
+- **Decision Support**: Automatic recommendations for lock strategy upgrades
+
+### Usage in Scripts
+```python
+# Validation and metadata scripts use asyncio patterns
+class ResourceValidator:
+    def __init__(self, resource_dir: Path, storage_monitor: Optional[StorageMonitor] = None):
+        self.monitor = storage_monitor or get_storage_monitor()
+    
+    async def validate_all(self):
+        # Async validation with monitoring
+        async with self.monitor.monitor_storage_operation("read"):
+            data = await self._load_resource(path)
+```
+
 ## Language Support Implementation
 
 ### ContentLoader Language Architecture

@@ -109,6 +109,7 @@ help:
 	@echo "    NEW_GIT_TAG         : Version for 'make tag-git-release' (e.g., v1.2.3)."
 	@echo "------------------------------------------------------------------------------------"
 	@echo "  MAIN TARGETS:"
+	@echo "    make dev-setup            Set up development environment (copy resources to storage path)."
 	@echo "    make build-docker         Build the Docker image tagged with current IMAGE_TAG."
 	@echo "    make push-docker          Push current IMAGE_TAG to Artifact Registry for current ENV's project."
 	@echo "    make deploy               Build, push, and deploy current IMAGE_TAG to Cloud Run for current ENV."
@@ -130,6 +131,13 @@ help:
 	@echo "    make test-coverage-html   Generate HTML coverage report (viewable in browser)."
 	@echo "    make test-no-coverage     Run tests without coverage for faster execution."
 	@echo "    make test-specific TEST_PATH=<path> Run a specific test file or test method."
+	@echo "------------------------------------------------------------------------------------"
+	@echo "  RESOURCE MANAGEMENT:"
+	@echo "    make validate-resources   Validate all resource JSON files for correct structure."
+	@echo "    make update-resource-metadata Update timestamps in resource files after manual edits."
+	@echo "    make upload-resources     Upload resources to GCS bucket for current ENV."
+	@echo "    make download-resources   Download resources from GCS bucket for current ENV."
+	@echo "    make deploy-with-resources Deploy application and upload resources in one step."
 	@echo "------------------------------------------------------------------------------------"
 	@echo "  UTILITIES:"
 	@echo "    make logs                 View Cloud Run logs for the current ENV."
@@ -283,7 +291,45 @@ run-local-docker: build-docker
 		-e GIT_VERSION=$(GIT_VERSION) \
 		-e SERVICE_NAME=$(SERVICE_NAME) \
 		-e PORT=8080 \
-		$$IMAGE_TO_RUN
+		$IMAGE_TO_RUN
+
+# --- Local Development ---
+.PHONY: dev-setup
+dev-setup: load-env-mk validate-resources
+	@echo "=== Setting up development environment ==="
+	@echo ""
+	@# Determine storage path from config
+	@STORAGE_PATH=$$(bash -c "source venv/bin/activate && python scripts/get_storage_path.py"); \
+	echo "Storage path: $$STORAGE_PATH"; \
+	echo ""; \
+	if [ ! -d "$$STORAGE_PATH" ]; then \
+		echo "Creating storage directory: $$STORAGE_PATH"; \
+		mkdir -p "$$STORAGE_PATH"; \
+	fi; \
+	if [ "$$(realpath data)" = "$$(realpath $$STORAGE_PATH)" ]; then \
+		echo "Storage path is the same as project data directory - resources already in place"; \
+	else \
+		echo "Copying resources to $$STORAGE_PATH/resources..."; \
+		mkdir -p "$$STORAGE_PATH/resources"; \
+		cp -r data/resources/* "$$STORAGE_PATH/resources/" 2>/dev/null || true; \
+	fi; \
+	echo ""; \
+	echo "Resources copied successfully!"; \
+	echo ""; \
+	echo "Storage structure:"; \
+	find "$$STORAGE_PATH/resources" -type f -name "*.json" | sort; \
+	echo ""; \
+	echo "=== Development setup complete ==="
+	@echo ""
+	@echo "You can now run the server with:"
+	@echo "  source venv/bin/activate && python src/python/run_server.py"
+	@echo ""
+	@echo "Or use PyCharm to run src/python/run_server.py"
+
+.PHONY: deploy-dev-resources
+deploy-dev-resources:
+	@echo "DEPRECATED: Use 'make dev-setup' instead"
+	@$(MAKE) dev-setup
 
 # --- Release Management ---
 .PHONY: tag-git-release
@@ -395,6 +441,49 @@ ifndef TEST_PATH
 endif
 	@echo "Running specific test: $(TEST_PATH)"
 	@bash -c "source venv/bin/activate && python -m pytest '$(TEST_PATH)' -v --cov=src/python/role_play --cov-report=term-missing --cov-fail-under=0"
+
+# --- Resource Management ---
+.PHONY: validate-resources
+validate-resources:
+	@echo "Validating resource JSON files..."
+	@bash -c "source venv/bin/activate && python scripts/validate_resources.py data/resources/"
+
+.PHONY: update-resource-metadata
+update-resource-metadata:
+	@echo "Updating resource metadata (timestamps)..."
+	@bash -c "source venv/bin/activate && python scripts/update_resource_metadata.py data/resources/"
+
+.PHONY: upload-resources
+upload-resources: load-env-mk validate-resources
+	@make list-config
+	@# Check if we're using a placeholder project ID
+	@if echo "$(TARGET_GCP_PROJECT_ID)" | grep -q "placeholder"; then \
+		echo "ERROR: Cannot upload resources with placeholder project ID."; \
+		echo "Please set GCP_PROJECT_ID_$(shell echo $(ENV) | tr '[:lower:]' '[:upper:]') in .env.mk or environment."; \
+		exit 1; \
+	fi
+	@echo "Uploading resources to GCS bucket gs://$(GCS_BUCKET_APP_DATA)/$(GCS_PREFIX_APP_DATA)resources/..."
+	@gsutil -m cp -r data/resources/* gs://$(GCS_BUCKET_APP_DATA)/$(GCS_PREFIX_APP_DATA)resources/
+	@echo "Resources uploaded successfully."
+
+.PHONY: download-resources
+download-resources: load-env-mk
+	@make list-config
+	@# Check if we're using a placeholder project ID
+	@if echo "$(TARGET_GCP_PROJECT_ID)" | grep -q "placeholder"; then \
+		echo "ERROR: Cannot download resources with placeholder project ID."; \
+		echo "Please set GCP_PROJECT_ID_$(shell echo $(ENV) | tr '[:lower:]' '[:upper:]') in .env.mk or environment."; \
+		exit 1; \
+	fi
+	@echo "Downloading resources from GCS bucket gs://$(GCS_BUCKET_APP_DATA)/$(GCS_PREFIX_APP_DATA)resources/..."
+	@mkdir -p data/resources
+	@gsutil -m cp -r gs://$(GCS_BUCKET_APP_DATA)/$(GCS_PREFIX_APP_DATA)resources/* data/resources/
+	@echo "Resources downloaded successfully."
+
+
+.PHONY: deploy-with-resources
+deploy-with-resources: validate-resources upload-resources deploy
+	@echo "Deployment with resources completed."
 
 # --- Utilities ---
 .PHONY: logs

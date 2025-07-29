@@ -7,6 +7,11 @@ import os
 from ..common.storage import StorageConfigUnion, FileStorageConfig, GCSStorageConfig, S3StorageConfig, LockConfig
 
 
+class ResourceConfig(BaseModel):
+    """Configuration for resource loading."""
+    base_prefix: str = Field(default="resources/", description="Base prefix for all resources in the storage backend.")
+
+
 class ServerConfig(BaseModel):
     """Server configuration settings."""
 
@@ -73,6 +78,11 @@ class ServerConfig(BaseModel):
     supported_languages: List[str] = Field(
         default=["en", "zh-TW", "ja"],
         description="List of supported language codes for scenarios and characters"
+    )
+
+    # Resource configuration
+    resources: Optional[ResourceConfig] = Field(
+        default=None, description="Resource loading configuration"
     )
 
 

@@ -8,6 +8,7 @@ Guidance for Claude Code when working with this RolePlay System repository.
 # Backend
 python3 -m venv venv && source venv/bin/activate  # Setup
 pip install -r src/python/requirements.txt
+make dev-setup                                     # Set up dev environment & copy resources
 python src/python/run_server.py                    # Run server
 make test                                          # Run tests with coverage
 
@@ -23,7 +24,7 @@ make test-specific TEST_PATH="test/python/unit/chat/test_chat_logger.py"
 **Environment**: `ENV=dev|beta|prod`, configs in `config/{env}.yaml`
 **Required**: `JWT_SECRET_KEY`, `STORAGE_PATH`
 **Key Files**: `/API.md`, `/DEPLOYMENT.md`, `/ENVIRONMENTS.md`
-**Resources**: `/src/python/role_play/resources/scenarios.json`, `/scenarios_zh-TW.json`
+**Resources**: `/data/resources/` containing versioned JSON files with metadata
 
 ## Architecture Summary
 
@@ -143,7 +144,33 @@ make test-specific TEST_PATH="test/python/unit/chat/test_chat_logger.py"
   - `GET /api/eval/reports/{report_id}` - Get specific report by ID
 - [x] **Test Coverage**: 18 comprehensive unit tests for all evaluation functionality
 
+### Resource Versioning & Validation (Completed)
+- [x] **Resource File Organization**: Separated characters and scenarios into dedicated JSON files
+- [x] **Version Metadata**: All resource files now include `resource_version`, `last_modified`, and `modified_by` fields
+- [x] **ResourceLoader Enhancement**: Added version validation with SUPPORTED_VERSIONS = ["1.0"]
+- [x] **Comprehensive Testing**: Added 20 new unit tests achieving 100% coverage for ResourceLoader
+- [x] **Validation Script**: Created `validate_resources.py` for JSON syntax, metadata, and cross-reference checking
+- [x] **Metadata Update Script**: Created `update_resource_metadata.py` for manual editors to update timestamps
+- [x] **Makefile Targets**: 
+  - `make dev-setup` - Set up dev environment by copying resources to configured storage path
+  - `make validate-resources` - Validate all resource JSON files
+  - `make update-resource-metadata` - Update timestamps after manual edits
+  - `make upload-resources` - Upload resources to GCS bucket
+  - `make download-resources` - Download resources from GCS bucket
+  - `make deploy-with-resources` - Deploy app and upload resources together
+- [x] **GCS Testing**: Successfully tested resource loading from beta GCS bucket (`rps-app-data-beta`)
+- [x] **Dev Setup**: Created `make dev-setup` to handle storage path configuration (resolves ~/data/rps_dev vs ./data issue)
+- [x] **Storage Monitoring Integration**: Integrated StorageMonitor into storage backends for I/O and lock operation metrics
+- [x] **Script Refactoring**: Refactored validation and metadata scripts to be object-oriented with asyncio support
+- [x] **Resource Loading Fix**: Fixed GCS path issue in Makefile, hardened path handling with forward slashes
+- [x] **Integration Testing**: Replaced test script with proper pytest integration test for resource loading
+
 ### Pending Development
+- [ ] **Resource Architecture for Script Creator**:
+  - [x] Design LayeredResourceLoader for base + user resources (see RESOURCE_ARCHITECTURE.md)
+  - [ ] Implement user resource directories (`users/{user_id}/resources/`)
+  - [ ] Update APIs to distinguish base vs user-created content
+  - [ ] Design resource sharing and visibility controls
 - [ ] **Code Quality & Testing** (Post-refactoring improvements):
   - [ ] Implement API contract testing to prevent frontend/backend data structure mismatches
   - [ ] Add runtime API response validation in development mode to catch integration issues early
@@ -226,7 +253,7 @@ make test-specific TEST_PATH="test/python/unit/chat/test_chat_logger.py"
 - **Auth**: RoleChecker pattern (replaced decorators), role hierarchy, proper HTTP codes, language preferences
 - **Chat**: ADK integration, JSONL logging, singleton services, POC endpoints, language-aware content, refactored for maintainability
 - **Evaluation**: AI agent evaluation system with persistent storage, comprehensive error handling, session validation, and resource cleanup
-- **Testing**: 240+ tests, language functionality coverage (ContentLoader, auth, models), evaluation module unit tests, comprehensive Makefile targets
+- **Testing**: 260+ tests, language functionality coverage (ContentLoader, auth, models), evaluation module unit tests, ResourceLoader version validation tests, comprehensive Makefile targets
 - **Frontend**: Vue.js auth UI, i18n with Traditional Chinese, language switcher, reusable composables
 - **Localization**: Complete Traditional Chinese support with content isolation
 - **Code Quality**: Simplified architecture with extracted utilities, focused methods, reduced duplication
@@ -240,6 +267,7 @@ make test-specific TEST_PATH="test/python/unit/chat/test_chat_logger.py"
 - **Cloud**: GCS (async atomic ops), S3/Redis (stubs), env restrictions
 - **Language Architecture**: Per-language content files, fallback filtering, UI/backend sync, caching
 - **Evaluation Storage**: Persistent JSON reports with timestamps, re-evaluation support, efficient retrieval
+- **Resource Management**: Version-validated JSON resources, separated character/scenario files, metadata tracking, validation tooling
 
 ## i18n/l10n Design Notes & Principles
 
@@ -299,6 +327,7 @@ make test-specific TEST_PATH="test/python/unit/chat/test_chat_logger.py"
 **Language Support**:
 - Use IETF BCP 47 format: `"en"`, `"zh-TW"`, `"ja"`
 - User `preferred_language` drives content selection and agent instructions
+- ResourceLoader validates versions and caches content
 - ContentLoader filters by language, caches per-language
 - Frontend Vue i18n syncs with backend user preferences
-- Language-specific content files: `scenarios_zh-TW.json` 
+- Language-specific content files: `scenarios_zh-TW.json`, `characters_zh-TW.json` 

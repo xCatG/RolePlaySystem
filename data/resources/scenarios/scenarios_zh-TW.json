@@ -1,0 +1,28 @@
+{
+  "resource_version": "1.0",
+  "last_modified": "2025-07-29T01:37:13Z",
+  "modified_by": "manual",
+  "scenarios": [
+    {
+      "id": "medical_interview_zh_tw",
+      "language": "zh-TW",
+      "name": "醫療病患面談",
+      "description": "練習對病患進行病史詢問",
+      "compatible_characters": ["patient_chronic_zh_tw", "patient_acute_zh_tw"]
+    },
+    {
+      "id": "customer_service_zh_tw", 
+      "language": "zh-TW",
+      "name": "客戶服務電話",
+      "description": "處理客戶投訴和詢問",
+      "compatible_characters": ["angry_customer_zh_tw", "confused_customer_zh_tw"]
+    },
+    {
+      "id": "job_interview_zh_tw",
+      "language": "zh-TW", 
+      "name": "工作面試",
+      "description": "練習求職面試技巧",
+      "compatible_characters": ["hr_manager_zh_tw", "technical_interviewer_zh_tw"]
+    }
+  ]
+}

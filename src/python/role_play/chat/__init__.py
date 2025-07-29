@@ -9,7 +9,6 @@ for AI-powered roleplay conversations. It includes:
 - FastAPI handlers for chat endpoints
 """
 
-from .content_loader import ContentLoader
 from .models import (
     CreateSessionRequest,
     CreateSessionResponse,
@@ -24,7 +23,6 @@ from .models import (
 )
 
 __all__ = [
-    "ContentLoader",
     "CreateSessionRequest",
     "CreateSessionResponse", 
     "ChatMessageRequest",

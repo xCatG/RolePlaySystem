@@ -6,13 +6,14 @@ import json
 import uuid
 import os
 from pathlib import Path
-from unittest.mock import patch, mock_open
+from unittest.mock import patch, mock_open, AsyncMock
 import asyncio
 import aiofiles
 
 from role_play.common.storage import FileStorage, StorageBackend, LockAcquisitionError, FileStorageConfig
 from role_play.common.exceptions import StorageError
 from role_play.common.models import User, UserAuthMethod, SessionData, UserRole, AuthProvider
+from role_play.common.storage_monitoring import StorageMonitor
 
 import sys
 from pathlib import Path
@@ -762,3 +763,95 @@ class TestStorageBackendDefaultMethods:
             assert len(keys) == 1
             assert "test/regular.txt" in keys
             assert "test/.hidden" not in keys
+
+
+@patch('role_play.common.storage.get_storage_monitor')
+class TestFileStorageMonitoring:
+    """Test the integration of StorageMonitor with FileStorage."""
+
+    @pytest.mark.asyncio
+    async def test_read_operation_is_monitored(self, mock_get_monitor):
+        """Verify that the 'read' operation is monitored."""
+        mock_monitor = AsyncMock(spec=StorageMonitor)
+        mock_monitor.monitor_storage_operation.return_value.__aenter__.return_value = None
+        mock_get_monitor.return_value = mock_monitor
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            storage = create_file_storage(temp_dir)
+            await storage.write("test.txt", "data")
+            
+            # Reset mock after setup
+            mock_monitor.reset_mock()
+
+            await storage.read("test.txt")
+
+            mock_monitor.monitor_storage_operation.assert_called_once_with("read")
+
+    @pytest.mark.asyncio
+    async def test_write_operation_is_monitored(self, mock_get_monitor):
+        """Verify that the 'write' operation is monitored."""
+        mock_monitor = AsyncMock(spec=StorageMonitor)
+        mock_monitor.monitor_storage_operation.return_value.__aenter__.return_value = None
+        mock_get_monitor.return_value = mock_monitor
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            storage = create_file_storage(temp_dir)
+            await storage.write("test.txt", "data")
+
+            mock_monitor.monitor_storage_operation.assert_called_once_with("write")
+
+    @pytest.mark.asyncio
+    async def test_delete_operation_is_monitored(self, mock_get_monitor):
+        """Verify that the 'delete' operation is monitored."""
+        mock_monitor = AsyncMock(spec=StorageMonitor)
+        mock_monitor.monitor_storage_operation.return_value.__aenter__.return_value = None
+        mock_get_monitor.return_value = mock_monitor
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            storage = create_file_storage(temp_dir)
+            await storage.write("test.txt", "data")
+            
+            # Reset mock after setup
+            mock_monitor.reset_mock()
+
+            await storage.delete("test.txt")
+
+            mock_monitor.monitor_storage_operation.assert_called_once_with("delete")
+
+    @pytest.mark.asyncio
+    async def test_lock_operation_is_monitored(self, mock_get_monitor):
+        """Verify that the 'lock' operation is monitored."""
+        mock_monitor = AsyncMock(spec=StorageMonitor)
+        mock_monitor.monitor_lock_acquisition.return_value.__aenter__.return_value = None
+        mock_get_monitor.return_value = mock_monitor
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            storage = create_file_storage(temp_dir)
+            
+            async with storage.lock("resource/path"):
+                pass
+
+            mock_monitor.monitor_lock_acquisition.assert_called_once_with("resource/path", "file")
+
+    @pytest.mark.asyncio
+    async def test_stale_lock_expiry_is_recorded(self, mock_get_monitor):
+        """Verify that stale lock expiry is recorded by the monitor."""
+        mock_monitor = AsyncMock(spec=StorageMonitor)
+        mock_monitor.monitor_lock_acquisition.return_value.__aenter__.return_value = None
+        mock_get_monitor.return_value = mock_monitor
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            storage = create_file_storage(temp_dir)
+            lock_path = storage._get_lock_path("stale/resource")
+            
+            # Create a stale lock file
+            stale_lock_data = {"pid": 99999, "timestamp": 0}
+            await aiofiles.os.makedirs(lock_path.parent, exist_ok=True)
+            async with aiofiles.open(lock_path, 'w') as f:
+                await f.write(json.dumps(stale_lock_data))
+
+            # Acquiring the lock should remove the stale one and record the event
+            async with storage.lock("stale/resource", timeout=1.0):
+                pass
+            
+            mock_monitor.record_lock_expiry.assert_called_once_with("stale/resource", "file")

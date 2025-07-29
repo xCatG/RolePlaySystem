@@ -1,0 +1,21 @@
+{
+  "resource_version": "1.0",
+  "last_modified": "2025-07-29T01:37:13Z",
+  "modified_by": "manual",
+  "scenarios": [
+    {
+      "id": "medical_interview",
+      "language": "en",
+      "name": "Medical Patient Interview",
+      "description": "Practice taking medical history from a patient",
+      "compatible_characters": ["patient_chronic", "patient_acute"]
+    },
+    {
+      "id": "customer_service", 
+      "language": "en",
+      "name": "Customer Service Call",
+      "description": "Handle customer complaints and inquiries",
+      "compatible_characters": ["angry_customer", "confused_customer"]
+    }
+  ]
+}

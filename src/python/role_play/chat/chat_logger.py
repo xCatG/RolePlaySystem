@@ -20,16 +20,14 @@ class ChatLogger:
     with built-in locking support.
     """
 
-    def __init__(self, storage_backend: StorageBackend, content_loader=None):
+    def __init__(self, storage_backend: StorageBackend):
         """
-        Initialize ChatLogger with a storage backend and optional content loader.
+        Initialize ChatLogger with a storage backend.
 
         Args:
             storage_backend: The storage backend to use for all operations.
-            content_loader: Optional ContentLoader for loading scenario/character data.
         """
         self.storage = storage_backend
-        self.content_loader = content_loader
         logger.info(f"ChatLogger initialized with {type(storage_backend).__name__}")
 
     def _get_chat_log_path(self, user_id: str, session_id: str) -> str:
@@ -372,18 +370,6 @@ class ChatLogger:
             # Load full scenario and character data if content_loader is available
             scenario_description = ""
             character_description = ""
-            if self.content_loader:
-                session_language = session_info.get("session_language", "en")
-                scenario_data = self.content_loader.get_scenario_by_id(
-                    session_info.get("scenario_id", ""), session_language
-                )
-                character_data = self.content_loader.get_character_by_id(
-                    session_info.get("character_id", ""), session_language
-                )
-                if scenario_data:
-                    scenario_description = scenario_data.get("description", "")
-                if character_data:
-                    character_description = character_data.get("description", "")
 
             scenario_info = ScenarioInfo(
                 id=session_info.get("scenario_id", ""),
