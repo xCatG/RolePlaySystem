@@ -1,6 +1,6 @@
 # Stage 1: Build Vue.js Frontend
 # Use a specific Node.js version for reproducibility
-FROM node:18.18-slim as frontend-builder
+FROM node:20-slim AS frontend-builder
 
 # Accept build arguments
 ARG GIT_VERSION=dev
