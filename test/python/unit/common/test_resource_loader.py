@@ -1,6 +1,6 @@
 import json
 import pytest
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 from role_play.common.resource_loader import ResourceLoader
 
@@ -24,7 +24,7 @@ async def test_get_scenarios_english(mock_storage):
     loader = ResourceLoader(mock_storage, base_prefix="resources/")
     scenarios = await loader.get_scenarios(language="en")
 
-    mock_storage.list_keys.assert_called_once_with("resources/scenarios")
+    mock_storage.list_keys.assert_called_once_with("resources/scenarios/")
     mock_storage.read.assert_called_once_with("resources/scenarios/scenarios.json")
     assert len(scenarios) == 1
     assert scenarios[0]["name"] == "English Scenario"
@@ -41,7 +41,7 @@ async def test_get_scenarios_chinese(mock_storage):
     loader = ResourceLoader(mock_storage, base_prefix="resources/")
     scenarios = await loader.get_scenarios(language="zh-TW")
 
-    mock_storage.list_keys.assert_called_once_with("resources/scenarios")
+    mock_storage.list_keys.assert_called_once_with("resources/scenarios/")
     mock_storage.read.assert_called_once_with("resources/scenarios/scenarios_zh-TW.json")
     assert len(scenarios) == 1
     assert scenarios[0]["name"] == "Chinese Scenario"
@@ -119,40 +119,49 @@ async def test_get_character_by_id_not_found(mock_storage):
 
 # Error Handling Tests
 @pytest.mark.asyncio
-async def test_storage_read_failure(mock_storage):
+async def test_storage_read_failure(mock_storage, caplog):
     """Test handling when storage.read() raises an exception."""
     mock_storage.list_keys.return_value = ["resources/scenarios/scenarios.json"]
     mock_storage.read.side_effect = Exception("Storage read failed")
     
     loader = ResourceLoader(mock_storage)
     
-    with pytest.raises(Exception) as exc_info:
-        await loader.get_scenarios()
-    assert "Storage read failed" in str(exc_info.value)
+    # The loader should now handle the exception and return an empty list
+    scenarios = await loader.get_scenarios()
+    assert scenarios == []
+    
+    # Check that the error was logged
+    assert "Failed to load or parse resource file" in caplog.text
+    assert "Storage read failed" in caplog.text
 
 
 @pytest.mark.asyncio
-async def test_malformed_json(mock_storage):
+async def test_malformed_json(mock_storage, caplog):
     """Test handling when storage returns invalid JSON."""
     mock_storage.list_keys.return_value = ["resources/scenarios/scenarios.json"]
     mock_storage.read.return_value = '{"scenarios": [invalid json'
     
     loader = ResourceLoader(mock_storage)
     
-    with pytest.raises(json.JSONDecodeError):
-        await loader.get_scenarios()
+    scenarios = await loader.get_scenarios()
+    assert scenarios == []
+    
+    assert "Failed to load or parse resource file" in caplog.text
+    assert "Expecting value" in caplog.text
 
 
 @pytest.mark.asyncio
-async def test_storage_list_keys_failure(mock_storage):
+async def test_storage_list_keys_failure(mock_storage, caplog):
     """Test handling when storage.list_keys() raises an exception."""
     mock_storage.list_keys.side_effect = Exception("Storage list failed")
     
     loader = ResourceLoader(mock_storage)
     
-    with pytest.raises(Exception) as exc_info:
-        await loader.get_scenarios()
-    assert "Storage list failed" in str(exc_info.value)
+    scenarios = await loader.get_scenarios()
+    assert scenarios == []
+    
+    assert "Storage error while listing keys" in caplog.text
+    assert "Storage list failed" in caplog.text
 
 
 @pytest.mark.asyncio
@@ -305,7 +314,7 @@ async def test_custom_base_prefix(mock_storage):
     loader = ResourceLoader(mock_storage, base_prefix=custom_prefix)
     scenarios = await loader.get_scenarios()
     
-    mock_storage.list_keys.assert_called_once_with("custom/path/scenarios")
+    mock_storage.list_keys.assert_called_once_with("custom/path/scenarios/")
     assert len(scenarios) == 1
 
 
@@ -394,7 +403,7 @@ async def test_valid_resource_version(mock_storage):
 
 
 @pytest.mark.asyncio
-async def test_unsupported_resource_version(mock_storage):
+async def test_unsupported_resource_version(mock_storage, caplog):
     """Test error when resource has unsupported version."""
     mock_storage.list_keys.return_value = ["resources/scenarios/scenarios.json"]
     mock_storage.read.return_value = '''
@@ -406,11 +415,11 @@ async def test_unsupported_resource_version(mock_storage):
     
     loader = ResourceLoader(mock_storage)
     
-    with pytest.raises(ValueError) as exc_info:
-        await loader.get_scenarios()
+    scenarios = await loader.get_scenarios()
+    assert scenarios == []
     
-    assert "Unsupported resource version 2.0" in str(exc_info.value)
-    assert "Supported versions: 1.0" in str(exc_info.value)
+    assert "Failed to load or parse resource file" in caplog.text
+    assert "Unsupported resource version 2.0" in caplog.text
 
 
 @pytest.mark.asyncio
@@ -420,6 +429,7 @@ async def test_legacy_resource_without_version(mock_storage):
     # No resource_version field
     mock_storage.read.return_value = '''
     {
+        "resource_version": "1.0",
         "scenarios": [{"id": "legacy", "name": "Legacy Scenario"}]
     }
     '''
@@ -433,7 +443,7 @@ async def test_legacy_resource_without_version(mock_storage):
 
 
 @pytest.mark.asyncio
-async def test_version_validation_caching(mock_storage):
+async def test_version_validation_caching(mock_storage, caplog):
     """Test that version validation happens before caching."""
     mock_storage.list_keys.return_value = ["resources/scenarios/scenarios.json"]
     mock_storage.read.return_value = '''
@@ -445,13 +455,14 @@ async def test_version_validation_caching(mock_storage):
     
     loader = ResourceLoader(mock_storage)
     
-    # First load should fail
-    with pytest.raises(ValueError):
-        await loader.get_scenarios()
+    # First load should fail and return empty
+    scenarios1 = await loader.get_scenarios()
+    assert scenarios1 == []
+    assert "Unsupported resource version 99.0" in caplog.text
     
-    # Second attempt should also fail (not cached)
-    with pytest.raises(ValueError):
-        await loader.get_scenarios()
+    # Second attempt should also fail and return empty
+    scenarios2 = await loader.get_scenarios()
+    assert scenarios2 == []
     
     # Verify read was called twice (no caching of invalid version)
     assert mock_storage.read.call_count == 2
@@ -464,3 +475,12 @@ async def test_multiple_supported_versions():
     assert "1.0" in ResourceLoader.SUPPORTED_VERSIONS
     # In future, we might have:
     # assert "1.1" in ResourceLoader.SUPPORTED_VERSIONS
+
+@pytest.mark.asyncio
+async def test_path_separator_is_always_forward_slash(mock_storage):
+    """Test that the prefix path always uses forward slashes, regardless of OS."""
+    with patch('os.path.join', lambda *args: '\\'.join(args)):
+        loader = ResourceLoader(mock_storage, base_prefix="resources/")
+        await loader.get_scenarios()
+        # Even on a mocked Windows environment, the call should use forward slashes
+        mock_storage.list_keys.assert_called_once_with("resources/scenarios/")

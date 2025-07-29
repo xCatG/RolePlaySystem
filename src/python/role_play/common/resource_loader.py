@@ -54,35 +54,50 @@ class ResourceLoader:
         Finds the correct resource file path for a given type and language.
         Example: resource_type='scenarios', language='zh-TW' -> 'resources/scenarios/scenarios_zh-TW.json'
         """
-        prefix = os.path.join(self.base_prefix, resource_type)
-        logger.debug(f"Looking for {resource_type} resources with prefix: {prefix}")
-        all_files = await self.storage.list_keys(prefix)
-        logger.debug(f"Found files: {all_files}")
+        # Always use forward slashes for storage prefixes
+        prefix = f"{self.base_prefix}{resource_type}/"
+        logger.debug(f"Searching for '{resource_type}' resources in language '{language}' with prefix: '{prefix}'")
+        
+        try:
+            all_files = await self.storage.list_keys(prefix)
+            logger.debug(f"Found potential files in storage: {all_files}")
+        except Exception as e:
+            logger.error(f"Storage error while listing keys for prefix '{prefix}': {e}", exc_info=True)
+            return None
 
         # Try to find a language-specific file
         lang_suffix = f"_{language}.json"
         for file_path in all_files:
             if file_path.endswith(lang_suffix):
+                logger.info(f"Found language-specific resource file: {file_path}")
                 return file_path
 
         # Fallback to the default resource file (e.g., scenarios.json)
         default_file_name = f"{resource_type}.json"
         for file_path in all_files:
-            if os.path.basename(file_path) == default_file_name:
+            # Check basename to avoid matching directories like 'scenarios.json_bak'
+            if file_path.endswith(default_file_name) and os.path.basename(file_path) == default_file_name:
+                logger.info(f"Found default resource file as fallback: {file_path}")
                 return file_path
         
+        logger.warning(f"No resource file found for type '{resource_type}' and language '{language}'")
         return None
 
     async def _get_all_from_resource_type(self, resource_type: str, language: str = "en") -> list[dict]:
         """Generic function to load all items from a resource type (e.g., all scenarios)."""
         path = await self._find_resource_path(resource_type, language)
-        logger.debug(f"Resource path for {resource_type}/{language}: {path}")
         if not path:
-            logger.warning(f"No resource file found for {resource_type} in language {language}")
             return []
         
-        data = await self._load_and_cache_json(path)
-        return data.get(resource_type, [])
+        try:
+            data = await self._load_and_cache_json(path)
+            resources = data.get(resource_type, [])
+            if not resources:
+                logger.warning(f"Resource file {path} was loaded, but the '{resource_type}' key is missing or empty.")
+            return resources
+        except Exception as e:
+            logger.error(f"Failed to load or parse resource file {path}: {e}", exc_info=True)
+            return []
 
     async def get_scenarios(self, language: str = "en") -> list[dict]:
         """Loads all scenarios for a specific language."""

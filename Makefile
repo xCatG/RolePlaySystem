@@ -462,8 +462,8 @@ upload-resources: load-env-mk validate-resources
 		echo "Please set GCP_PROJECT_ID_$(shell echo $(ENV) | tr '[:lower:]' '[:upper:]') in .env.mk or environment."; \
 		exit 1; \
 	fi
-	@echo "Uploading resources to GCS bucket gs://$(GCS_BUCKET_APP_DATA)/resources/..."
-	@gsutil -m cp -r data/resources/* gs://$(GCS_BUCKET_APP_DATA)/resources/
+	@echo "Uploading resources to GCS bucket gs://$(GCS_BUCKET_APP_DATA)/$(GCS_PREFIX_APP_DATA)resources/..."
+	@gsutil -m cp -r data/resources/* gs://$(GCS_BUCKET_APP_DATA)/$(GCS_PREFIX_APP_DATA)resources/
 	@echo "Resources uploaded successfully."
 
 .PHONY: download-resources
@@ -475,10 +475,11 @@ download-resources: load-env-mk
 		echo "Please set GCP_PROJECT_ID_$(shell echo $(ENV) | tr '[:lower:]' '[:upper:]') in .env.mk or environment."; \
 		exit 1; \
 	fi
-	@echo "Downloading resources from GCS bucket gs://$(GCS_BUCKET_APP_DATA)/resources/..."
+	@echo "Downloading resources from GCS bucket gs://$(GCS_BUCKET_APP_DATA)/$(GCS_PREFIX_APP_DATA)resources/..."
 	@mkdir -p data/resources
-	@gsutil -m cp -r gs://$(GCS_BUCKET_APP_DATA)/resources/* data/resources/
+	@gsutil -m cp -r gs://$(GCS_BUCKET_APP_DATA)/$(GCS_PREFIX_APP_DATA)resources/* data/resources/
 	@echo "Resources downloaded successfully."
+
 
 .PHONY: deploy-with-resources
 deploy-with-resources: validate-resources upload-resources deploy
