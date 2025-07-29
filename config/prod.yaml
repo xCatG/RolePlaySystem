@@ -25,7 +25,7 @@ jwt_expire_hours: "${JWT_EXPIRE_HOURS:168}"  # 7 days for production
 # Storage settings - Google Cloud Storage with object-based locking
 storage:
   type: "gcs"
-  bucket: "${GCS_BUCKET:roleplay-prod-storage}"
+  bucket: "${GCS_BUCKET:rps-app-data-prod}"
   prefix: "${GCS_PREFIX:prod/}"
   project_id: "${GCP_PROJECT_ID}"
   # Use Application Default Credentials in GCP environment

@@ -25,7 +25,7 @@ jwt_expire_hours: "${JWT_EXPIRE_HOURS:72}"  # 3 days for beta
 # Storage settings - Google Cloud Storage with object-based locking
 storage:
   type: "gcs"
-  bucket: "${GCS_BUCKET:roleplay-beta-storage}"
+  bucket: "${GCS_BUCKET:rps-app-data-beta}"
   prefix: "${GCS_PREFIX:beta/}"
   project_id: "${GCP_PROJECT_ID}"
   # Use Application Default Credentials in GCP environment

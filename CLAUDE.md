@@ -93,7 +93,6 @@ make test-specific TEST_PATH="test/python/unit/chat/test_chat_logger.py"
 - [x] Test beta deployment end-to-end
 
 ### Deployment & Configuration Improvements
-- [ ] Fix GCS bucket naming inconsistency (DEPLOYMENT.md uses `rps-app-data-{env}` but configs use `roleplay-{env}-storage`)
 - [ ] Update API version path - remove `/api/v1/*` reference or implement versioning consistently
 - [ ] Create environment-specific service accounts (`sa-rps-beta`, `sa-rps-prod`) instead of generic `sa-rps`
 - [ ] Reduce GCS permissions from `objectAdmin` to least privilege (`objectUser` or separate creator/viewer roles)

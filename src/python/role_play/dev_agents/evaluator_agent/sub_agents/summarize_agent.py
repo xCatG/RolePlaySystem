@@ -45,6 +45,9 @@ Please make sure to return values of overall_assessment, key_strengths_demonstra
         # before_model_callback=rate_limit_callback,
         after_model_callback=report_storage_callback,
         # after_agent_callback=after_agent_callback
+        # output_schema is set, so cannot allow transfers
+        disallow_transfer_to_parent=True,
+        disallow_transfer_to_peers=True,
     )
 
 def report_storage_callback(
