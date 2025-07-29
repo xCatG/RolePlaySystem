@@ -1,4 +1,5 @@
 """Storage abstraction layer for the Role Play System."""
+from __future__ import annotations
 
 import json
 import os
@@ -16,6 +17,7 @@ from pydantic import ValidationError
 from .exceptions import StorageError
 from .models import User, UserAuthMethod, SessionData
 from .time_utils import utc_now
+from .storage_monitoring import get_storage_monitor
 
 
 class LockAcquisitionError(StorageError):
@@ -332,6 +334,7 @@ class FileStorage(StorageBackend):
         self.config = config
         self.storage_dir = Path(config.base_dir).resolve()
         self.storage_dir.mkdir(exist_ok=True)
+        self.monitor = get_storage_monitor()
         
         # Create lock directory
         self.locks_dir = self.storage_dir / ".locks"
@@ -360,65 +363,67 @@ class FileStorage(StorageBackend):
         """
         lock_path = self._get_lock_path(resource_path)
         
-        # Use a simpler file-based locking approach that works better with asyncio
-        start_time = asyncio.get_event_loop().time()
-        acquired = False
-        
-        while not acquired and (asyncio.get_event_loop().time() - start_time) < timeout:
-            try:
-                # Try to create lock file exclusively (atomic operation)
-                await aiofiles.os.makedirs(lock_path.parent, exist_ok=True)
-                
-                # Create lock data with PID and timestamp for stale lock detection
-                lock_data = {
-                    "pid": os.getpid(),
-                    "timestamp": asyncio.get_event_loop().time(),
-                    "resource": resource_path
-                }
-                lock_content = json.dumps(lock_data)
-                
-                # Use exclusive creation to implement the lock
-                fd = await asyncio.to_thread(
-                    os.open, str(lock_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY
+        async with self.monitor.monitor_lock_acquisition(resource_path, "file"):
+            # Use a simpler file-based locking approach that works better with asyncio
+            start_time = asyncio.get_event_loop().time()
+            acquired = False
+            
+            while not acquired and (asyncio.get_event_loop().time() - start_time) < timeout:
+                try:
+                    # Try to create lock file exclusively (atomic operation)
+                    await aiofiles.os.makedirs(lock_path.parent, exist_ok=True)
+                    
+                    # Create lock data with PID and timestamp for stale lock detection
+                    lock_data = {
+                        "pid": os.getpid(),
+                        "timestamp": asyncio.get_event_loop().time(),
+                        "resource": resource_path
+                    }
+                    lock_content = json.dumps(lock_data)
+                    
+                    # Use exclusive creation to implement the lock
+                    fd = await asyncio.to_thread(
+                        os.open, str(lock_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY
+                    )
+                    await asyncio.to_thread(os.write, fd, lock_content.encode('utf-8'))
+                    await asyncio.to_thread(os.close, fd)
+                    acquired = True
+                    
+                except FileExistsError:
+                    # Lock file already exists, check if it's stale
+                    if await self._is_stale_lock(lock_path, self.config.lock.lease_duration_seconds):
+                        # Try to remove stale lock and retry immediately
+                        try:
+                            await aiofiles.os.remove(str(lock_path))
+                            await self.monitor.record_lock_expiry(resource_path, "file")
+                            continue  # Retry immediately without sleeping
+                        except FileNotFoundError:
+                            continue  # Already removed, retry immediately
+                        except Exception:
+                            pass  # Could not remove, treat as active lock
+                    
+                    # Lock is active, wait and retry
+                    await asyncio.sleep(0.1)
+                except Exception as e:
+                    raise StorageError(f"Error acquiring lock: {e}")
+            
+            if not acquired:
+                raise LockAcquisitionError(
+                    f"Failed to acquire lock for {resource_path} within {timeout} seconds"
                 )
-                await asyncio.to_thread(os.write, fd, lock_content.encode('utf-8'))
-                await asyncio.to_thread(os.close, fd)
-                acquired = True
-                
-            except FileExistsError:
-                # Lock file already exists, check if it's stale
-                if await self._is_stale_lock(lock_path, self.config.lock.lease_duration_seconds):
-                    # Try to remove stale lock and retry immediately
-                    try:
-                        await aiofiles.os.remove(str(lock_path))
-                        continue  # Retry immediately without sleeping
-                    except FileNotFoundError:
-                        continue  # Already removed, retry immediately
-                    except Exception:
-                        pass  # Could not remove, treat as active lock
-                
-                # Lock is active, wait and retry
-                await asyncio.sleep(0.1)
-            except Exception as e:
-                raise StorageError(f"Error acquiring lock: {e}")
-        
-        if not acquired:
-            raise LockAcquisitionError(
-                f"Failed to acquire lock for {resource_path} within {timeout} seconds"
-            )
-        
-        try:
-            yield
-        finally:
-            # Always try to release the lock by removing the lock file
+            
             try:
-                await aiofiles.os.remove(str(lock_path))
-            except FileNotFoundError:
-                # Lock file already removed, ignore
-                pass
-            except Exception:
-                # Ignore other release errors to prevent masking original exceptions
-                pass
+                yield
+            finally:
+                # Always try to release the lock by removing the lock file
+                try:
+                    await aiofiles.os.remove(str(lock_path))
+                except FileNotFoundError:
+                    # Lock file already removed, ignore
+                    pass
+                except Exception:
+                    # Ignore other release errors to prevent masking original exceptions
+                    pass
 
     async def _is_stale_lock(self, lock_path: Path, lease_duration_seconds: float) -> bool:
         """
@@ -484,13 +489,14 @@ class FileStorage(StorageBackend):
         """Read text data from a file."""
         file_path = self._get_storage_path(path)
         
-        try:
-            async with aiofiles.open(file_path, 'r', encoding='utf-8') as f:
-                return await f.read()
-        except FileNotFoundError:
-            raise StorageError(f"Path not found: {path}")
-        except IOError as e:
-            raise StorageError(f"Failed to read {path}: {e}")
+        async with self.monitor.monitor_storage_operation("read"):
+            try:
+                async with aiofiles.open(file_path, 'r', encoding='utf-8') as f:
+                    return await f.read()
+            except FileNotFoundError:
+                raise StorageError(f"Path not found: {path}")
+            except IOError as e:
+                raise StorageError(f"Failed to read {path}: {e}")
 
     async def write(self, path: str, data: str) -> None:
         """Write text data to a file."""
@@ -499,11 +505,12 @@ class FileStorage(StorageBackend):
         # Create parent directories if needed
         await asyncio.to_thread(file_path.parent.mkdir, parents=True, exist_ok=True)
         
-        try:
-            async with aiofiles.open(file_path, 'w', encoding='utf-8') as f:
-                await f.write(data)
-        except IOError as e:
-            raise StorageError(f"Failed to write {path}: {e}")
+        async with self.monitor.monitor_storage_operation("write"):
+            try:
+                async with aiofiles.open(file_path, 'w', encoding='utf-8') as f:
+                    await f.write(data)
+            except IOError as e:
+                raise StorageError(f"Failed to write {path}: {e}")
 
     async def append(self, path: str, data: str) -> None:
         """Append text data to a file."""
@@ -512,24 +519,26 @@ class FileStorage(StorageBackend):
         # Create parent directories if needed
         await asyncio.to_thread(file_path.parent.mkdir, parents=True, exist_ok=True)
         
-        try:
-            async with aiofiles.open(file_path, 'a', encoding='utf-8') as f:
-                await f.write(data)
-        except IOError as e:
-            raise StorageError(f"Failed to append to {path}: {e}")
+        async with self.monitor.monitor_storage_operation("append"):
+            try:
+                async with aiofiles.open(file_path, 'a', encoding='utf-8') as f:
+                    await f.write(data)
+            except IOError as e:
+                raise StorageError(f"Failed to append to {path}: {e}")
 
     # Override bytes methods for better efficiency with actual file operations
     async def read_bytes(self, path: str) -> bytes:
         """Read binary data from a file."""
         file_path = self._get_storage_path(path)
         
-        try:
-            async with aiofiles.open(file_path, 'rb') as f:
-                return await f.read()
-        except FileNotFoundError:
-            raise StorageError(f"Path not found: {path}")
-        except IOError as e:
-            raise StorageError(f"Failed to read {path}: {e}")
+        async with self.monitor.monitor_storage_operation("read_bytes"):
+            try:
+                async with aiofiles.open(file_path, 'rb') as f:
+                    return await f.read()
+            except FileNotFoundError:
+                raise StorageError(f"Path not found: {path}")
+            except IOError as e:
+                raise StorageError(f"Failed to read {path}: {e}")
 
     async def write_bytes(self, path: str, data: bytes) -> None:
         """Write binary data to a file."""
@@ -538,11 +547,12 @@ class FileStorage(StorageBackend):
         # Create parent directories if needed
         await asyncio.to_thread(file_path.parent.mkdir, parents=True, exist_ok=True)
         
-        try:
-            async with aiofiles.open(file_path, 'wb') as f:
-                await f.write(data)
-        except IOError as e:
-            raise StorageError(f"Failed to write {path}: {e}")
+        async with self.monitor.monitor_storage_operation("write_bytes"):
+            try:
+                async with aiofiles.open(file_path, 'wb') as f:
+                    await f.write(data)
+            except IOError as e:
+                raise StorageError(f"Failed to write {path}: {e}")
 
     async def append_bytes(self, path: str, data: bytes) -> None:
         """Append binary data to a file."""
@@ -551,42 +561,46 @@ class FileStorage(StorageBackend):
         # Create parent directories if needed
         await asyncio.to_thread(file_path.parent.mkdir, parents=True, exist_ok=True)
         
-        try:
-            async with aiofiles.open(file_path, 'ab') as f:
-                await f.write(data)
-        except IOError as e:
-            raise StorageError(f"Failed to append to {path}: {e}")
+        async with self.monitor.monitor_storage_operation("append_bytes"):
+            try:
+                async with aiofiles.open(file_path, 'ab') as f:
+                    await f.write(data)
+            except IOError as e:
+                raise StorageError(f"Failed to append to {path}: {e}")
 
     async def exists(self, path: str) -> bool:
         """Check if a file exists."""
         file_path = self._get_storage_path(path)
-        return await asyncio.to_thread(file_path.exists)
+        async with self.monitor.monitor_storage_operation("exists"):
+            return await asyncio.to_thread(file_path.exists)
 
     async def delete(self, path: str) -> bool:
         """Delete a file."""
         file_path = self._get_storage_path(path)
-        if await asyncio.to_thread(file_path.exists):
-            await asyncio.to_thread(file_path.unlink)
-            return True
-        return False
+        async with self.monitor.monitor_storage_operation("delete"):
+            if await asyncio.to_thread(file_path.exists):
+                await asyncio.to_thread(file_path.unlink)
+                return True
+            return False
 
     async def list_keys(self, prefix: str) -> List[str]:
         """List all keys with the given prefix."""
         prefix_path = self._get_storage_path(prefix)
         keys = []
         
-        if await asyncio.to_thread(prefix_path.exists):
-            # Run the blocking rglob operation in a thread
-            def _list_files():
-                result = []
-                for file_path in prefix_path.rglob('*'):
-                    if file_path.is_file() and not file_path.name.startswith('.'):
-                        # Convert back to storage key format
-                        relative_path = file_path.relative_to(self.storage_dir)
-                        result.append(str(relative_path))
-                return result
-            
-            keys = await asyncio.to_thread(_list_files)
+        async with self.monitor.monitor_storage_operation("list"):
+            if await asyncio.to_thread(prefix_path.exists):
+                # Run the blocking rglob operation in a thread
+                def _list_files():
+                    result = []
+                    for file_path in prefix_path.rglob('*'):
+                        if file_path.is_file() and not file_path.name.startswith('.'):
+                            # Convert back to storage key format
+                            relative_path = file_path.relative_to(self.storage_dir)
+                            result.append(str(relative_path))
+                    return result
+                
+                keys = await asyncio.to_thread(_list_files)
         
         return keys
 

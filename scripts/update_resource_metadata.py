@@ -3,20 +3,18 @@
 Script to update resource metadata (last_modified timestamp and version).
 
 This helps manual editors maintain proper metadata when modifying resource files.
-
-Usage: 
-    python scripts/update_resource_metadata.py [file_or_directory] [--bump-version]
-    
-Options:
-    --bump-version: Increment the patch version (e.g., 1.0 -> 1.1)
 """
+from __future__ import annotations
 
+import argparse
 import json
 import os
+import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Tuple
+from typing import Any
+
 
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src" / "python"))
@@ -24,180 +22,153 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src" / "python"))
 from role_play.common.resource_loader import ResourceLoader
 
 
-def get_current_timestamp() -> str:
-    """Get current UTC timestamp in ISO format."""
-    return datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
+class ResourceUpdater:
+    """A class to encapsulate resource metadata update logic."""
 
+    def __init__(self, path: str, bump_version: bool, modified_by: str):
+        self.path = path
+        self.bump_version = bump_version
+        self.modified_by = modified_by
+        self.success_count = 0
+        self.fail_count = 0
 
-def bump_version(version: str) -> str:
-    """Bump the patch version number."""
-    try:
-        parts = version.split('.')
-        if len(parts) == 2:
-            major, minor = parts
-            return f"{major}.{int(minor) + 1}"
+    def run(self) -> bool:
+        """Process a file or directory."""
+        if os.path.isfile(self.path):
+            self._process_file(self.path)
+        elif os.path.isdir(self.path):
+            self._process_directory(self.path)
         else:
-            # If not in expected format, just return as-is
-            return version
-    except:
-        return version
+            print(f"Error: Path not found: {self.path}", file=sys.stderr)
+            return False
+        
+        print(f"\nProcessed {self.success_count + self.fail_count} files. "
+              f"({self.success_count} succeeded, {self.fail_count} failed)")
+        return self.fail_count == 0
 
-
-def update_file_metadata(
-    file_path: str, 
-    bump_version_flag: bool = False,
-    modified_by: str = "manual"
-) -> Tuple[bool, str]:
-    """Update metadata in a single JSON file."""
-    try:
-        # Read file
-        with open(file_path, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-        
-        # Check if file has been modified
-        old_timestamp = data.get("last_modified", "")
-        old_version = data.get("resource_version", "1.0")
-        
-        # Update timestamp
-        new_timestamp = get_current_timestamp()
-        data["last_modified"] = new_timestamp
-        
-        # Update modified_by
-        data["modified_by"] = modified_by
-        
-        # Add version if missing
-        if "resource_version" not in data:
-            data["resource_version"] = "1.0"
-            print(f"  Added missing resource_version: 1.0")
-        
-        # Bump version if requested
-        if bump_version_flag and "resource_version" in data:
-            new_version = bump_version(data["resource_version"])
-            if new_version != data["resource_version"]:
-                data["resource_version"] = new_version
-                print(f"  Bumped version: {old_version} -> {new_version}")
-        
-        # Check if version is supported
-        if data["resource_version"] not in ResourceLoader.SUPPORTED_VERSIONS:
-            print(f"  WARNING: Version {data['resource_version']} is not in supported versions: "
-                  f"{', '.join(ResourceLoader.SUPPORTED_VERSIONS)}")
-        
-        # Write back with proper formatting
-        with open(file_path, 'w', encoding='utf-8') as f:
-            json.dump(data, f, indent=2, ensure_ascii=False)
-            f.write('\n')  # Add trailing newline
-        
-        # Report changes
-        if old_timestamp != new_timestamp:
-            print(f"  Updated timestamp: {old_timestamp} -> {new_timestamp}")
-        
-        return True, "OK"
-        
-    except json.JSONDecodeError as e:
-        return False, f"Invalid JSON: {e}"
-    except Exception as e:
-        return False, f"Error: {e}"
-
-
-def process_path(
-    path: str, 
-    bump_version_flag: bool = False,
-    modified_by: str = "manual"
-) -> bool:
-    """Process a file or directory."""
-    all_success = True
-    
-    if os.path.isfile(path):
-        # Single file
-        if path.endswith('.json'):
-            print(f"Processing {path}...")
-            success, error = update_file_metadata(path, bump_version_flag, modified_by)
-            if success:
-                print("  ✓ Updated successfully")
-            else:
-                print(f"  ✗ Failed: {error}")
-                all_success = False
-        else:
-            print(f"Skipping non-JSON file: {path}")
-    
-    elif os.path.isdir(path):
-        # Directory - process all JSON files
-        print(f"Processing directory: {path}\n")
-        
-        for root, dirs, files in os.walk(path):
-            for file in files:
+    def _process_directory(self, directory_path: str):
+        """Process all JSON files in a directory."""
+        print(f"Processing directory: {directory_path}\n")
+        for root, _, files in os.walk(directory_path):
+            for file in sorted(files):
                 if file.endswith('.json'):
                     file_path = os.path.join(root, file)
-                    rel_path = os.path.relpath(file_path, path)
-                    
-                    print(f"Processing {rel_path}...")
-                    success, error = update_file_metadata(
-                        file_path, bump_version_flag, modified_by
-                    )
-                    if success:
-                        print("  ✓ Updated successfully")
-                    else:
-                        print(f"  ✗ Failed: {error}")
-                        all_success = False
-                    print()
-    
-    else:
-        print(f"Error: Path not found: {path}")
-        all_success = False
-    
-    return all_success
+                    self._process_file(file_path)
+
+    def _process_file(self, file_path: str):
+        """Update metadata for a single file."""
+        rel_path = os.path.relpath(file_path, self.path if os.path.isdir(self.path) else os.path.dirname(self.path))
+        print(f"Processing {rel_path}...")
+        
+        try:
+            with open(file_path, 'r+', encoding='utf-8') as f:
+                try:
+                    data = json.load(f)
+                except json.JSONDecodeError as e:
+                    raise IOError(f"Invalid JSON: {e}")
+
+                self._update_metadata(data)
+
+                # Write back with proper formatting
+                f.seek(0)
+                json.dump(data, f, indent=2, ensure_ascii=False)
+                f.truncate()
+                f.write('\n')
+
+            print("  ✓ Updated successfully")
+            self.success_count += 1
+        except (IOError, OSError) as e:
+            print(f"  ✗ Failed: {e}")
+            self.fail_count += 1
+        print()
+
+    def _update_metadata(self, data: dict[str, Any]):
+        """Update the metadata in the provided data dictionary."""
+        old_timestamp = data.get("last_modified")
+        new_timestamp = datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
+        data["last_modified"] = new_timestamp
+        data["modified_by"] = self.modified_by
+
+        if old_timestamp != new_timestamp:
+            print(f"  Updated timestamp: {old_timestamp} -> {new_timestamp}")
+
+        if self.bump_version:
+            old_version = data.get("resource_version", "1.0")
+            new_version = self._bump_patch_version(old_version)
+            data["resource_version"] = new_version
+            if old_version != new_version:
+                print(f"  Bumped version: {old_version} -> {new_version}")
+        
+        version = data.get("resource_version")
+        if version and version not in ResourceLoader.SUPPORTED_VERSIONS:
+            print(f"  WARNING: Version {version} is not in supported versions: "
+                  f"{', '.join(ResourceLoader.SUPPORTED_VERSIONS)}")
+
+    @staticmethod
+    def _bump_patch_version(version_str: str) -> str:
+        """Bumps the patch number of a version string (e.g., '1.0' -> '1.1')."""
+        try:
+            parts = version_str.split('.')
+            if len(parts) == 2:
+                return f"{parts[0]}.{int(parts[1]) + 1}"
+        except (ValueError, IndexError):
+            pass
+        return version_str
 
 
 def main():
     """Main entry point."""
-    # Parse arguments
-    if len(sys.argv) < 2:
-        print("Usage: python update_resource_metadata.py <file_or_directory> [options]")
-        print("\nOptions:")
-        print("  --bump-version    Increment the patch version")
-        print("  --modified-by=X   Set modified_by field (default: 'manual')")
-        print("\nExample:")
-        print("  python update_resource_metadata.py data/resources/")
-        print("  python update_resource_metadata.py data/resources/scenarios/scenarios.json --bump-version")
-        sys.exit(1)
-    
-    path = sys.argv[1]
-    bump_version_flag = "--bump-version" in sys.argv
-    
-    # Check for modified-by argument
-    modified_by = "manual"
-    for arg in sys.argv:
-        if arg.startswith("--modified-by="):
-            modified_by = arg.split("=", 1)[1]
-    
-    # Process the path
-    success = process_path(path, bump_version_flag, modified_by)
-    
+    parser = argparse.ArgumentParser(
+        description="Update resource metadata (timestamp, version).",
+        formatter_class=argparse.RawTextHelpFormatter
+    )
+    parser.add_argument(
+        "path",
+        help="Path to a single JSON file or a directory of resources."
+    )
+    parser.add_argument(
+        "--bump-version",
+        action="store_true",
+        help="Increment the patch version (e.g., 1.0 -> 1.1)."
+    )
+    parser.add_argument(
+        "--modified-by",
+        default="manual",
+        help="Set the 'modified_by' field (default: 'manual')."
+    )
+    parser.add_argument(
+        "--no-validate",
+        action="store_true",
+        help="Skip the validation step after updating."
+    )
+    args = parser.parse_args()
+
+    updater = ResourceUpdater(args.path, args.bump_version, args.modified_by)
+    success = updater.run()
+
     print("\n" + "="*60)
-    if success:
-        print("✓ All files updated successfully!")
-        
-        # Run validation
-        print("\nRunning validation...")
-        validation_script = os.path.join(
-            os.path.dirname(os.path.abspath(__file__)),
-            "validate_resources.py"
-        )
-        
-        # Determine resources directory for validation
-        if os.path.isfile(path):
-            # Find parent resources directory
-            resources_dir = path
-            while os.path.basename(resources_dir) != "resources" and resources_dir != "/":
-                resources_dir = os.path.dirname(resources_dir)
-        else:
-            resources_dir = path
-        
-        os.system(f"python {validation_script} {resources_dir}")
-        
-    else:
+    if not success:
         print("✗ Some files failed to update.")
         sys.exit(1)
+    
+    print("✓ All files updated successfully!")
+
+    if not args.no_validate:
+        print("\nRunning validation...")
+        validation_script = Path(__file__).parent / "validate_resources.py"
+        
+        # Determine the root resources directory for validation
+        resources_dir = args.path
+        if os.path.isfile(resources_dir):
+            # Traverse up to find a 'resources' directory
+            p = Path(resources_dir).parent
+            while p.name != 'resources' and p.parent != p:
+                p = p.parent
+            resources_dir = str(p) if p.name == 'resources' else args.path
+
+        subprocess.run([sys.executable, str(validation_script), resources_dir], check=False)
+    else:
+        print("\nSkipping validation step.")
 
 
 if __name__ == "__main__":
