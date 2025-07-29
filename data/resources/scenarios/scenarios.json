@@ -1,4 +1,7 @@
 {
+  "resource_version": "1.0",
+  "last_modified": "2025-07-29T01:37:13Z",
+  "modified_by": "manual",
   "scenarios": [
     {
       "id": "medical_interview",

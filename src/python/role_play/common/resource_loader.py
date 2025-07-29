@@ -1,22 +1,41 @@
 import asyncio
 import json
+import logging
 import os
 from typing import Any, Dict, List
 
 from role_play.common.storage import StorageBackend
 
+logger = logging.getLogger(__name__)
+
 
 class ResourceLoader:
+    # Supported resource versions
+    SUPPORTED_VERSIONS = ["1.0"]
+    
     def __init__(self, storage: StorageBackend, base_prefix: str = "resources/"):
         self.storage = storage
         self.base_prefix = base_prefix
         self._cache: Dict[str, Any] = {}  # Internal cache: stores loaded JSON content
 
     async def _load_and_cache_json(self, path: str) -> Any:
-        """Loads a specific JSON file from storage and caches its content."""
+        """Loads a specific JSON file from storage, validates version, and caches its content."""
         if path not in self._cache:
             content = await self.storage.read(path)
-            self._cache[path] = json.loads(content)
+            data = json.loads(content)
+            
+            # Validate resource version
+            resource_version = data.get("resource_version")
+            if resource_version is None:
+                # Legacy file without version - log warning but allow
+                logger.warning(f"Resource file {path} missing resource_version field (legacy format)")
+            elif resource_version not in self.SUPPORTED_VERSIONS:
+                raise ValueError(
+                    f"Unsupported resource version {resource_version} in {path}. "
+                    f"Supported versions: {', '.join(self.SUPPORTED_VERSIONS)}"
+                )
+            
+            self._cache[path] = data
         return self._cache[path]
 
     def invalidate_cache(self, path: str | None = None):
