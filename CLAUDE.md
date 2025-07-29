@@ -144,6 +144,12 @@ make test-specific TEST_PATH="test/python/unit/chat/test_chat_logger.py"
 - [x] **Test Coverage**: 18 comprehensive unit tests for all evaluation functionality
 
 ### Pending Development
+- [ ] **Resource Architecture for Script Creator**:
+  - [ ] Design LayeredResourceLoader for base + user resources
+  - [ ] Implement user resource directories (`users/{user_id}/resources/`)
+  - [ ] Update APIs to distinguish base vs user-created content
+  - [ ] Design resource sharing and visibility controls
+  - [ ] See RESOURCE_ARCHITECTURE.md for detailed design
 - [ ] **Code Quality & Testing** (Post-refactoring improvements):
   - [ ] Implement API contract testing to prevent frontend/backend data structure mismatches
   - [ ] Add runtime API response validation in development mode to catch integration issues early
