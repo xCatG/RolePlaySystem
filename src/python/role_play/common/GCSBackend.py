@@ -12,6 +12,7 @@ from .storage import StorageBackend, LockAcquisitionError, GCSStorageConfig
 from .exceptions import StorageError
 from .models import User, UserAuthMethod, SessionData
 from .time_utils import utc_now
+from .storage_monitoring import get_storage_monitor
 
 try:
     from google.cloud import storage as gcs
@@ -44,6 +45,7 @@ class GCSStorageBackend(StorageBackend):
         self.config = config
         self.bucket_name = config.bucket
         self.prefix = config.prefix.rstrip('/') + '/' if config.prefix else ''
+        self.monitor = get_storage_monitor()
         
         # Initialize GCS client
         if config.credentials_file:
@@ -110,77 +112,79 @@ class GCSStorageBackend(StorageBackend):
         
         lock_data_str = json.dumps(lock_data)
         
-        for attempt in range(self.config.lock.retry_attempts):
-            # Check overall timeout before each attempt
-            if time.time() - start_time >= timeout:
-                break
-                
-            try:
-                # Try to create lock object atomically (if_generation_match=0 means object must not exist)
-                await asyncio.to_thread(
-                    lock_blob.upload_from_string,
-                    lock_data_str,
-                    content_type='application/json',
-                    if_generation_match=0
-                )
-                acquired = True
-                logger.debug(f"GCS lock acquired for {resource_path} on attempt {attempt + 1}")
-                break
-                
-            except Conflict:
-                # Lock object already exists, check if it's expired
-                try:
-                    existing_lock_text = await asyncio.to_thread(lock_blob.download_as_text)
-                    existing_lock_data = json.loads(existing_lock_text)
+        async with self.monitor.monitor_lock_acquisition(resource_path, "object"):
+            for attempt in range(self.config.lock.retry_attempts):
+                # Check overall timeout before each attempt
+                if time.time() - start_time >= timeout:
+                    break
                     
-                    if existing_lock_data.get("expires_at", 0) < time.time():
-                        # Lock is expired, try to delete it and retry
-                        logger.info(
-                            f"Stale GCS lock detected for {resource_path}. "
-                            f"Owner: {existing_lock_data.get('owner')}. Attempting to delete."
-                        )
+                try:
+                    # Try to create lock object atomically (if_generation_match=0 means object must not exist)
+                    await asyncio.to_thread(
+                        lock_blob.upload_from_string,
+                        lock_data_str,
+                        content_type='application/json',
+                        if_generation_match=0
+                    )
+                    acquired = True
+                    logger.debug(f"GCS lock acquired for {resource_path} on attempt {attempt + 1}")
+                    break
+                    
+                except Conflict:
+                    # Lock object already exists, check if it's expired
+                    try:
+                        existing_lock_text = await asyncio.to_thread(lock_blob.download_as_text)
+                        existing_lock_data = json.loads(existing_lock_text)
+                        
+                        if existing_lock_data.get("expires_at", 0) < time.time():
+                            # Lock is expired, try to delete it and retry
+                            logger.info(
+                                f"Stale GCS lock detected for {resource_path}. "
+                                f"Owner: {existing_lock_data.get('owner')}. Attempting to delete."
+                            )
+                            try:
+                                await asyncio.to_thread(lock_blob.delete)
+                                await self.monitor.record_lock_expiry(resource_path, "object")
+                                logger.info(f"Stale GCS lock for {resource_path} deleted. Retrying acquisition.")
+                                # Continue to next attempt to re-acquire immediately
+                            except NotFound:
+                                logger.info(
+                                    f"Stale GCS lock for {resource_path} already deleted by another process. "
+                                    f"Retrying acquisition."
+                                )
+                            except Exception as e_del:
+                                logger.warning(
+                                    f"Failed to delete stale GCS lock for {resource_path}: {e_del}. "
+                                    f"Will retry acquisition."
+                                )
+                        else:
+                            # Lock exists and is not expired
+                            logger.debug(
+                                f"GCS lock for {resource_path} is held by {existing_lock_data.get('owner')}. "
+                                f"Waiting before retry (attempt {attempt + 1}/{self.config.lock.retry_attempts})"
+                            )
+                            if time.time() - start_time >= timeout:
+                                break
+                            await asyncio.sleep(self.config.lock.retry_delay_seconds)
+                            
+                    except NotFound:
+                        # Lock was deleted between Conflict and download_as_text, good to retry
+                        logger.info(f"GCS lock for {resource_path} disappeared during conflict check. Retrying acquisition.")
+                    except json.JSONDecodeError:
+                        logger.warning(f"GCS lock file for {resource_path} is corrupted. Attempting to delete and retry.")
                         try:
                             await asyncio.to_thread(lock_blob.delete)
-                            logger.info(f"Stale GCS lock for {resource_path} deleted. Retrying acquisition.")
-                            # Continue to next attempt to re-acquire immediately
-                        except NotFound:
-                            logger.info(
-                                f"Stale GCS lock for {resource_path} already deleted by another process. "
-                                f"Retrying acquisition."
-                            )
-                        except Exception as e_del:
-                            logger.warning(
-                                f"Failed to delete stale GCS lock for {resource_path}: {e_del}. "
-                                f"Will retry acquisition."
-                            )
-                    else:
-                        # Lock exists and is not expired
-                        logger.debug(
-                            f"GCS lock for {resource_path} is held by {existing_lock_data.get('owner')}. "
-                            f"Waiting before retry (attempt {attempt + 1}/{self.config.lock.retry_attempts})"
-                        )
+                        except Exception:
+                            pass  # Best effort
+                    except Exception as e_conflict_check:
+                        logger.error(f"Error checking existing GCS lock for {resource_path}: {e_conflict_check}")
                         if time.time() - start_time >= timeout:
                             break
                         await asyncio.sleep(self.config.lock.retry_delay_seconds)
-                        
-                except NotFound:
-                    # Lock was deleted between Conflict and download_as_text, good to retry
-                    logger.info(f"GCS lock for {resource_path} disappeared during conflict check. Retrying acquisition.")
-                except json.JSONDecodeError:
-                    logger.warning(f"GCS lock file for {resource_path} is corrupted. Attempting to delete and retry.")
-                    try:
-                        await asyncio.to_thread(lock_blob.delete)
-                    except Exception:
-                        pass  # Best effort
-                except Exception as e_conflict_check:
-                    logger.error(f"Error checking existing GCS lock for {resource_path}: {e_conflict_check}")
-                    if time.time() - start_time >= timeout:
-                        break
-                    await asyncio.sleep(self.config.lock.retry_delay_seconds)
-            
-            except Exception as e:
-                logger.error(f"Unexpected error acquiring GCS lock for {resource_path}: {e}")
-                raise LockAcquisitionError(f"Failed to acquire lock for {resource_path}: {e}")
+                
+                except Exception as e:
+                    logger.error(f"Unexpected error acquiring GCS lock for {resource_path}: {e}")
+                    raise LockAcquisitionError(f"Failed to acquire lock for {resource_path}: {e}")
         
         if not acquired:
             raise LockAcquisitionError(
@@ -206,110 +210,119 @@ class GCSStorageBackend(StorageBackend):
         key = self._get_key(path)
         blob = self.bucket.blob(key)
         
-        try:
-            return await asyncio.to_thread(blob.download_as_text, encoding='utf-8')
-        except NotFound:
-            raise StorageError(f"Path not found: {path}")
-        except Exception as e:
-            raise StorageError(f"Failed to read {path}: {e}")
+        async with self.monitor.monitor_storage_operation("read"):
+            try:
+                return await asyncio.to_thread(blob.download_as_text, encoding='utf-8')
+            except NotFound:
+                raise StorageError(f"Path not found: {path}")
+            except Exception as e:
+                raise StorageError(f"Failed to read {path}: {e}")
 
     async def write(self, path: str, data: str) -> None:
         """Write text data to GCS."""
         key = self._get_key(path)
         blob = self.bucket.blob(key)
         
-        try:
-            await asyncio.to_thread(blob.upload_from_string, data, content_type='text/plain; charset=utf-8')
-        except Exception as e:
-            raise StorageError(f"Failed to write {path}: {e}")
+        async with self.monitor.monitor_storage_operation("write"):
+            try:
+                await asyncio.to_thread(blob.upload_from_string, data, content_type='text/plain; charset=utf-8')
+            except Exception as e:
+                raise StorageError(f"Failed to write {path}: {e}")
 
     async def append(self, path: str, data: str) -> None:
         """Append text data to GCS object."""
         # GCS doesn't support native append, so we read, concatenate, and write
-        try:
-            existing_data = await self.read(path)
-            new_data = existing_data + data
-        except StorageError:
-            # File doesn't exist, create it
-            new_data = data
-        
-        await self.write(path, new_data)
+        async with self.monitor.monitor_storage_operation("append"):
+            try:
+                existing_data = await self.read(path)
+                new_data = existing_data + data
+            except StorageError:
+                # File doesn't exist, create it
+                new_data = data
+            
+            await self.write(path, new_data)
 
     async def read_bytes(self, path: str) -> bytes:
         """Read binary data from GCS."""
         key = self._get_key(path)
         blob = self.bucket.blob(key)
         
-        try:
-            return await asyncio.to_thread(blob.download_as_bytes)
-        except NotFound:
-            raise StorageError(f"Path not found: {path}")
-        except Exception as e:
-            raise StorageError(f"Failed to read {path}: {e}")
+        async with self.monitor.monitor_storage_operation("read_bytes"):
+            try:
+                return await asyncio.to_thread(blob.download_as_bytes)
+            except NotFound:
+                raise StorageError(f"Path not found: {path}")
+            except Exception as e:
+                raise StorageError(f"Failed to read {path}: {e}")
 
     async def write_bytes(self, path: str, data: bytes) -> None:
         """Write binary data to GCS."""
         key = self._get_key(path)
         blob = self.bucket.blob(key)
         
-        try:
-            await asyncio.to_thread(blob.upload_from_string, data, content_type='application/octet-stream')
-        except Exception as e:
-            raise StorageError(f"Failed to write {path}: {e}")
+        async with self.monitor.monitor_storage_operation("write_bytes"):
+            try:
+                await asyncio.to_thread(blob.upload_from_string, data, content_type='application/octet-stream')
+            except Exception as e:
+                raise StorageError(f"Failed to write {path}: {e}")
 
     async def append_bytes(self, path: str, data: bytes) -> None:
         """Append binary data to GCS object."""
         # GCS doesn't support native append, so we read, concatenate, and write
-        try:
-            existing_data = await self.read_bytes(path)
-            new_data = existing_data + data
-        except StorageError:
-            # File doesn't exist, create it
-            new_data = data
-        
-        await self.write_bytes(path, new_data)
+        async with self.monitor.monitor_storage_operation("append_bytes"):
+            try:
+                existing_data = await self.read_bytes(path)
+                new_data = existing_data + data
+            except StorageError:
+                # File doesn't exist, create it
+                new_data = data
+            
+            await self.write_bytes(path, new_data)
 
     async def exists(self, path: str) -> bool:
         """Check if a GCS object exists."""
         key = self._get_key(path)
         blob = self.bucket.blob(key)
-        return await asyncio.to_thread(blob.exists)
+        async with self.monitor.monitor_storage_operation("exists"):
+            return await asyncio.to_thread(blob.exists)
 
     async def delete(self, path: str) -> bool:
         """Delete a GCS object."""
         key = self._get_key(path)
         blob = self.bucket.blob(key)
         
-        try:
-            await asyncio.to_thread(blob.delete)
-            return True
-        except NotFound:
-            return False
-        except Exception as e:
-            raise StorageError(f"Failed to delete {path}: {e}")
+        async with self.monitor.monitor_storage_operation("delete"):
+            try:
+                await asyncio.to_thread(blob.delete)
+                return True
+            except NotFound:
+                return False
+            except Exception as e:
+                raise StorageError(f"Failed to delete {path}: {e}")
 
     async def list_keys(self, prefix: str) -> List[str]:
         """List all GCS objects with the given prefix."""
         search_prefix = self._get_key(prefix)
         keys = []
         
-        try:
-            # Run the blocking list_blobs operation in a thread
-            def _list_blobs():
-                result = []
-                for blob in self.client.list_blobs(self.bucket, prefix=search_prefix):
-                    # Remove the storage prefix to get the original key
-                    key = blob.name
-                    if key.startswith(self.prefix):
-                        key = key[len(self.prefix):]
-                        # Skip lock files and hidden files
-                        if not key.startswith('.locks/') and not key.startswith('.'):
-                            result.append(key)
-                return result
-            
-            keys = await asyncio.to_thread(_list_blobs)
-        except Exception as e:
-            raise StorageError(f"Failed to list keys with prefix {prefix}: {e}")
+        async with self.monitor.monitor_storage_operation("list"):
+            try:
+                # Run the blocking list_blobs operation in a thread
+                def _list_blobs():
+                    result = []
+                    for blob in self.client.list_blobs(self.bucket, prefix=search_prefix):
+                        # Remove the storage prefix to get the original key
+                        key = blob.name
+                        if key.startswith(self.prefix):
+                            key = key[len(self.prefix):]
+                            # Skip lock files and hidden files
+                            if not key.startswith('.locks/') and not key.startswith('.'):
+                                result.append(key)
+                    return result
+                
+                keys = await asyncio.to_thread(_list_blobs)
+            except Exception as e:
+                raise StorageError(f"Failed to list keys with prefix {prefix}: {e}")
         
         return keys
 
