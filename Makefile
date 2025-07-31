@@ -114,7 +114,7 @@ help:
 	@echo "    make push-docker          Push current IMAGE_TAG to Artifact Registry for current ENV's project."
 	@echo "    make deploy               Build, push, and deploy current IMAGE_TAG to Cloud Run for current ENV."
 	@echo "    make deploy-image IMAGE_TAG=<tag> Deploy a specific existing image tag to Cloud Run for current ENV."
-	@echo "    make run-local-docker     Build and run the container locally for testing."
+	@echo "    make run-local-docker DATA_DIR=<path> Build and run the container locally for testing."
 	@echo "------------------------------------------------------------------------------------"
 	@echo "  RELEASE MANAGEMENT:"
 	@echo "    make tag-git-release NEW_GIT_TAG=<version> Create and push a new Git tag."
@@ -272,26 +272,53 @@ deploy-image: load-env-mk # Added dependency
 run-local-docker: build-docker
 	@echo "Running Docker container locally..."
 	@echo "Access at http://localhost:8080"
-	@# Determine which image to run based on whether we have a real project ID
-	@if echo "$(TARGET_GCP_PROJECT_ID)" | grep -q "placeholder"; then \
+	@# Check if DATA_DIR is provided
+	@if [ -z "$(DATA_DIR)" ]; then \
+		echo "Error: DATA_DIR parameter is required. Usage: make run-local-docker DATA_DIR=/path/to/data"; \
+		echo "Example: make run-local-docker DATA_DIR=~/data/rps_dev"; \
+		exit 1; \
+	fi; \
+	echo "Using data directory: $(DATA_DIR)"; \
+	if [ ! -d "$(DATA_DIR)" ]; then \
+		echo "Warning: Data directory $(DATA_DIR) does not exist. Creating it..."; \
+		mkdir -p "$(DATA_DIR)"; \
+	fi; \
+	if echo "$(TARGET_GCP_PROJECT_ID)" | grep -q "placeholder"; then \
 		IMAGE_TO_RUN="rps-local:$(IMAGE_TAG)"; \
 	else \
 		IMAGE_TO_RUN="$(IMAGE_NAME_BASE):$(IMAGE_TAG)"; \
 	fi; \
-	docker run -it --rm -p 8080:8080 \
-		-e ENV=dev \
-		-e GCP_PROJECT_ID=$(GCP_PROJECT_ID_DEV) \
-		-e GCS_BUCKET=$(SERVICE_NAME)-app-data-dev \
-		-e GCS_PREFIX=dev/ \
-		-e CONFIG_FILE=/app/config/dev.yaml \
-		-e LOG_LEVEL=DEBUG \
-		-e CORS_ALLOWED_ORIGINS="http://localhost:5173,http://localhost:3000,http://localhost:8080" \
-		-e JWT_SECRET_KEY="development-secret-key-do-not-use-in-production" \
-		-e PYTHONUNBUFFERED=1 \
-		-e GIT_VERSION=$(GIT_VERSION) \
-		-e SERVICE_NAME=$(SERVICE_NAME) \
-		-e PORT=8080 \
-		$IMAGE_TO_RUN
+	if [ -f ".env" ]; then \
+		echo "Loading environment variables from .env file"; \
+		docker run --rm -p 8080:8080 \
+			--env-file .env \
+			-v "$(DATA_DIR):/app/data" \
+			-e ENV=dev \
+			-e STORAGE_PATH=/app/data \
+			-e CONFIG_FILE=/app/config/dev.yaml \
+			-e LOG_LEVEL=DEBUG \
+			-e CORS_ALLOWED_ORIGINS="http://localhost:5173,http://localhost:3000,http://localhost:8080" \
+			-e PYTHONUNBUFFERED=1 \
+			-e GIT_VERSION=$(GIT_VERSION) \
+			-e SERVICE_NAME=$(SERVICE_NAME) \
+			-e PORT=8080 \
+			"$$IMAGE_TO_RUN"; \
+	else \
+		echo "No .env file found, using default environment variables"; \
+		docker run --rm -p 8080:8080 \
+			-v "$(DATA_DIR):/app/data" \
+			-e ENV=dev \
+			-e STORAGE_PATH=/app/data \
+			-e CONFIG_FILE=/app/config/dev.yaml \
+			-e LOG_LEVEL=DEBUG \
+			-e CORS_ALLOWED_ORIGINS="http://localhost:5173,http://localhost:3000,http://localhost:8080" \
+			-e JWT_SECRET_KEY="development-secret-key-do-not-use-in-production" \
+			-e PYTHONUNBUFFERED=1 \
+			-e GIT_VERSION=$(GIT_VERSION) \
+			-e SERVICE_NAME=$(SERVICE_NAME) \
+			-e PORT=8080 \
+			"$$IMAGE_TO_RUN"; \
+	fi
 
 # --- Local Development ---
 .PHONY: dev-setup
