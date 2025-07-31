@@ -1,0 +1,20 @@
+{
+  "resource_version": "1.0",
+  "last_modified": "2025-07-29T01:37:13Z",
+  "modified_by": "manual",
+  "scripts": [
+    {
+      "id": "medical_acute_frustration_simple",
+      "scenario_id": "medical_interview",
+      "character_id": "patient_acute",
+      "language": "en",
+      "goal": "Practice handling a patient who is downplaying their pain.",
+      "script": [
+        { "speaker": "character", "line": "I'm fine, doc. Just a little tweak." },
+        { "speaker": "participant", "line": "Describe the pain for me." },
+        { "speaker": "character", "line": "(Sighs) Okay, it's more of a sharp pain. A 6 or 7 maybe." },
+        { "speaker": "llm", "action": "stop" }
+      ]
+    }
+  ]
+}

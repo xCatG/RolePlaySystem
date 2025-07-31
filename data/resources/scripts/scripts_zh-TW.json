@@ -1,0 +1,20 @@
+{
+  "resource_version": "1.0",
+  "last_modified": "2025-07-29T01:37:13Z",
+  "modified_by": "manual",
+  "scripts": [
+    {
+      "id": "medical_acute_frustration_simple_zh_tw",
+      "scenario_id": "medical_interview_zh_tw",
+      "character_id": "patient_acute_zh_tw",
+      "language": "zh-TW",
+      "goal": "練習處理病患輕描淡寫疼痛的情況。",
+      "script": [
+        { "speaker": "character", "line": "醫生，我沒事啦，只是小扭傷而已。" },
+        { "speaker": "participant", "line": "請形容一下你的疼痛。" },
+        { "speaker": "character", "line": "（嘆氣）好吧，是比較尖銳的痛，大概六、七分吧。" },
+        { "speaker": "llm", "action": "stop" }
+      ]
+    }
+  ]
+}

@@ -32,8 +32,10 @@ class ResourceValidator:
     def __init__(self, resources_dir: str):
         self.resources_dir = resources_dir
         self.all_character_ids: Set[str] = set()
+        self.all_scenario_ids: Set[str] = set()
         self.errors: List[str] = []
         self.scenario_files: List[str] = []
+        self.script_files: List[str] = []
 
     def validate(self) -> bool:
         """Run all validation steps."""
@@ -105,7 +107,16 @@ class ResourceValidator:
                         self.all_character_ids.add(char["id"])
             else:
                 file_errors.append("Missing 'characters' key in characters file")
-        
+
+        elif "scripts" in file_name:
+            if "scripts" in data:
+                scripts = data["scripts"]
+                file_errors.extend(self._validate_scripts(scripts))
+                file_errors.extend(self._validate_language_consistency(scripts, file_name))
+                self.script_files.append(file_path)
+            else:
+                file_errors.append("Missing 'scripts' key in scripts file")
+
         return file_errors
 
     def _validate_metadata(self, data: dict[str, Any]) -> List[str]:
@@ -140,6 +151,7 @@ class ResourceValidator:
                 errors.append(f"{prefix}Duplicate ID '{scenario['id']}'")
             else:
                 seen_ids.add(scenario["id"])
+                self.all_scenario_ids.add(scenario["id"])
             for field in ["name", "description", "language", "compatible_characters"]:
                 if field not in scenario:
                     errors.append(f"{prefix}Missing '{field}' field")
@@ -158,6 +170,22 @@ class ResourceValidator:
                 seen_ids.add(character["id"])
             for field in ["name", "description", "language", "system_prompt"]:
                 if field not in character:
+                    errors.append(f"{prefix}Missing '{field}' field")
+        return errors
+
+    def _validate_scripts(self, scripts: list[dict[str, Any]]) -> List[str]:
+        """Validate script data structure."""
+        errors, seen_ids = [], set()
+        for i, script in enumerate(scripts):
+            prefix = f"Script {i}: "
+            if "id" not in script:
+                errors.append(f"{prefix}Missing 'id' field")
+            elif script["id"] in seen_ids:
+                errors.append(f"{prefix}Duplicate ID '{script['id']}'")
+            else:
+                seen_ids.add(script["id"])
+            for field in ["scenario_id", "character_id", "language", "script"]:
+                if field not in script:
                     errors.append(f"{prefix}Missing '{field}' field")
         return errors
 
@@ -200,6 +228,29 @@ class ResourceValidator:
                             )
                             self.errors.append(error)
                             all_refs_valid = False
+            except (IOError, json.JSONDecodeError) as e:
+                self.errors.append(f"Could not process {rel_path} for cross-referencing: {e}")
+                all_refs_valid = False
+
+        # Validate scripts references
+        for script_file in self.script_files:
+            rel_path = os.path.relpath(script_file, self.resources_dir)
+            try:
+                with open(script_file, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+
+                scripts = data.get("scripts", [])
+                for script in scripts:
+                    if script.get("character_id") not in self.all_character_ids:
+                        self.errors.append(
+                            f"{rel_path}: Script '{script.get('id', 'N/A')}' references non-existent character '{script.get('character_id')}'"
+                        )
+                        all_refs_valid = False
+                    if script.get("scenario_id") not in self.all_scenario_ids:
+                        self.errors.append(
+                            f"{rel_path}: Script '{script.get('id', 'N/A')}' references non-existent scenario '{script.get('scenario_id')}'"
+                        )
+                        all_refs_valid = False
             except (IOError, json.JSONDecodeError) as e:
                 self.errors.append(f"Could not process {rel_path} for cross-referencing: {e}")
                 all_refs_valid = False

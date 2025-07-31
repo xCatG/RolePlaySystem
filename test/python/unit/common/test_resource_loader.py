@@ -303,6 +303,32 @@ async def test_get_character_by_id_found(mock_storage):
     assert character["name"] == "The Villain"
 
 
+@pytest.mark.asyncio
+async def test_get_scripts_success(mock_storage):
+    """Test loading scripts list."""
+    mock_storage.list_keys.return_value = ["resources/scripts/scripts.json"]
+    mock_storage.read.return_value = '{"scripts": [{"id": "s1"}]}'
+
+    loader = ResourceLoader(mock_storage)
+    scripts = await loader.get_scripts()
+
+    assert len(scripts) == 1
+    assert scripts[0]["id"] == "s1"
+
+
+@pytest.mark.asyncio
+async def test_get_script_by_id_found(mock_storage):
+    """Test finding an existing script by ID."""
+    mock_storage.list_keys.return_value = ["resources/scripts/scripts.json"]
+    mock_storage.read.return_value = '{"scripts": [{"id": "demo"}]}'
+
+    loader = ResourceLoader(mock_storage)
+    script = await loader.get_script_by_id("demo")
+
+    assert script is not None
+    assert script["id"] == "demo"
+
+
 # Resource Path Discovery Tests
 @pytest.mark.asyncio
 async def test_custom_base_prefix(mock_storage):
