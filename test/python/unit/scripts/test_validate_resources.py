@@ -132,6 +132,37 @@ class TestResourceValidator:
         assert resource_validator.validate() is False
         assert "language 'en' but file suggests 'zh-TW'" in resource_validator.errors[0]
 
+    def test_validate_script_cross_reference_failure(self, resource_validator):
+        """Test validation fails when a script references missing scenario or character."""
+        create_resource_file(
+            Path(resource_validator.resources_dir) / "characters.json",
+            {
+                "resource_version": "1.0",
+                "last_modified": "2025-01-01T00:00:00Z",
+                "characters": [{"id": "char1", "name": "Char 1", "description": "", "language": "en", "system_prompt": ""}]
+            }
+        )
+        create_resource_file(
+            Path(resource_validator.resources_dir) / "scenarios.json",
+            {
+                "resource_version": "1.0",
+                "last_modified": "2025-01-01T00:00:00Z",
+                "scenarios": [{"id": "sc1", "name": "Scene", "description": "", "language": "en", "compatible_characters": ["char1"]}]
+            }
+        )
+        create_resource_file(
+            Path(resource_validator.resources_dir) / "scripts.json",
+            {
+                "resource_version": "1.0",
+                "last_modified": "2025-01-01T00:00:00Z",
+                "scripts": [
+                    {"id": "scr1", "scenario_id": "sc_missing", "character_id": "char1", "language": "en", "script": []}
+                ]
+            }
+        )
+        assert resource_validator.validate() is False
+        assert "references non-existent scenario" in resource_validator.errors[0]
+
     def test_validate_successful_run(self, resource_validator):
         """Test a successful validation run."""
         create_resource_file(
@@ -150,6 +181,17 @@ class TestResourceValidator:
                 "scenarios": [{
                     "id": "scen1", "name": "Scene 1", "description": "", "language": "en",
                     "compatible_characters": ["char1"]
+                }]
+            }
+        )
+        create_resource_file(
+            Path(resource_validator.resources_dir) / "scripts.json",
+            {
+                "resource_version": "1.0",
+                "last_modified": "2025-01-01T00:00:00Z",
+                "scripts": [{
+                    "id": "script1", "scenario_id": "scen1", "character_id": "char1",
+                    "language": "en", "script": []
                 }]
             }
         )

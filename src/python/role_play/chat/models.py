@@ -8,6 +8,7 @@ class CreateSessionRequest(BaseModel):
     scenario_id: str
     character_id: str
     participant_name: str
+    script_id: Optional[str] = Field(default=None, description="Optional script to use for the session")
 
 class CreateSessionResponse(BaseResponse):
     """Response after creating a chat session."""
