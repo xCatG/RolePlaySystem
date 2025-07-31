@@ -31,10 +31,13 @@ from .models import (
     ScenarioInfo,
     CharacterListResponse,
     CharacterInfo,
+    ScriptInfo,
+    ScriptListResponse,
     SessionStatusResponse,
     Message,
     MessagesListResponse
 )
+import json
 from ..common.resource_loader import ResourceLoader
 from .chat_logger import ChatLogger
 
@@ -57,6 +60,7 @@ class ChatHandler(BaseHandler):
             self._router.get("/content/scenarios", tags=["Content"], response_model=ScenarioListResponse)(self.get_scenarios)
             self._router.get("/content/scenarios/{scenario_id}/characters", tags=["Content"],
                              response_model=CharacterListResponse)(self.get_scenario_characters)
+            self._router.get("/content/scripts", tags=["Content"], response_model=ScriptListResponse)(self.get_scripts)
 
             self._router.post("/session", tags=["Session"], response_model=CreateSessionResponse)(self.create_session)
             self._router.get("/sessions", tags=["Session"], response_model=SessionListResponse)(self.get_sessions)
@@ -142,7 +146,8 @@ class ChatHandler(BaseHandler):
                                           session_id: str, character_dict: Dict, scenario_dict: Dict,
                                           adk_session_service: InMemorySessionService) -> str:
         """Generate character response using ADK Runner."""
-        agent = self._create_roleplay_agent(character_dict, scenario_dict)
+        script = adk_session.state.get("script")
+        agent = self._create_roleplay_agent(character_dict, scenario_dict, script)
         runner = Runner(
             app_name="roleplay_chat", agent=agent, session_service=adk_session_service
         )
@@ -173,7 +178,7 @@ class ChatHandler(BaseHandler):
         
         return response_text
 
-    def _create_roleplay_agent(self, character: Dict, scenario: Dict) -> Agent:
+    def _create_roleplay_agent(self, character: Dict, scenario: Dict, script: Optional[Dict] = None) -> Agent:
         """Helper to create an ADK agent configured for a specific character and scenario."""
         # Get language information
         character_language = character.get("language", "en")
@@ -188,7 +193,15 @@ class ChatHandler(BaseHandler):
 
 **Current Scenario:**
 {scenario.get("description", "No specific scenario description.")}
+"""
 
+        if script:
+            system_prompt += f"""
+**Script:**
+{json.dumps(script, indent=2)}
+"""
+
+        system_prompt += f"""
 **Roleplay Instructions:**
 -   **Stay fully in character.** Do NOT break character or mention you are an AI.
 -   Respond naturally based on your character's personality and the scenario.
@@ -256,6 +269,28 @@ class ChatHandler(BaseHandler):
             logger.error(f"Failed to get scenario characters for '{scenario_id}' in language '{language}': {e}")
             raise HTTPException(status_code=500, detail="Failed to load characters")
 
+    async def get_scripts(
+        self,
+        current_user: Annotated[User, Depends(require_user_or_higher)],
+        resource_loader: Annotated[ResourceLoader, Depends(get_resource_loader)],
+        language: str = Query("en", description="Language code for scripts"),
+    ) -> ScriptListResponse:
+        """Get all available scripts for the specified language."""
+        try:
+            scripts = await resource_loader.get_scripts(language)
+            script_infos = [
+                ScriptInfo(
+                    id=script["id"],
+                    goal=script["goal"],
+                    scenario_id=script["scenario_id"],
+                    character_id=script["character_id"],
+                ) for script in scripts
+            ]
+            return ScriptListResponse(success=True, scripts=script_infos)
+        except Exception as e:
+            logger.error(f"Failed to get scripts for language '{language}': {e}")
+            raise HTTPException(status_code=500, detail="Failed to load scripts")
+
     async def create_session(
         self,
         request: CreateSessionRequest,
@@ -280,6 +315,12 @@ class ChatHandler(BaseHandler):
             if request.character_id not in scenario.get("compatible_characters", []):
                 raise HTTPException(status_code=400, detail="Character not compatible with scenario")
 
+            script = None
+            if request.script_id:
+                script = await resource_loader.get_script_by_id(request.script_id, user_language)
+                if not script:
+                    raise HTTPException(status_code=400, detail=f"Invalid script ID: {request.script_id}")
+
             app_session_id, storage_path = await chat_logger.start_session(
                 user_id=current_user.id,
                 participant_name=request.participant_name,
@@ -301,7 +342,8 @@ class ChatHandler(BaseHandler):
                 "character_name": character["name"],
                 "language": user_language,
                 "message_count": 0,
-                "session_creation_time_iso": utc_now_isoformat()
+                "session_creation_time_iso": utc_now_isoformat(),
+                "script": script,
             }
 
             await adk_session_service.create_session(
@@ -401,14 +443,28 @@ class ChatHandler(BaseHandler):
             
             # Generate character response
             response_text = await self._generate_character_response(
-                adk_session, request.message, current_user.id, session_id, 
+                adk_session, request.message, current_user.id, session_id,
                 character_dict, scenario_dict, adk_session_service
             )
-            
+
             # Log character response
             await self._log_character_message(
                 adk_session, response_text, current_user.id, session_id, chat_logger
             )
+
+            # Handle script progression
+            script = adk_session.state.get("script")
+            if script:
+                script_index = adk_session.state.get("script_index", 0)
+                if script_index < len(script["script"]):
+                    current_line = script["script"][script_index]
+                    if current_line.get("speaker") == "llm" and current_line.get("action") == "stop":
+                        await self.end_session(session_id, current_user, chat_logger, adk_session_service)
+                        return ChatMessageResponse(
+                            success=True, response=response_text, session_id=session_id,
+                            message_count=adk_session.state["message_count"]
+                        )
+                    adk_session.state["script_index"] = script_index + 1
 
             return ChatMessageResponse(
                 success=True, response=response_text, session_id=session_id,

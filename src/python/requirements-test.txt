@@ -1,6 +1,7 @@
 -r requirements.txt
 pytest
 pytest-asyncio
+pytest-asyncio
 pytest-cov
 httpx
 factory_boy

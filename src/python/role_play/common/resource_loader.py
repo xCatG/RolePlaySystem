@@ -117,3 +117,11 @@ class ResourceLoader:
         characters = await self.get_characters(language)
         return next((c for c in characters if c.get("id") == character_id), None)
 
+    async def get_scripts(self, language: str = "en") -> list[dict]:
+        """Loads all scripts for a specific language."""
+        return await self._get_all_from_resource_type("scripts", language)
+
+    async def get_script_by_id(self, script_id: str, language: str = "en") -> dict | None:
+        """Gets a single script by its ID for the specified language."""
+        scripts = await self.get_scripts(language)
+        return next((s for s in scripts if s.get("id") == script_id), None)

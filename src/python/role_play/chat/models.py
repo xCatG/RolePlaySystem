@@ -8,6 +8,7 @@ class CreateSessionRequest(BaseModel):
     scenario_id: str
     character_id: str
     participant_name: str
+    script_id: Optional[str] = None
 
 class CreateSessionResponse(BaseResponse):
     """Response after creating a chat session."""
@@ -64,6 +65,19 @@ class CharacterInfo(BaseModel):
 class CharacterListResponse(BaseResponse):
     """Response containing list of characters."""
     characters: List[CharacterInfo]
+
+
+class ScriptInfo(BaseModel):
+    """Information about a script."""
+    id: str
+    goal: str
+    scenario_id: str
+    character_id: str
+
+
+class ScriptListResponse(BaseResponse):
+    """Response containing list of scripts."""
+    scripts: List[ScriptInfo]
 
 class SessionStatusResponse(BaseResponse):
     """Response containing session status."""
