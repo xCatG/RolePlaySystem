@@ -10,7 +10,7 @@ import logging
 import os
 from pathlib import Path
 
-from ..dev_agents.roleplay_agent.agent import RolePlayAgent
+from ..dev_agents.roleplay_agent.agent import get_production_agent
 from ..server.base_handler import BaseHandler
 from ..server.dependencies import (
     require_user_or_higher,
@@ -39,9 +39,6 @@ from ..common.resource_loader import ResourceLoader
 from .chat_logger import ChatLogger
 
 logger = logging.getLogger(__name__)
-
-# Default model for ADK
-DEFAULT_MODEL = os.getenv("ADK_MODEL", "gemini-2.0-flash-lite-001")
 
 class ChatHandler(BaseHandler):
     """Handler for chat-related endpoints - Simplified & Stateless."""
@@ -142,7 +139,16 @@ class ChatHandler(BaseHandler):
                                           session_id: str, character_dict: Dict, scenario_dict: Dict,
                                           adk_session_service: InMemorySessionService) -> str:
         """Generate character response using ADK Runner."""
-        agent = self._create_roleplay_agent(character_dict, scenario_dict)
+        # Get character, scenario IDs and language from session state
+        character_id = adk_session.state.get("character_id")
+        scenario_id = adk_session.state.get("scenario_id")
+        language = adk_session.state.get("language", "en")
+        
+        # Use get_production_agent from roleplay_agent module
+        agent = await get_production_agent(character_id, scenario_id, language)
+        if not agent:
+            raise HTTPException(status_code=500, detail="Failed to create roleplay agent")
+            
         runner = Runner(
             app_name="roleplay_chat", agent=agent, session_service=adk_session_service
         )
@@ -172,36 +178,6 @@ class ChatHandler(BaseHandler):
                     logger.error(f"Error closing runner for session {session_id}: {close_err}")
         
         return response_text
-
-    def _create_roleplay_agent(self, character: Dict, scenario: Dict) -> Agent:
-        """Helper to create an ADK agent configured for a specific character and scenario."""
-        # Get language information
-        character_language = character.get("language", "en")
-        language_names = {
-            "en": "English",
-            "zh-TW": "Traditional Chinese",
-            "ja": "Japanese"
-        }
-        language_name = language_names.get(character_language, "English")
-        
-        system_prompt = f"""{character.get("system_prompt", "You are a helpful assistant.")}
-
-**Current Scenario:**
-{scenario.get("description", "No specific scenario description.")}
-
-**Roleplay Instructions:**
--   **Stay fully in character.** Do NOT break character or mention you are an AI.
--   Respond naturally based on your character's personality and the scenario.
--   **IMPORTANT: Respond in {language_name} language as specified by your character and scenario.**
--   Engage with the user's messages within the roleplay context.
-"""
-        agent = RolePlayAgent(
-            name=f"roleplay_{character.get('id', 'unknown')}_{scenario.get('id', 'unknown')}",
-            model=DEFAULT_MODEL,
-            description=f"Roleplay agent for {character.get('name', 'Unknown Character')} in {scenario.get('name', 'Unknown Scenario')}",
-            instruction=system_prompt
-        )
-        return agent
 
     async def get_scenarios(
         self,
