@@ -339,7 +339,8 @@ class ChatHandler(BaseHandler):
                     jsonl_filename=s_data.get("storage_path", ""),
                     is_active=is_active,
                     ended_at=ended_at,
-                    ended_reason=ended_reason
+                    ended_reason=ended_reason,
+                    script_id=s_data.get("script_id", "")
                 )
                 session_infos.append(session_info)
             
