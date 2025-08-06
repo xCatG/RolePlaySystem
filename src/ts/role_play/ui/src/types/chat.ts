@@ -37,6 +37,8 @@ export interface SessionInfo {
   message_count: number;
   jsonl_filename: string;
   is_active: boolean;
+  goal?: string | null;
+  session_type?: 'freeform' | 'scripted';
   ended_at?: string | null;
   ended_reason?: string | null;
 }
@@ -48,7 +50,8 @@ export interface SessionListResponse extends BaseResponse {
 // Request types - matches Python models exactly
 export interface CreateSessionRequest {
   scenario_id: string;
-  character_id: string;
+  character_id?: string;
+  script_id?: string;
   participant_name: string;
 }
 
@@ -87,6 +90,19 @@ export interface Message {
 export interface MessagesListResponse extends BaseResponse {
   messages: Message[];
   session_id: string;
+}
+
+// Script types - minimal info for frontend display
+export interface ScriptInfo {
+  id: string;
+  scenario_id: string;
+  character_id: string;
+  language: string;
+  goal: string;
+}
+
+export interface ScriptListResponse extends BaseResponse {
+  scripts: ScriptInfo[];
 }
 
 // Legacy aliases for backward compatibility (will be removed)

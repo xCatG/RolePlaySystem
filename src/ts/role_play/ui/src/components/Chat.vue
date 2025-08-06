@@ -17,9 +17,37 @@
         <p>{{ selectedScenario?.description }}</p>
       </div>
 
+      <!-- Script Selection (only if scripts available) -->
+      <div v-if="scripts.length > 0" class="form-group">
+        <div class="radio-label">
+          <input type="radio" v-model="sessionType" value="script" id="script-radio" />
+          <label for="script-radio">{{ $t('chat.startWithScript') }}</label>
+        </div>
+        <select 
+          v-model="selectedScriptId" 
+          @change="onScriptSelect"
+          :disabled="sessionType !== 'script'"
+          class="form-select"
+        >
+          <option value="">-- {{ $t('chat.selectScript') }} --</option>
+          <option v-for="script in scripts" :key="script.id" :value="script.id">
+            {{ script.goal }}
+          </option>
+        </select>
+      </div>
+
+      <!-- Character Selection -->
       <div v-if="characters.length > 0" class="form-group">
-        <label>{{ $t('chat.selectCharacter') }}:</label>
-        <select v-model="selectedCharacterId">
+        <div class="radio-label">
+          <input type="radio" v-model="sessionType" value="character" id="character-radio" />
+          <label for="character-radio">{{ $t('chat.startWithCharacter') }} ({{ $t('chat.freeform') }})</label>
+        </div>
+        <select 
+          v-model="selectedCharacterId"
+          @change="onCharacterSelect" 
+          :disabled="sessionType !== 'character'"
+          class="form-select"
+        >
           <option value="">-- {{ $t('chat.selectCharacter') }} --</option>
           <option v-for="character in characters" :key="character.id" :value="character.id">
             {{ character.name }}
@@ -27,9 +55,9 @@
         </select>
       </div>
 
-      <div v-if="selectedCharacterId" class="form-group">
-        <label>{{ $t('auth.username') }}:</label>
-        <input v-model="participantName" type="text" :placeholder="$t('auth.username')" />
+      <div v-if="sessionType" class="form-group">
+        <label>{{ $t('chat.participantName') }}:</label>
+        <input v-model="participantName" type="text" :placeholder="$t('chat.enterParticipantName')" />
       </div>
 
       <button 
@@ -103,7 +131,7 @@ import { useI18n } from 'vue-i18n';
 import { chatApi } from '../services/chatApi';
 import ChatWindow from './ChatWindow.vue';
 import ConfirmModal from './ConfirmModal.vue';
-import type { ScenarioInfo, CharacterInfo, SessionInfo, CreateSessionResponse } from '../types/chat';
+import type { ScenarioInfo, CharacterInfo, SessionInfo, CreateSessionResponse, ScriptInfo } from '../types/chat';
 
 export default defineComponent({
   name: 'Chat',
@@ -116,9 +144,12 @@ export default defineComponent({
     
     const scenarios = ref<ScenarioInfo[]>([]);
     const characters = ref<CharacterInfo[]>([]);
+    const scripts = ref<ScriptInfo[]>([]);
     const sessions = ref<SessionInfo[]>([]);
     const selectedScenarioId = ref('');
     const selectedCharacterId = ref('');
+    const selectedScriptId = ref('');
+    const sessionType = ref<'script' | 'character' | null>(null);
     const participantName = ref('');
     const activeSession = ref<SessionInfo | null>(null);
     const loading = ref(false);
@@ -134,8 +165,9 @@ export default defineComponent({
 
     const canStartSession = computed(() => 
       selectedScenarioId.value && 
-      selectedCharacterId.value && 
-      participantName.value.trim()
+      participantName.value.trim() &&
+      ((sessionType.value === 'character' && selectedCharacterId.value) ||
+       (sessionType.value === 'script' && selectedScriptId.value))
     );
 
     const refreshData = async () => {
@@ -172,20 +204,75 @@ export default defineComponent({
       }
     };
 
+    const loadScripts = async (scenarioId: string) => {
+      if (!scenarioId) {
+        scripts.value = [];
+        return;
+      }
+      
+      try {
+        const response = await chatApi.getScripts(scenarioId, currentLanguage.value);
+        scripts.value = response || [];
+      } catch (err) {
+        console.error('Failed to load scripts:', err);
+        scripts.value = [];
+      }
+    };
+
     const onScenarioChange = async () => {
+      sessionType.value = null;
       selectedCharacterId.value = '';
-      await loadCharacters(selectedScenarioId.value);
+      selectedScriptId.value = '';
+      
+      // Load both characters and scripts in parallel
+      await Promise.all([
+        loadCharacters(selectedScenarioId.value),
+        loadScripts(selectedScenarioId.value)
+      ]);
+      
+      // If no scripts available, default to character mode
+      if (scripts.value.length === 0 && characters.value.length > 0) {
+        sessionType.value = 'character';
+      }
+    };
+
+    const onScriptSelect = () => {
+      if (selectedScriptId.value) {
+        sessionType.value = 'script';
+        selectedCharacterId.value = ''; // Clear character selection in UI
+      }
+    };
+
+    const onCharacterSelect = () => {
+      if (selectedCharacterId.value) {
+        sessionType.value = 'character';
+        selectedScriptId.value = ''; // Clear script selection in UI
+      }
     };
 
     const startSession = async () => {
       try {
         loading.value = true;
         error.value = '';
-        const createResponse = await chatApi.createSession({
+        
+        const request: any = {
           scenario_id: selectedScenarioId.value,
-          character_id: selectedCharacterId.value,
           participant_name: participantName.value
-        });
+        };
+        
+        // Add fields based on session type
+        if (sessionType.value === 'script') {
+          request.script_id = selectedScriptId.value;
+          // Optionally include character_id from the script
+          const selectedScript = scripts.value.find(s => s.id === selectedScriptId.value);
+          if (selectedScript) {
+            request.character_id = selectedScript.character_id;
+          }
+        } else {
+          request.character_id = selectedCharacterId.value;
+        }
+        
+        const createResponse = await chatApi.createSession(request);
         
         // Convert CreateSessionResponse to SessionInfo for consistent UI handling
         const sessionInfo: SessionInfo = {
@@ -297,7 +384,10 @@ export default defineComponent({
       // Clear current selections
       selectedScenarioId.value = '';
       selectedCharacterId.value = '';
+      selectedScriptId.value = '';
+      sessionType.value = null;
       characters.value = [];
+      scripts.value = [];
       
       // Reload content for new language
       await refreshData();
@@ -310,9 +400,12 @@ export default defineComponent({
     return {
       scenarios,
       characters,
+      scripts,
       sessions,
       selectedScenarioId,
       selectedCharacterId,
+      selectedScriptId,
+      sessionType,
       participantName,
       activeSession,
       loading,
@@ -321,6 +414,8 @@ export default defineComponent({
       selectedScenario,
       canStartSession,
       onScenarioChange,
+      onScriptSelect,
+      onCharacterSelect,
       startSession,
       loadSession,
       closeSession,
@@ -519,5 +614,31 @@ export default defineComponent({
   border-radius: 6px;
   margin-top: 20px;
   border: 1px solid #f5c6cb;
+}
+
+/* New styles for script selection */
+.radio-label {
+  display: flex;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.radio-label input[type="radio"] {
+  margin-right: 0.5rem;
+  margin-top: 0;
+  cursor: pointer;
+  width: auto;
+}
+
+.radio-label label {
+  margin-bottom: 0;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.form-select:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  background-color: #f0f0f0;
 }
 </style>

@@ -60,11 +60,13 @@ make test-specific TEST_PATH="test/python/unit/chat/test_chat_logger.py"
 - **Storage**: `users/{user_id}/chat_logs/{session_id}` JSONL
 - **Runners**: Created per-message, not persisted
 - **Language Support**: User preferred language drives content selection and agent instructions
+- **Agent Configuration**: Centralized ADK agent creation via `get_production_agent()` in roleplay_agent module
 
 ### Frontend (Modular Monolith)
 - **Structure**: Single module with domain boundaries (auth/, chat/, evaluation/)
 - **Evolution**: Domain-based organization → mechanical module splitting when needed
 - **Internationalization**: Vue i18n with English/Traditional Chinese support, language switcher with confirmation
+- **Session Creation**: Dual-flow UI supporting both script-based and character-based (freeform) session creation
 
 ### Production Locking
 - **Critical**: Lease duration (60-300s crash recovery) ≠ acquisition timeout (5-30s retry)
@@ -164,12 +166,29 @@ make test-specific TEST_PATH="test/python/unit/chat/test_chat_logger.py"
 - [x] **Resource Loading Fix**: Fixed GCS path issue in Makefile, hardened path handling with forward slashes
 - [x] **Integration Testing**: Replaced test script with proper pytest integration test for resource loading
 
+### ADK Agent Refactoring (Completed)
+- [x] **Centralized Agent Configuration**: Refactored `get_production_config()` to async `get_production_agent()` in roleplay_agent module
+- [x] **Chat Handler Integration**: Updated chat handler to use centralized agent creation instead of duplicating prompt logic
+- [x] **Language-Aware Agents**: Agent creation respects user's preferred language for system prompts
+- [x] **Test Coverage**: All 20+ chat handler unit tests passing after refactoring
+- [x] **Code Deduplication**: Eliminated duplicate agent configuration logic between modules
+
+### Script-Based Session Creation (Completed)
+- [x] **Frontend UI Enhancement**: Added dual-flow session creation supporting both script and character selection
+- [x] **Radio Button Pattern**: Implemented mutually exclusive selection with proper accessibility (id/for attributes)
+- [x] **Adaptive UI**: Script dropdown only shown when scripts are available for selected scenario
+- [x] **TypeScript Integration**: Added ScriptInfo type and updated CreateSessionRequest to support script_id
+- [x] **API Integration**: Added getScripts method to chatApi service for frontend script fetching
+- [x] **Internationalization**: Full English/Traditional Chinese support for new UI elements
+- [x] **CSS Improvements**: Fixed radio button alignment issues with proper flexbox layout
+
 ### Pending Development
 - [ ] **Resource Architecture for Script Creator**:
   - [x] Design LayeredResourceLoader for base + user resources (see RESOURCE_ARCHITECTURE.md)
   - [ ] Implement user resource directories (`users/{user_id}/resources/`)
   - [ ] Update APIs to distinguish base vs user-created content
   - [ ] Design resource sharing and visibility controls
+- [ ] **Backend API Implementation**: Create script content endpoints to support frontend script selection
 - [ ] **Code Quality & Testing** (Post-refactoring improvements):
   - [ ] Implement API contract testing to prevent frontend/backend data structure mismatches
   - [ ] Add runtime API response validation in development mode to catch integration issues early
@@ -250,18 +269,18 @@ make test-specific TEST_PATH="test/python/unit/chat/test_chat_logger.py"
 - **Infrastructure**: Common modules, FileStorage, AuthManager, JWT, cloud storage with distributed locking
 - **Server**: FastAPI with stateless handlers, JWT auth, CORS, environment configs
 - **Auth**: RoleChecker pattern (replaced decorators), role hierarchy, proper HTTP codes, language preferences
-- **Chat**: ADK integration, JSONL logging, singleton services, POC endpoints, language-aware content, refactored for maintainability
+- **Chat**: ADK integration, JSONL logging, singleton services, POC endpoints, language-aware content, refactored for maintainability, centralized agent configuration
 - **Evaluation**: AI agent evaluation system with persistent storage, comprehensive error handling, session validation, and resource cleanup
 - **Testing**: 260+ tests, language functionality coverage (ContentLoader, auth, models), evaluation module unit tests, ResourceLoader version validation tests, comprehensive Makefile targets
-- **Frontend**: Vue.js auth UI, i18n with Traditional Chinese, language switcher, reusable composables
+- **Frontend**: Vue.js auth UI, i18n with Traditional Chinese, language switcher, reusable composables, dual-flow session creation
 - **Localization**: Complete Traditional Chinese support with content isolation
 - **Code Quality**: Simplified architecture with extracted utilities, focused methods, reduced duplication
 
 ### Architecture Highlights
 - **Storage**: Async distributed locking, lease (60-300s) vs timeout (5-30s) separation
-- **Chat**: Separated ADK runtime from JSONL persistence, per-message Runner creation, utility methods for JSONL parsing
+- **Chat**: Separated ADK runtime from JSONL persistence, per-message Runner creation, utility methods for JSONL parsing, centralized agent configuration
 - **Backend Structure**: Helper methods for session validation, message logging, content loading, response generation
-- **Frontend Patterns**: Composable architecture for modal management, async operations, data loading
+- **Frontend Patterns**: Composable architecture for modal management, async operations, data loading, dual-flow session creation with script/character selection
 - **Config**: YAML + env vars, dynamic handler loading, fail-fast validation
 - **Cloud**: GCS (async atomic ops), S3/Redis (stubs), env restrictions
 - **Language Architecture**: Per-language content files, fallback filtering, UI/backend sync, caching

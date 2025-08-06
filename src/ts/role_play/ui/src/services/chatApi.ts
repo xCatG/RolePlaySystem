@@ -13,7 +13,9 @@ import type {
   ChatMessageResponse,
   SessionStatusResponse,
   Message,
-  MessagesListResponse
+  MessagesListResponse,
+  ScriptInfo,
+  ScriptListResponse
 } from '../types/chat';
 
 export const chatApi = {
@@ -35,6 +37,16 @@ export const chatApi = {
       }
     );
     return response.data.characters;
+  },
+
+  async getScripts(scenarioId: string, language: string = 'en'): Promise<ScriptInfo[]> {
+    const response = await axios.get<ScriptListResponse>(
+      apiUrl(`/chat/content/scenarios/${scenarioId}/scripts?language=${encodeURIComponent(language)}`),
+      {
+        headers: getAuthHeaders()
+      }
+    );
+    return response.data.scripts || [];
   },
 
   async createSession(request: CreateSessionRequest): Promise<CreateSessionResponse> {

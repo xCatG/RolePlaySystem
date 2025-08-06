@@ -21,6 +21,12 @@
   "chat": {
     "selectScenario": "選擇情境",
     "selectCharacter": "選擇角色",
+    "selectScript": "選擇腳本",
+    "startWithScript": "使用腳本開始",
+    "startWithCharacter": "使用角色開始",
+    "freeform": "自由對話",
+    "participantName": "參與者姓名",
+    "enterParticipantName": "輸入參與者的姓名",
     "startSession": "開始對話",
     "endSession": "結束對話",
     "typeMessage": "輸入您的訊息...",
