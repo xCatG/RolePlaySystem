@@ -8,9 +8,16 @@ from ..common.models import BaseResponse
 class CreateSessionRequest(BaseModel):
     """Request to create a new chat session."""
     scenario_id: str
-    character_id: str
+    character_id: Optional[str] = Field(default=None, description="Optional character ID - required if no script_id provided")
     participant_name: str
-    script_id: Optional[str] = Field(default=None, description="Optional script id, must correspond to valid scenario_id and character_id")
+    script_id: Optional[str] = Field(default=None, description="Optional script ID - required if no character_id provided")
+    
+    @model_validator(mode="after")
+    def validate_character_or_script(self) -> "CreateSessionRequest":
+        """Ensure at least one of character_id or script_id is provided."""
+        if not self.character_id and not self.script_id:
+            raise ValueError("Either character_id or script_id must be provided")
+        return self
 
 class CreateSessionResponse(BaseResponse):
     """Response after creating a chat session."""

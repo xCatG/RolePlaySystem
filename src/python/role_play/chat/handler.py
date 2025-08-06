@@ -31,6 +31,8 @@ from .models import (
     ScenarioInfo,
     CharacterListResponse,
     CharacterInfo,
+    ScriptListResponse,
+    ScriptInfo,
     SessionStatusResponse,
     Message,
     MessagesListResponse
@@ -54,6 +56,8 @@ class ChatHandler(BaseHandler):
             self._router.get("/content/scenarios", tags=["Content"], response_model=ScenarioListResponse)(self.get_scenarios)
             self._router.get("/content/scenarios/{scenario_id}/characters", tags=["Content"],
                              response_model=CharacterListResponse)(self.get_scenario_characters)
+            self._router.get("/content/scenarios/{scenario_id}/scripts", tags=["Content"],
+                             response_model=ScriptListResponse)(self.get_scenario_scripts)
 
             self._router.post("/session", tags=["Session"], response_model=CreateSessionResponse)(self.create_session)
             self._router.get("/sessions", tags=["Session"], response_model=SessionListResponse)(self.get_sessions)
@@ -232,6 +236,44 @@ class ChatHandler(BaseHandler):
             logger.error(f"Failed to get scenario characters for '{scenario_id}' in language '{language}': {e}")
             raise HTTPException(status_code=500, detail="Failed to load characters")
 
+    async def get_scenario_scripts(
+        self,
+        scenario_id: str,
+        current_user: Annotated[User, Depends(require_user_or_higher)],
+        resource_loader: Annotated[ResourceLoader, Depends(get_resource_loader)],
+        language: str = Query("en", description="Language code for scripts"),
+    ) -> ScriptListResponse:
+        """Get scripts available for a scenario in the specified language."""
+        try:
+            # Verify scenario exists
+            scenario = await resource_loader.get_scenario_by_id(scenario_id, language)
+            if not scenario:
+                raise HTTPException(status_code=404, detail=f"Scenario with ID '{scenario_id}' not found.")
+
+            # Get all scripts and filter by scenario_id
+            all_scripts = await resource_loader.get_scripts(language)
+            scenario_scripts = [
+                script for script in all_scripts if script.get("scenario_id") == scenario_id
+            ]
+            
+            script_infos = [
+                ScriptInfo(
+                    id=script["id"],
+                    scenario_id=script["scenario_id"],
+                    character_id=script["character_id"],
+                    language=script["language"],
+                    goal=script.get("goal"),
+                    script=script["script"]
+                )
+                for script in scenario_scripts
+            ]
+            return ScriptListResponse(success=True, scripts=script_infos)
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Failed to get scenario scripts for '{scenario_id}' in language '{language}': {e}")
+            raise HTTPException(status_code=500, detail="Failed to load scripts")
+
     async def create_session(
         self,
         request: CreateSessionRequest,
@@ -245,25 +287,38 @@ class ChatHandler(BaseHandler):
             # Use user's preferred language for content loading
             user_language = getattr(current_user, 'preferred_language', 'en')
             
+            # Load scenario (always required)
             scenario = await resource_loader.get_scenario_by_id(request.scenario_id, user_language)
             if not scenario:
                 raise HTTPException(status_code=400, detail=f"Invalid scenario ID: {request.scenario_id}")
 
-            character = await resource_loader.get_character_by_id(request.character_id, user_language)
+            # Determine character_id and validate script/character consistency
+            character_id, script_data = await self._resolve_character_and_script(
+                request, resource_loader, user_language, scenario
+            )
+            
+            # Load character data
+            character = await resource_loader.get_character_by_id(character_id, user_language)
             if not character:
-                raise HTTPException(status_code=400, detail=f"Invalid character ID: {request.character_id}")
+                raise HTTPException(status_code=400, detail=f"Invalid character ID: {character_id}")
 
-            if request.character_id not in scenario.get("compatible_characters", []):
+            # Validate character compatibility with scenario
+            if character_id not in scenario.get("compatible_characters", []):
                 raise HTTPException(status_code=400, detail="Character not compatible with scenario")
+
+            # Extract goal from script if available
+            goal = script_data.get("goal") if script_data else None
 
             app_session_id, storage_path = await chat_logger.start_session(
                 user_id=current_user.id,
                 participant_name=request.participant_name,
                 scenario_id=request.scenario_id,
                 scenario_name=scenario["name"],
-                character_id=request.character_id,
+                character_id=character_id,
                 character_name=character["name"],
-                session_language=user_language
+                session_language=user_language,
+                script_id=request.script_id,
+                goal=goal
             )
 
             initial_adk_state = {
@@ -273,9 +328,12 @@ class ChatHandler(BaseHandler):
                 "participant_name": request.participant_name,
                 "scenario_id": request.scenario_id,
                 "scenario_name": scenario["name"],
-                "character_id": request.character_id,
+                "character_id": character_id,
                 "character_name": character["name"],
                 "language": user_language,
+                "script_id": request.script_id,
+                "script_data": script_data,
+                "goal": goal,
                 "message_count": 0,
                 "session_creation_time_iso": utc_now_isoformat()
             }
@@ -300,6 +358,57 @@ class ChatHandler(BaseHandler):
         except Exception as e:
             logger.error(f"Failed to create session: {e}", exc_info=True)
             raise HTTPException(status_code=500, detail="Failed to create session")
+
+    async def _resolve_character_and_script(
+        self, 
+        request: CreateSessionRequest, 
+        resource_loader: ResourceLoader, 
+        user_language: str, 
+        scenario: Dict
+    ) -> tuple[str, Optional[Dict]]:
+        """
+        Resolve character_id and script data based on the three supported modes:
+        1. Script-only: derive character_id from script
+        2. Character-only: use provided character_id, no script
+        3. Both provided: validate consistency
+        
+        Returns: (character_id, script_data_or_None)
+        """
+        script_data = None
+        
+        # Load script if script_id is provided
+        if request.script_id:
+            script_data = await resource_loader.get_script_id(request.script_id, user_language)
+            if not script_data:
+                raise HTTPException(status_code=400, detail=f"Invalid script ID: {request.script_id}")
+            
+            # Validate script belongs to the requested scenario
+            if script_data.get("scenario_id") != request.scenario_id:
+                raise HTTPException(
+                    status_code=400, 
+                    detail=f"Script '{request.script_id}' is not compatible with scenario '{request.scenario_id}'"
+                )
+        
+        # Determine final character_id based on the three modes
+        if request.character_id and request.script_id:
+            # Mode 3: Both provided - validate consistency
+            script_character_id = script_data.get("character_id")
+            if request.character_id != script_character_id:
+                raise HTTPException(
+                    status_code=400, 
+                    detail=f"Character ID mismatch: provided '{request.character_id}' but script requires '{script_character_id}'"
+                )
+            character_id = request.character_id
+        elif request.script_id:
+            # Mode 1: Script-only - derive character from script
+            character_id = script_data.get("character_id")
+            if not character_id:
+                raise HTTPException(status_code=400, detail=f"Script '{request.script_id}' missing character_id")
+        else:
+            # Mode 2: Character-only - use provided character
+            character_id = request.character_id
+        
+        return character_id, script_data
 
     async def get_sessions(
         self,

@@ -76,6 +76,7 @@ class ChatLogger:
         character_id: str,
         character_name: str,
         goal: Optional[str] = None,
+        script_id: Optional[str] = None,
         initial_settings: Optional[Dict[str, Any]] = None,
         session_language="en"
     ) -> Tuple[str, str]:
@@ -103,6 +104,7 @@ class ChatLogger:
             "character_name": character_name,
             "session_language": session_language,
             "goal": goal,
+            "script_id": script_id,
             "initial_settings": initial_settings or {},
             "version": "1.0"
         }

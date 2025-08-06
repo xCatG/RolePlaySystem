@@ -635,3 +635,296 @@ class TestChatHandlerReadOnlySession:
             user_id="test_user_123",
             session_id=session_id
         )
+
+
+class TestChatHandlerSessionCreation:
+    """Test cases for ChatHandler session creation with script support."""
+
+    @pytest.fixture
+    def mock_user(self):
+        """Mock user object."""
+        user = Mock()
+        user.id = "test_user_123"
+        user.email = "test@example.com"
+        user.preferred_language = "en"
+        return user
+
+    @pytest.fixture
+    def mock_resource_loader(self):
+        """Mock ResourceLoader."""
+        return AsyncMock()
+
+    @pytest.fixture
+    def mock_chat_logger(self):
+        """Mock ChatLogger."""
+        mock = AsyncMock()
+        mock.start_session = AsyncMock(return_value=("session_123", "storage/path"))
+        return mock
+
+    @pytest.fixture
+    def mock_adk_session_service(self):
+        """Mock ADK session service."""
+        mock = AsyncMock()
+        mock.create_session = AsyncMock()
+        return mock
+
+    @pytest.fixture
+    def sample_scenario(self):
+        """Sample scenario data."""
+        return {
+            "id": "medical_interview",
+            "name": "Medical Interview",
+            "description": "Practice medical interviewing skills",
+            "compatible_characters": ["patient_acute", "patient_chronic"]
+        }
+
+    @pytest.fixture
+    def sample_character(self):
+        """Sample character data."""
+        return {
+            "id": "patient_acute",
+            "name": "Sarah - Acute Patient", 
+            "description": "Patient with acute symptoms",
+            "language": "en"
+        }
+
+    @pytest.fixture
+    def sample_script(self):
+        """Sample script data."""
+        return {
+            "id": "medical_acute_frustration_simple",
+            "scenario_id": "medical_interview",
+            "character_id": "patient_acute",
+            "language": "en",
+            "goal": "Practice handling a patient who is downplaying their pain",
+            "script": [
+                {"speaker": "character", "line": "I'm fine, doc. Just a little tweak."},
+                {"speaker": "participant", "line": "Describe the pain for me."},
+                {"speaker": "character", "line": "(Sighs) Okay, it's more of a sharp pain. A 6 or 7 maybe."},
+                {"speaker": "llm", "action": "stop"}
+            ]
+        }
+
+    @pytest.mark.asyncio
+    async def test_create_session_character_only_mode(
+        self, mock_user, mock_resource_loader, mock_chat_logger, mock_adk_session_service,
+        sample_scenario, sample_character
+    ):
+        """Test creating session with character_id only (free-form roleplay)."""
+        # Setup mocks
+        mock_resource_loader.get_scenario_by_id.return_value = sample_scenario
+        mock_resource_loader.get_character_by_id.return_value = sample_character
+        
+        # Create request - character only
+        from role_play.chat.models import CreateSessionRequest
+        request = CreateSessionRequest(
+            scenario_id="medical_interview",
+            character_id="patient_acute",
+            participant_name="Dr. Test"
+        )
+        
+        chat_handler = ChatHandler()
+        response = await chat_handler.create_session(
+            request=request,
+            current_user=mock_user,
+            chat_logger=mock_chat_logger,
+            adk_session_service=mock_adk_session_service,
+            resource_loader=mock_resource_loader
+        )
+        
+        # Verify response
+        assert response.success is True
+        assert response.session_id == "session_123"
+        assert response.scenario_name == "Medical Interview"
+        assert response.character_name == "Sarah - Acute Patient"
+        
+        # Verify chat logger was called with correct parameters
+        mock_chat_logger.start_session.assert_called_once()
+        call_args = mock_chat_logger.start_session.call_args
+        assert call_args[1]["character_id"] == "patient_acute"
+        assert call_args[1]["script_id"] is None
+        assert call_args[1]["goal"] is None
+
+    @pytest.mark.asyncio
+    async def test_create_session_script_only_mode(
+        self, mock_user, mock_resource_loader, mock_chat_logger, mock_adk_session_service,
+        sample_scenario, sample_character, sample_script
+    ):
+        """Test creating session with script_id only (character derived from script)."""
+        # Setup mocks
+        mock_resource_loader.get_scenario_by_id.return_value = sample_scenario
+        mock_resource_loader.get_character_by_id.return_value = sample_character
+        mock_resource_loader.get_script_id.return_value = sample_script
+        
+        # Create request - script only
+        from role_play.chat.models import CreateSessionRequest
+        request = CreateSessionRequest(
+            scenario_id="medical_interview",
+            script_id="medical_acute_frustration_simple",
+            participant_name="Dr. Test"
+        )
+        
+        chat_handler = ChatHandler()
+        response = await chat_handler.create_session(
+            request=request,
+            current_user=mock_user,
+            chat_logger=mock_chat_logger,
+            adk_session_service=mock_adk_session_service,
+            resource_loader=mock_resource_loader
+        )
+        
+        # Verify response
+        assert response.success is True
+        assert response.session_id == "session_123"
+        
+        # Verify script was loaded and character was derived
+        mock_resource_loader.get_script_id.assert_called_once_with("medical_acute_frustration_simple", "en")
+        mock_resource_loader.get_character_by_id.assert_called_once_with("patient_acute", "en")
+        
+        # Verify chat logger was called with script info
+        call_args = mock_chat_logger.start_session.call_args
+        assert call_args[1]["script_id"] == "medical_acute_frustration_simple"
+        assert call_args[1]["goal"] == "Practice handling a patient who is downplaying their pain"
+
+    @pytest.mark.asyncio
+    async def test_create_session_both_provided_valid(
+        self, mock_user, mock_resource_loader, mock_chat_logger, mock_adk_session_service,
+        sample_scenario, sample_character, sample_script
+    ):
+        """Test creating session with both character_id and script_id (consistent)."""
+        # Setup mocks
+        mock_resource_loader.get_scenario_by_id.return_value = sample_scenario
+        mock_resource_loader.get_character_by_id.return_value = sample_character
+        mock_resource_loader.get_script_id.return_value = sample_script
+        
+        # Create request - both character and script
+        from role_play.chat.models import CreateSessionRequest
+        request = CreateSessionRequest(
+            scenario_id="medical_interview",
+            character_id="patient_acute",
+            script_id="medical_acute_frustration_simple",
+            participant_name="Dr. Test"
+        )
+        
+        chat_handler = ChatHandler()
+        response = await chat_handler.create_session(
+            request=request,
+            current_user=mock_user,
+            chat_logger=mock_chat_logger,
+            adk_session_service=mock_adk_session_service,
+            resource_loader=mock_resource_loader
+        )
+        
+        # Verify successful creation
+        assert response.success is True
+        
+        # Verify consistency validation passed
+        mock_resource_loader.get_script_id.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_create_session_character_script_mismatch(
+        self, mock_user, mock_resource_loader, mock_chat_logger, mock_adk_session_service,
+        sample_scenario, sample_character, sample_script
+    ):
+        """Test creating session with mismatched character_id and script.character_id."""
+        # Setup mocks
+        mock_resource_loader.get_scenario_by_id.return_value = sample_scenario
+        mock_resource_loader.get_character_by_id.return_value = sample_character
+        mock_resource_loader.get_script_id.return_value = sample_script
+        
+        # Create request with mismatched character
+        from role_play.chat.models import CreateSessionRequest
+        request = CreateSessionRequest(
+            scenario_id="medical_interview",
+            character_id="different_character",  # Mismatch!
+            script_id="medical_acute_frustration_simple",
+            participant_name="Dr. Test"
+        )
+        
+        chat_handler = ChatHandler()
+        
+        # Should raise HTTPException
+        from fastapi import HTTPException
+        with pytest.raises(HTTPException) as exc_info:
+            await chat_handler.create_session(
+                request=request,
+                current_user=mock_user,
+                chat_logger=mock_chat_logger,
+                adk_session_service=mock_adk_session_service,
+                resource_loader=mock_resource_loader
+            )
+        
+        assert exc_info.value.status_code == 400
+        assert "Character ID mismatch" in str(exc_info.value.detail)
+
+    @pytest.mark.asyncio
+    async def test_create_session_script_scenario_mismatch(
+        self, mock_user, mock_resource_loader, mock_chat_logger, mock_adk_session_service,
+        sample_scenario, sample_character, sample_script
+    ):
+        """Test creating session with script not compatible with scenario."""
+        # Setup mocks
+        mock_resource_loader.get_scenario_by_id.return_value = sample_scenario
+        
+        # Script for different scenario
+        mismatched_script = sample_script.copy()
+        mismatched_script["scenario_id"] = "different_scenario"
+        mock_resource_loader.get_script_id.return_value = mismatched_script
+        
+        # Create request
+        from role_play.chat.models import CreateSessionRequest
+        request = CreateSessionRequest(
+            scenario_id="medical_interview",
+            script_id="medical_acute_frustration_simple",
+            participant_name="Dr. Test"
+        )
+        
+        chat_handler = ChatHandler()
+        
+        # Should raise HTTPException
+        from fastapi import HTTPException
+        with pytest.raises(HTTPException) as exc_info:
+            await chat_handler.create_session(
+                request=request,
+                current_user=mock_user,
+                chat_logger=mock_chat_logger,
+                adk_session_service=mock_adk_session_service,
+                resource_loader=mock_resource_loader
+            )
+        
+        assert exc_info.value.status_code == 400
+        assert "is not compatible with scenario" in str(exc_info.value.detail)
+
+    @pytest.mark.asyncio
+    async def test_create_session_invalid_script_id(
+        self, mock_user, mock_resource_loader, mock_chat_logger, mock_adk_session_service,
+        sample_scenario
+    ):
+        """Test creating session with non-existent script_id."""
+        # Setup mocks
+        mock_resource_loader.get_scenario_by_id.return_value = sample_scenario
+        mock_resource_loader.get_script_id.return_value = None  # Script not found
+        
+        # Create request
+        from role_play.chat.models import CreateSessionRequest
+        request = CreateSessionRequest(
+            scenario_id="medical_interview",
+            script_id="nonexistent_script",
+            participant_name="Dr. Test"
+        )
+        
+        chat_handler = ChatHandler()
+        
+        # Should raise HTTPException
+        from fastapi import HTTPException
+        with pytest.raises(HTTPException) as exc_info:
+            await chat_handler.create_session(
+                request=request,
+                current_user=mock_user,
+                chat_logger=mock_chat_logger,
+                adk_session_service=mock_adk_session_service,
+                resource_loader=mock_resource_loader
+            )
+        
+        assert exc_info.value.status_code == 400
+        assert "Invalid script ID" in str(exc_info.value.detail)
