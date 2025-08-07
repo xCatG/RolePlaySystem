@@ -12,7 +12,7 @@
         { "speaker": "character", "line": "我沒事，醫生。只是有點不舒服。" },
         { "speaker": "participant", "line": "請為我描述一下你的疼痛。" },
         { "speaker": "character", "line": "（嘆氣）好吧，是那種劇烈的疼痛。大概6、7分吧。" },
-        { "speaker": "llm", "action": "stop" }
+        { "speaker": "System", "action": "stop" }
       ]
     }
   ]

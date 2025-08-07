@@ -146,10 +146,11 @@ class ChatHandler(BaseHandler):
         # Get character, scenario IDs and language from session state
         character_id = adk_session.state.get("character_id")
         scenario_id = adk_session.state.get("scenario_id")
+        script_id = adk_session.state.get("script_id")
         language = adk_session.state.get("language", "en")
         
         # Use get_production_agent from roleplay_agent module
-        agent = await get_production_agent(character_id, scenario_id, language)
+        agent = await get_production_agent(character_id, scenario_id, language, scripted=(bool(script_id) or (script_id is not None)))
         if not agent:
             raise HTTPException(status_code=500, detail="Failed to create roleplay agent")
             

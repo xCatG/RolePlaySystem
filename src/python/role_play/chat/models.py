@@ -79,7 +79,7 @@ class CharacterListResponse(BaseResponse):
 class ScriptRole(str, Enum):
     CHARACTER = "character"
     PARTICIPANT = "participant"
-    LLM = "llm"
+    SYSTEM = "System"
 
 
 class ScriptLine(BaseModel):

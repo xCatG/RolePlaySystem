@@ -183,6 +183,78 @@ class TestChatHandlerSystemPrompt:
             assert "Respond in English language" in instruction  # Should default to English
 
     @pytest.mark.asyncio
+    async def test_system_prompt_with_script(self, sample_english_character, sample_scenario, mock_resource_loader):
+        """Test system prompt generation with script."""
+        # Mock the resource loader to return our test data
+        mock_resource_loader.get_character_by_id.return_value = sample_english_character
+        mock_resource_loader.get_scenario_by_id.return_value = sample_scenario
+        
+        with patch('role_play.dev_agents.roleplay_agent.agent.resource_loader', mock_resource_loader):
+            from role_play.dev_agents.roleplay_agent.agent import get_production_agent
+            agent = await get_production_agent("patient_en", "medical_interview", "en", scripted=True)
+            
+            # Check that agent was created
+            assert agent is not None
+            
+            # Check system prompt contains scripted prompt
+            instruction = agent.instruction
+            assert 'You are improvising based on "character" part of the script below' in instruction
+
+    @pytest.mark.asyncio
+    async def test_system_prompt_without_script(self, sample_english_character, sample_scenario, mock_resource_loader):
+        """Test system prompt generation without script."""
+        # Mock the resource loader to return our test data
+        mock_resource_loader.get_character_by_id.return_value = sample_english_character
+        mock_resource_loader.get_scenario_by_id.return_value = sample_scenario
+        
+        with patch('role_play.dev_agents.roleplay_agent.agent.resource_loader', mock_resource_loader):
+            from role_play.dev_agents.roleplay_agent.agent import get_production_agent
+            agent = await get_production_agent("patient_en", "medical_interview", "en", scripted=False)
+            
+            # Check that agent was created
+            assert agent is not None
+            
+            # Check system prompt does not contain scripted prompt
+            instruction = agent.instruction
+            assert 'You are improvising based on "character" part of the script below' not in instruction
+
+    @pytest.mark.asyncio
+    async def test_system_prompt_with_script(self, sample_english_character, sample_scenario, mock_resource_loader):
+        """Test system prompt generation with script."""
+        # Mock the resource loader to return our test data
+        mock_resource_loader.get_character_by_id.return_value = sample_english_character
+        mock_resource_loader.get_scenario_by_id.return_value = sample_scenario
+        
+        with patch('role_play.dev_agents.roleplay_agent.agent.resource_loader', mock_resource_loader):
+            from role_play.dev_agents.roleplay_agent.agent import get_production_agent
+            agent = await get_production_agent("patient_en", "medical_interview", "en", scripted=True)
+            
+            # Check that agent was created
+            assert agent is not None
+            
+            # Check system prompt contains scripted prompt
+            instruction = agent.instruction
+            assert 'You are improvising based on "character" part of the script below' in instruction
+
+    @pytest.mark.asyncio
+    async def test_system_prompt_without_script(self, sample_english_character, sample_scenario, mock_resource_loader):
+        """Test system prompt generation without script."""
+        # Mock the resource loader to return our test data
+        mock_resource_loader.get_character_by_id.return_value = sample_english_character
+        mock_resource_loader.get_scenario_by_id.return_value = sample_scenario
+        
+        with patch('role_play.dev_agents.roleplay_agent.agent.resource_loader', mock_resource_loader):
+            from role_play.dev_agents.roleplay_agent.agent import get_production_agent
+            agent = await get_production_agent("patient_en", "medical_interview", "en", scripted=False)
+            
+            # Check that agent was created
+            assert agent is not None
+            
+            # Check system prompt does not contain scripted prompt
+            instruction = agent.instruction
+            assert 'You are improvising based on "character" part of the script below' not in instruction
+
+    @pytest.mark.asyncio
     async def test_system_prompt_structure(self, sample_english_character, sample_scenario, mock_resource_loader):
         """Test the overall structure of the generated system prompt."""
         # Mock the resource loader to return our test data

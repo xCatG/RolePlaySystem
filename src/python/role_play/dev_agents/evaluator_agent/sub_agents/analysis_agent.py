@@ -16,7 +16,7 @@ from role_play.chat.models import ChatInfo
 def create_analysis_agent(analysis_area:str, chat_info=ChatInfo) -> Agent:
     instruction = f"""
     You are an expert communications and soft skills coach. 
-    You are looking at the chat history between your trainee {chat_info.participant_name} 
+    You are looking at the chat history between your trainee named "{chat_info.participant_name}" 
     and an actor playing the character {chat_info.char_info} 
     for scenario {chat_info.scenario_info.description}
     with the goal of {chat_info.goal}. 
@@ -24,7 +24,9 @@ def create_analysis_agent(analysis_area:str, chat_info=ChatInfo) -> Agent:
     Here is the chat transcription in {chat_info.chat_language}, where participant is {chat_info.participant_name}: 
     {chat_info.transcript_text}
 
-    Provide analysis for how {chat_info.participant_name} performed in the area of {analysis_area}.
+    Provide analysis for how {chat_info.participant_name} performed in the area of {analysis_area}. 
+    Provide evidence such as quote from the conversation to support the evaluation; 
+    For improvement areas give example in contrast to the quote, in the form of "can say ... instead of <quote from conversation>".
 
     respond in JSON format {SpecializedAssessment.model_json_schema()}
     use {chat_info.chat_session_id} as chat_session_id field in your response.

@@ -9,11 +9,56 @@
       "language": "en",
       "goal": "Practice handling a patient who is downplaying their pain.",
       "script": [
-        { "speaker": "character", "line": "I'm fine, doc. Just a little tweak." },
-        { "speaker": "participant", "line": "Describe the pain for me." },
-        { "speaker": "character", "line": "(Sighs) Okay, it's more of a sharp pain. A 6 or 7 maybe." },
-        { "speaker": "llm", "action": "stop" }
+    { "speaker": "participant", "line": "Hi John, I see you're here for your knee. Thanks for coming in today." },
+    { "speaker": "character", "line": "I'm fine, doc. Just a little tweak." },
+    { "speaker": "participant", "line": "I'm glad you're here. Sometimes even a 'little tweak' can mean more. Tell me what happened." },
+    { "speaker": "character", "line": "I just landed funny during a game. It's no big deal, really." },
+    { "speaker": "participant", "line": "Were you able to keep playing afterwards, or did you need to sit out?" },
+    { "speaker": "character", "line": "I, uh, tried to keep going but it hurt more when I ran. I sat out after that." },
+    { "speaker": "participant", "line": "That sounds frustrating. Are you worried about missing more games?" },
+    { "speaker": "character", "line": "(shrugs) Yeah, I guess. I just don't want to make a big deal out of it." },
+    { "speaker": "participant", "line": "It's understandable to feel that way. My job is to help you heal and get you back in the game safely. Can you describe exactly where it hurts?" },
+    { "speaker": "character", "line": "(reluctantly) It's my right knee, mostly on the inside." },
+    { "speaker": "participant", "line": "Any swelling or bruising?" },
+    { "speaker": "character", "line": "A little swelling. No bruising that I saw." },
+    { "speaker": "participant", "line": "When you walk or move your knee, does the pain change?" },
+    { "speaker": "character", "line": "It hurts more if I try to bend it a lot or put weight on it." },
+    { "speaker": "participant", "line": "If you had to rate the pain from zero to ten, with ten being the worst, what would you say?" },
+    { "speaker": "character", "line": "(Sighs) Okay, it's more of a sharp pain. A 6 or 7 maybe." },
+    { "speaker": "participant", "line": "Thank you for being honest. It's important for me to know how much you're hurting, even if you want to tough it out. Is it okay if I take a look and gently move your knee?" },
+    { "speaker": "character", "line": "Yeah, go ahead." },
+    { "speaker": "participant", "line": "Let me know right away if anything I do makes it worse. You're in control here." },
+    { "speaker": "character", "line": "Okay, thanks." },
+    { "speaker": "System", "action": "stop" }
+      ]
+    },
+    {
+      "id": "medical_acute_anxious_talkative",
+      "scenario_id": "medical_interview",
+      "character_id": "patient_acute",
+      "language": "en",
+      "goal": "Practice active listening to gather relevant clinical information and validate concerns when dealing with an anxious, talkative patient.",
+      "script": [
+        { "speaker": "participant", "line": "Hi John, I see you're here for your knee injury. How are you feeling today?" },
+        { "speaker": "character", "line": "Oh, well, honestly I've been pretty stressed. I mean, my knee hurts, but it's not just that. I've got this big tournament coming up and now I'm worried I won't be able to play, and my job’s been nuts lately too… Sorry, I’m rambling. The knee, right. It’s just been on my mind." },
+        { "speaker": "participant", "line": "It sounds like you’ve got a lot on your plate. I appreciate you sharing that. Let’s focus on your knee for a moment—can you tell me exactly how the injury happened?" },
+        { "speaker": "character", "line": "Yeah, so, yesterday I was playing basketball with some friends—well, actually, a couple of them are coworkers so I guess it was kind of work too—and I went up for a rebound and when I landed, my knee just sort of twisted. I mean, I didn’t hear a pop or anything, but it hurt. But honestly, it’s not just the pain, it’s the idea that I’ll have to take time off, you know? I hate letting the team down." },
+        { "speaker": "participant", "line": "I can hear how important this is for you, both the game and your team. After you landed, did you try to keep playing or did you stop right away?" },
+        { "speaker": "character", "line": "Oh, I tried to keep going for a bit, but every time I put weight on it, it felt worse. My friends told me to sit out and ice it, so I did. I didn’t want to look weak, you know? But the pain just kept nagging at me the rest of the night. I probably should have stopped sooner." },
+        { "speaker": "participant", "line": "It’s understandable to want to push through, but it’s good that you listened to your friends. Since then, has the pain gotten better, worse, or stayed the same?" },
+        { "speaker": "character", "line": "Honestly, it's kind of the same. Maybe a little more stiff today, especially when I woke up. I keep worrying it’ll get worse or I’ll be out for weeks. And, you know, I have to drive my kid to school every morning, so that’s on my mind too." },
+        { "speaker": "participant", "line": "That’s a lot to manage. Let’s talk about the pain itself. Where exactly does it hurt, and what does the pain feel like?" },
+        { "speaker": "character", "line": "Mostly on the inside of my right knee. It’s a sharp pain when I bend it, and sort of a dull ache if I’m just sitting. And I think there’s a little swelling, though it’s hard to tell with my jeans on. I just wish I knew how bad it really is." },
+        { "speaker": "participant", "line": "Thank you for describing that. Your concerns are valid, and we’ll work together to figure this out. Have you noticed any bruising or instability, like your knee wanting to give out?" },
+        { "speaker": "character", "line": "No bruising that I can see, but I haven’t looked that closely. Sometimes it feels a little shaky, but maybe that’s just me being paranoid. My wife keeps telling me to relax, but I’m just worried, you know?" },
+        { "speaker": "participant", "line": "Worrying is natural when something like this happens. You’re doing the right thing by getting it checked. On a scale from zero to ten, with ten being the worst pain you can imagine, how would you rate it right now?" },
+        { "speaker": "character", "line": "Uh, maybe a five if I’m just sitting, but if I try to stand or walk fast, it shoots up to a seven. Sorry, I know I’m probably overreacting." },
+        { "speaker": "participant", "line": "You're not overreacting at all. It's important to take your symptoms seriously. Is it alright if I examine your knee now? I'll walk you through everything I’m doing, and you can tell me if anything feels uncomfortable." },
+        { "speaker": "character", "line": "Yeah, okay. I appreciate it, doc. Thanks for listening to me ramble." },
+        { "speaker": "System", "action": "stop" }
       ]
     }
+
+
   ]
 }
