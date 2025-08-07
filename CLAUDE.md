@@ -182,6 +182,33 @@ make test-specific TEST_PATH="test/python/unit/chat/test_chat_logger.py"
 - [x] **Internationalization**: Full English/Traditional Chinese support for new UI elements
 - [x] **CSS Improvements**: Fixed radio button alignment issues with proper flexbox layout
 
+### Voice-Based Chat Implementation (Planned)
+- [ ] **Phase 1: WebSocket Handler with Text-to-Speech Prototype**:
+  - [ ] Create `VoiceChatHandler` extending `BaseHandler` with WebSocket endpoint `/ws/voice/{session_id}`
+  - [ ] Implement JWT authentication for WebSocket connections (token in first message)
+  - [ ] Add WebSocket dependencies (`websockets`, audio processing libraries)
+  - [ ] Create basic text-to-speech prototype using existing chat pipeline
+  - [ ] Integrate with existing ChatLogger, ADK sessions, and character/scenario loading
+  - [ ] Support voice in user's preferred language with character context
+- [ ] **Phase 2: Gemini Live API Integration**:
+  - [ ] Implement Gemini Live API proxy for real-time voice streaming
+  - [ ] Add bidirectional audio streaming (client audio → Gemini Live → character response)
+  - [ ] Support WebRTC audio formats (Opus/PCM) for real-time communication
+  - [ ] Create request queue pattern for async request/response handling
+  - [ ] Add streaming transcription and response synthesis
+- [ ] **Phase 3: Frontend Voice Controls and Audio Streaming**:
+  - [ ] Create Vue.js voice components (AudioControls.vue, voice input/output)
+  - [ ] Implement WebSocket client for voice streaming (`useWebSocket.ts`, `useAudio.ts`)
+  - [ ] Add audio controls (mute, volume, push-to-talk, continuous mode)
+  - [ ] Create audio state management and streaming interfaces
+  - [ ] Integrate with existing chat UI for seamless text/voice switching
+- [ ] **Phase 4: Production Optimization and Error Handling**:
+  - [ ] Implement robust error handling and WebSocket reconnection logic
+  - [ ] Add audio quality optimization and adaptive streaming
+  - [ ] Create comprehensive testing for voice features (unit, integration, e2e)
+  - [ ] Add monitoring and logging for voice sessions
+  - [ ] Performance optimization for concurrent voice connections
+
 ### Pending Development
 - [ ] **Resource Architecture for Script Creator**:
   - [x] Design LayeredResourceLoader for base + user resources (see RESOURCE_ARCHITECTURE.md)
@@ -197,7 +224,6 @@ make test-specific TEST_PATH="test/python/unit/chat/test_chat_logger.py"
   - [ ] Create utility functions for date formatting across components
   - [ ] Add validation that session belongs to requesting user before creating evaluation reports
   - [ ] Add retry logic for transient storage failures in evaluation system
-- [ ] WebSocket: `server/websocket.py` connection manager
 - [ ] Auth Module: Complete OAuth implementation
 - [ ] Scripter: Complete module implementation  
 - [ ] Frontend: Modular monolith restructure, chat/eval interfaces

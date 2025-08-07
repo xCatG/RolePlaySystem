@@ -10,6 +10,8 @@ import base64
 import os
 from datetime import datetime
 import numpy as np
+import subprocess
+import io
 
 # Correct imports for google-genai
 from google import genai
@@ -31,6 +33,7 @@ from ..common.resource_loader import ResourceLoader
 from google.adk.sessions import InMemorySessionService
 
 from .models import (
+    VoiceClientRequest,
     VoiceSessionInfo,
     TranscriptMessage,
     VoiceConfigMessage,
@@ -223,9 +226,10 @@ Stay in character at all times. Respond naturally as if in a real conversation.
         # Send configuration to client
         await websocket.send_json(
             VoiceConfigMessage(
-                audio_format="pcm",  # We'll convert to/from PCM
+                audio_format="pcm",  # Expecting PCM input from client
                 language=language,
-                voice_name=voice_name
+                voice_name=voice_name,
+                output_audio_format="wav" # Sending WAV output to client
             ).dict()
         )
         
@@ -277,22 +281,19 @@ Stay in character at all times. Respond naturally as if in a real conversation.
         try:
             while True:
                 # Receive data from WebSocket
-                data = await websocket.receive()
-                
-                if "bytes" in data:
-                    # Audio data received (WebM/Opus from browser)
-                    audio_bytes = data["bytes"]
-                    
-                    # TODO: Convert WebM/Opus to PCM format
-                    # For now, we'll try to send as PCM (though it's actually WebM)
-                    # The Gemini API expects 16-bit PCM at 16kHz mono
+                data = await websocket.receive_text()
+                request = VoiceClientRequest.model_validate_json(data)
+
+                if request.audio_chunk:
+                    # Audio data received (now 16kHz 16-bit mono PCM from browser)
+                    audio_bytes = request.audio_chunk
                     
                     # Send audio to Gemini Live using send_realtime_input with proper Blob format
                     try:
                         # Create a Blob object with the audio data
                         audio_blob = types.Blob(
                             data=audio_bytes,
-                            mime_type="audio/pcm;rate=16000"  # This should be PCM, but we're sending WebM
+                            mime_type="audio/pcm;rate=16000"
                         )
                         await session.send_realtime_input(audio=audio_blob)
                     except Exception as audio_error:
@@ -301,17 +302,15 @@ Stay in character at all times. Respond naturally as if in a real conversation.
                     
                     # Optionally store for analysis
                     timestamp = utc_now_isoformat().replace(":", "_")
-                    audio_path = f"users/{user_id}/voice_sessions/{session_id}/audio/user_{timestamp}.webm"
+                    audio_path = f"users/{user_id}/voice_sessions/{session_id}/audio/user_{timestamp}.pcm"
                     await storage.write(audio_path, base64.b64encode(audio_bytes).decode())
                     
-                elif "text" in data:
-                    # Handle control messages
-                    message = json.loads(data["text"])
-                    if message.get("type") == "end_session":
-                        break
-                    elif message.get("type") == "text":
-                        # Send text input if provided
-                        await session.send_realtime_input(text=message.get("text", ""))
+                elif request.text:
+                    # Send text input if provided
+                    await session.send_realtime_input(text=request.text)
+                
+                if request.end_session:
+                    break
                     
         except WebSocketDisconnect:
             logger.info(f"Client disconnected from voice session {session_id}")
@@ -345,18 +344,14 @@ Stay in character at all times. Respond naturally as if in a real conversation.
                         if hasattr(model_turn, 'parts') and model_turn.parts:
                             for part in model_turn.parts:
                                 # Handle inline data (audio)
-                                if hasattr(part, 'inline_data') and part.inline_data:
-                                    if hasattr(part.inline_data, 'data'):
-                                        audio_data = part.inline_data.data
-                                        
-                                        # Send audio to client (PCM format)
-                                        # TODO: Convert PCM to WebM/Opus for browser playback
-                                        await websocket.send_bytes(audio_data)
-                                        
-                                        # Store audio
-                                        timestamp = utc_now_isoformat().replace(":", "_")
-                                        audio_path = f"users/{user_id}/voice_sessions/{session_id}/audio/char_{timestamp}.pcm"
-                                        await storage.write(audio_path, base64.b64encode(audio_data).decode())
+                                if hasattr(part, 'inline_data') and hasattr(part.inline_data, 'data'):
+                                    audio_data = part.inline_data.data
+                                    await websocket.send_bytes(audio_data)
+                                    
+                                    # Store audio
+                                    timestamp = utc_now_isoformat().replace(":", "_")
+                                    audio_path = f"users/{user_id}/voice_sessions/{session_id}/audio/char_{timestamp}.pcm"
+                                    await storage.write(audio_path, base64.b64encode(audio_data).decode())
                                 
                                 # Handle text parts (transcripts)
                                 if hasattr(part, 'text') and part.text:
@@ -545,3 +540,5 @@ Stay in character at all times. Respond naturally as if in a real conversation.
             started_at=adk_session.state.get("session_creation_time_iso"),
             transcript_available=len(voice_files) > 0
         )
+
+    

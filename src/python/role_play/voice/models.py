@@ -1,8 +1,23 @@
 """Data models for voice chat functionality."""
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from typing import Optional, Literal
 from datetime import datetime
+from google.genai import types
+
+
+class VoiceClientRequest(BaseModel):
+    """Request from client to voice handler."""
+
+    model_config = ConfigDict(ser_json_bytes="base64", val_json_bytes="base64")
+    """The pydantic model config."""
+
+    audio_chunk: Optional[bytes] = None
+    """If set, send the audio chunk to the model in realtime mode."""
+    text: Optional[str] = None
+    """If set, send the text to the model in turn-by-turn mode."""
+    end_session: bool = False
+    """If set, close the session."""
 
 
 class VoiceSessionInfo(BaseModel):
@@ -35,6 +50,7 @@ class VoiceConfigMessage(BaseModel):
     channels: int = 1
     voice_name: Optional[str] = None
     language: str = "en"
+    output_audio_format: str = "wav"
 
 
 class VoiceErrorMessage(BaseModel):
