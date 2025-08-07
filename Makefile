@@ -353,11 +353,6 @@ dev-setup: load-env-mk validate-resources
 	@echo ""
 	@echo "Or use PyCharm to run src/python/run_server.py"
 
-.PHONY: deploy-dev-resources
-deploy-dev-resources:
-	@echo "DEPRECATED: Use 'make dev-setup' instead"
-	@$(MAKE) dev-setup
-
 # --- Release Management ---
 .PHONY: tag-git-release
 tag-git-release: # Expects NEW_GIT_TAG to be set, e.g., make tag-git-release NEW_GIT_TAG=v1.0.0

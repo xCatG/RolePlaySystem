@@ -8,6 +8,7 @@
       "language": "zh-TW",
       "name": "醫療病患面談",
       "description": "練習對病患進行病史詢問",
+      "eval_dimensions": [],
       "compatible_characters": ["patient_chronic_zh_tw", "patient_acute_zh_tw"]
     },
     {
@@ -15,6 +16,7 @@
       "language": "zh-TW",
       "name": "客戶服務電話",
       "description": "處理客戶投訴和詢問",
+      "eval_dimensions": [],
       "compatible_characters": ["angry_customer_zh_tw", "confused_customer_zh_tw"]
     },
     {
@@ -22,6 +24,7 @@
       "language": "zh-TW", 
       "name": "工作面試",
       "description": "練習求職面試技巧",
+      "eval_dimensions": [],
       "compatible_characters": ["hr_manager_zh_tw", "technical_interviewer_zh_tw"]
     }
   ]

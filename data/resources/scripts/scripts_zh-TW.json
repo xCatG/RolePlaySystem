@@ -1,0 +1,19 @@
+{
+  "resource_version": "1.0",
+  "last_modified": "2025-07-30T10:51:21Z",
+  "scripts": [
+    {
+      "id": "medical_acute_frustration_simple",
+      "scenario_id": "medical_interview",
+      "character_id": "patient_acute",
+      "language": "zh-TW",
+      "goal": "練習應對一位輕描淡寫自己痛苦的病人。",
+      "script": [
+        { "speaker": "character", "line": "我沒事，醫生。只是有點不舒服。" },
+        { "speaker": "participant", "line": "請為我描述一下你的疼痛。" },
+        { "speaker": "character", "line": "（嘆氣）好吧，是那種劇烈的疼痛。大概6、7分吧。" },
+        { "speaker": "System", "action": "stop" }
+      ]
+    }
+  ]
+}

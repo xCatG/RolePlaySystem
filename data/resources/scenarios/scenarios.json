@@ -8,6 +8,7 @@
       "language": "en",
       "name": "Medical Patient Interview",
       "description": "Practice taking medical history from a patient",
+      "eval_dimensions": [],
       "compatible_characters": ["patient_chronic", "patient_acute"]
     },
     {
@@ -15,6 +16,7 @@
       "language": "en",
       "name": "Customer Service Call",
       "description": "Handle customer complaints and inquiries",
+      "eval_dimensions": [],
       "compatible_characters": ["angry_customer", "confused_customer"]
     }
   ]

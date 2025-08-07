@@ -4,6 +4,10 @@
 import os
 import sys
 import yaml
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 def get_storage_path():
     """Extract and resolve the storage path from dev config."""

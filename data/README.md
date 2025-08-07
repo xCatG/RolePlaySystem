@@ -2,9 +2,9 @@
 
 This directory is used for **runtime data storage** when using file-based storage backend.
 
-## Important: Static Resources Moved
+## Important: Static Resources
 
-Static resources like `scenarios.json` have been moved to `src/python/role_play/resources/` to be properly packaged with the application.
+Static resources like `scenarios.json` should be in resources dir, and copied over to gcs/aws/disk storage folder under resources/ for the application to work properly
 
 ## Current Usage
 
@@ -12,6 +12,7 @@ When `STORAGE_TYPE=file`, this directory stores:
 - User profiles
 - Chat logs
 - Session data
+- Roleplay resources (character definition, scenario definition, scripts etc)
 - Other runtime data
 
 ## Directory Structure (Runtime)

@@ -3,6 +3,7 @@ import pytest
 from unittest.mock import Mock, patch, AsyncMock
 
 from role_play.chat.handler import ChatHandler
+from role_play.dev_agents.roleplay_agent.agent import RolePlayAgent
 
 
 @pytest.fixture
@@ -11,12 +12,13 @@ def mock_resource_loader():
     return AsyncMock()
 
 class TestChatHandlerSystemPrompt:
-    """Test cases for ChatHandler system prompt generation."""
+    """Test cases for ChatHandler system prompt generation via get_production_agent."""
 
     @pytest.fixture
-    def chat_handler(self):
-        """Create ChatHandler instance."""
-        return ChatHandler()
+    def mock_resource_loader(self):
+        """Mock ResourceLoader for agent tests."""
+        mock = AsyncMock()
+        return mock
 
     @pytest.fixture
     def sample_english_character(self):
@@ -60,58 +62,76 @@ class TestChatHandlerSystemPrompt:
             "description": "Practice taking medical history from a patient"
         }
 
-    def test_system_prompt_english_character(self, sample_english_character, sample_scenario):
+    @pytest.mark.asyncio
+    async def test_system_prompt_english_character(self, sample_english_character, sample_scenario, mock_resource_loader):
         """Test system prompt generation for English character."""
-        chat_handler = ChatHandler()
-        agent = chat_handler._create_roleplay_agent(sample_english_character, sample_scenario)
+        # Mock the resource loader to return our test data
+        mock_resource_loader.get_character_by_id.return_value = sample_english_character
+        mock_resource_loader.get_scenario_by_id.return_value = sample_scenario
         
-        # Check that agent was created
-        assert agent is not None
-        assert agent.name == "roleplay_patient_en_medical_interview"
-        
-        # Check system prompt contains English language instruction
-        instruction = agent.instruction
-        assert "You are Sarah, a 65-year-old woman with chronic back pain" in instruction
-        assert "Practice taking medical history from a patient" in instruction
-        assert "Respond in English language" in instruction
-        assert "Stay fully in character" in instruction
-        assert "Do NOT break character" in instruction
+        with patch('role_play.dev_agents.roleplay_agent.agent.resource_loader', mock_resource_loader):
+            from role_play.dev_agents.roleplay_agent.agent import get_production_agent
+            agent = await get_production_agent("patient_en", "medical_interview", "en")
+            
+            # Check that agent was created
+            assert agent is not None
+            assert agent.name == "roleplay_patient_en_medical_interview"
+            
+            # Check system prompt contains English language instruction
+            instruction = agent.instruction
+            assert "You are Sarah, a 65-year-old woman with chronic back pain" in instruction
+            assert "Practice taking medical history from a patient" in instruction
+            assert "Respond in English language" in instruction
+            assert "Stay fully in character" in instruction
+            assert "Do NOT break character" in instruction
 
-    def test_system_prompt_chinese_character(self, sample_chinese_character, sample_scenario):
+    @pytest.mark.asyncio
+    async def test_system_prompt_chinese_character(self, sample_chinese_character, sample_scenario, mock_resource_loader):
         """Test system prompt generation for Traditional Chinese character."""
-        chat_handler = ChatHandler()
-        agent = chat_handler._create_roleplay_agent(sample_chinese_character, sample_scenario)
+        # Mock the resource loader to return our test data
+        mock_resource_loader.get_character_by_id.return_value = sample_chinese_character
+        mock_resource_loader.get_scenario_by_id.return_value = sample_scenario
         
-        # Check that agent was created
-        assert agent is not None
-        assert agent.name == "roleplay_patient_zh_tw_medical_interview"
-        
-        # Check system prompt contains Traditional Chinese language instruction
-        instruction = agent.instruction
-        assert "你是李小姐，一位65歲患有慢性背痛的女性" in instruction
-        assert "Practice taking medical history from a patient" in instruction
-        assert "Respond in Traditional Chinese language" in instruction
-        assert "Stay fully in character" in instruction
+        with patch('role_play.dev_agents.roleplay_agent.agent.resource_loader', mock_resource_loader):
+            from role_play.dev_agents.roleplay_agent.agent import get_production_agent
+            agent = await get_production_agent("patient_zh_tw", "medical_interview", "zh-TW")
+            
+            # Check that agent was created
+            assert agent is not None
+            assert agent.name == "roleplay_patient_zh_tw_medical_interview"
+            
+            # Check system prompt contains Traditional Chinese language instruction
+            instruction = agent.instruction
+            assert "你是李小姐，一位65歲患有慢性背痛的女性" in instruction
+            assert "Practice taking medical history from a patient" in instruction
+            assert "Respond in Traditional Chinese language" in instruction
+            assert "Stay fully in character" in instruction
 
-    def test_system_prompt_japanese_character(self, sample_japanese_character, sample_scenario):
+    @pytest.mark.asyncio
+    async def test_system_prompt_japanese_character(self, sample_japanese_character, sample_scenario, mock_resource_loader):
         """Test system prompt generation for Japanese character."""
-        chat_handler = ChatHandler()
-        agent = chat_handler._create_roleplay_agent(sample_japanese_character, sample_scenario)
+        # Mock the resource loader to return our test data
+        mock_resource_loader.get_character_by_id.return_value = sample_japanese_character
+        mock_resource_loader.get_scenario_by_id.return_value = sample_scenario
         
-        # Check that agent was created
-        assert agent is not None
-        assert agent.name == "roleplay_patient_ja_medical_interview"
-        
-        # Check system prompt contains Japanese language instruction
-        instruction = agent.instruction
-        assert "あなたは田中さん、65歳の慢性的な腰痛を持つ女性です" in instruction
-        assert "Practice taking medical history from a patient" in instruction
-        assert "Respond in Japanese language" in instruction
-        assert "Stay fully in character" in instruction
+        with patch('role_play.dev_agents.roleplay_agent.agent.resource_loader', mock_resource_loader):
+            from role_play.dev_agents.roleplay_agent.agent import get_production_agent
+            agent = await get_production_agent("patient_ja", "medical_interview", "ja")
+            
+            # Check that agent was created
+            assert agent is not None
+            assert agent.name == "roleplay_patient_ja_medical_interview"
+            
+            # Check system prompt contains Japanese language instruction
+            instruction = agent.instruction
+            assert "あなたは田中さん、65歳の慢性的な腰痛を持つ女性です" in instruction
+            assert "Practice taking medical history from a patient" in instruction
+            assert "Respond in Japanese language" in instruction
+            assert "Stay fully in character" in instruction
 
-    def test_system_prompt_character_without_language_defaults_to_english(self, sample_scenario):
+    @pytest.mark.asyncio
+    async def test_system_prompt_character_without_language_defaults_to_english(self, sample_scenario, mock_resource_loader):
         """Test system prompt generation for character without language field (defaults to English)."""
-        chat_handler = ChatHandler()
         character_no_lang = {
             "id": "patient_no_lang",
             "name": "Test Patient", 
@@ -119,19 +139,25 @@ class TestChatHandlerSystemPrompt:
             "system_prompt": "You are a test patient."
         }
         
-        agent = chat_handler._create_roleplay_agent(character_no_lang, sample_scenario)
+        # Mock the resource loader to return our test data
+        mock_resource_loader.get_character_by_id.return_value = character_no_lang
+        mock_resource_loader.get_scenario_by_id.return_value = sample_scenario
         
-        # Check that agent was created
-        assert agent is not None
-        
-        # Check system prompt defaults to English
-        instruction = agent.instruction
-        assert "You are a test patient." in instruction
-        assert "Respond in English language" in instruction
+        with patch('role_play.dev_agents.roleplay_agent.agent.resource_loader', mock_resource_loader):
+            from role_play.dev_agents.roleplay_agent.agent import get_production_agent
+            agent = await get_production_agent("patient_no_lang", "medical_interview", "en")
+            
+            # Check that agent was created
+            assert agent is not None
+            
+            # Check system prompt defaults to English
+            instruction = agent.instruction
+            assert "You are a test patient." in instruction
+            assert "Respond in English language" in instruction
 
-    def test_system_prompt_unsupported_language_defaults_to_english(self, sample_scenario):
+    @pytest.mark.asyncio
+    async def test_system_prompt_unsupported_language_defaults_to_english(self, sample_scenario, mock_resource_loader):
         """Test system prompt generation for character with unsupported language (defaults to English)."""
-        chat_handler = ChatHandler()
         character_unsupported = {
             "id": "patient_fr",
             "language": "fr",  # Unsupported language
@@ -140,47 +166,137 @@ class TestChatHandlerSystemPrompt:
             "system_prompt": "Vous êtes un patient français."
         }
         
-        agent = chat_handler._create_roleplay_agent(character_unsupported, sample_scenario)
+        # Mock the resource loader to return our test data
+        mock_resource_loader.get_character_by_id.return_value = character_unsupported
+        mock_resource_loader.get_scenario_by_id.return_value = sample_scenario
         
-        # Check that agent was created
-        assert agent is not None
-        
-        # Check system prompt defaults to English for unsupported language
-        instruction = agent.instruction
-        assert "Vous êtes un patient français." in instruction
-        assert "Respond in English language" in instruction  # Should default to English
+        with patch('role_play.dev_agents.roleplay_agent.agent.resource_loader', mock_resource_loader):
+            from role_play.dev_agents.roleplay_agent.agent import get_production_agent
+            agent = await get_production_agent("patient_fr", "medical_interview", "fr")
+            
+            # Check that agent was created
+            assert agent is not None
+            
+            # Check system prompt defaults to English for unsupported language
+            instruction = agent.instruction
+            assert "Vous êtes un patient français." in instruction
+            assert "Respond in English language" in instruction  # Should default to English
 
-    def test_system_prompt_structure(self, sample_english_character, sample_scenario):
+    @pytest.mark.asyncio
+    async def test_system_prompt_with_script(self, sample_english_character, sample_scenario, mock_resource_loader):
+        """Test system prompt generation with script."""
+        # Mock the resource loader to return our test data
+        mock_resource_loader.get_character_by_id.return_value = sample_english_character
+        mock_resource_loader.get_scenario_by_id.return_value = sample_scenario
+        
+        with patch('role_play.dev_agents.roleplay_agent.agent.resource_loader', mock_resource_loader):
+            from role_play.dev_agents.roleplay_agent.agent import get_production_agent
+            agent = await get_production_agent("patient_en", "medical_interview", "en", scripted=True)
+            
+            # Check that agent was created
+            assert agent is not None
+            
+            # Check system prompt contains scripted prompt
+            instruction = agent.instruction
+            assert 'You are improvising based on "character" part of the script below' in instruction
+
+    @pytest.mark.asyncio
+    async def test_system_prompt_without_script(self, sample_english_character, sample_scenario, mock_resource_loader):
+        """Test system prompt generation without script."""
+        # Mock the resource loader to return our test data
+        mock_resource_loader.get_character_by_id.return_value = sample_english_character
+        mock_resource_loader.get_scenario_by_id.return_value = sample_scenario
+        
+        with patch('role_play.dev_agents.roleplay_agent.agent.resource_loader', mock_resource_loader):
+            from role_play.dev_agents.roleplay_agent.agent import get_production_agent
+            agent = await get_production_agent("patient_en", "medical_interview", "en", scripted=False)
+            
+            # Check that agent was created
+            assert agent is not None
+            
+            # Check system prompt does not contain scripted prompt
+            instruction = agent.instruction
+            assert 'You are improvising based on "character" part of the script below' not in instruction
+
+    @pytest.mark.asyncio
+    async def test_system_prompt_with_script(self, sample_english_character, sample_scenario, mock_resource_loader):
+        """Test system prompt generation with script."""
+        # Mock the resource loader to return our test data
+        mock_resource_loader.get_character_by_id.return_value = sample_english_character
+        mock_resource_loader.get_scenario_by_id.return_value = sample_scenario
+        
+        with patch('role_play.dev_agents.roleplay_agent.agent.resource_loader', mock_resource_loader):
+            from role_play.dev_agents.roleplay_agent.agent import get_production_agent
+            agent = await get_production_agent("patient_en", "medical_interview", "en", scripted=True)
+            
+            # Check that agent was created
+            assert agent is not None
+            
+            # Check system prompt contains scripted prompt
+            instruction = agent.instruction
+            assert 'You are improvising based on "character" part of the script below' in instruction
+
+    @pytest.mark.asyncio
+    async def test_system_prompt_without_script(self, sample_english_character, sample_scenario, mock_resource_loader):
+        """Test system prompt generation without script."""
+        # Mock the resource loader to return our test data
+        mock_resource_loader.get_character_by_id.return_value = sample_english_character
+        mock_resource_loader.get_scenario_by_id.return_value = sample_scenario
+        
+        with patch('role_play.dev_agents.roleplay_agent.agent.resource_loader', mock_resource_loader):
+            from role_play.dev_agents.roleplay_agent.agent import get_production_agent
+            agent = await get_production_agent("patient_en", "medical_interview", "en", scripted=False)
+            
+            # Check that agent was created
+            assert agent is not None
+            
+            # Check system prompt does not contain scripted prompt
+            instruction = agent.instruction
+            assert 'You are improvising based on "character" part of the script below' not in instruction
+
+    @pytest.mark.asyncio
+    async def test_system_prompt_structure(self, sample_english_character, sample_scenario, mock_resource_loader):
         """Test the overall structure of the generated system prompt."""
-        chat_handler = ChatHandler()
-        agent = chat_handler._create_roleplay_agent(sample_english_character, sample_scenario)
-        instruction = agent.instruction
+        # Mock the resource loader to return our test data
+        mock_resource_loader.get_character_by_id.return_value = sample_english_character
+        mock_resource_loader.get_scenario_by_id.return_value = sample_scenario
         
-        # Check that all required sections are present
-        assert "**Current Scenario:**" in instruction
-        assert "**Roleplay Instructions:**" in instruction
-        
-        # Check all roleplay instructions are present
-        assert "Stay fully in character" in instruction
-        assert "Do NOT break character or mention you are an AI" in instruction
-        assert "Respond naturally based on your character's personality" in instruction
-        assert "IMPORTANT: Respond in" in instruction  # Language instruction
-        assert "Engage with the user's messages within the roleplay context" in instruction
+        with patch('role_play.dev_agents.roleplay_agent.agent.resource_loader', mock_resource_loader):
+            from role_play.dev_agents.roleplay_agent.agent import get_production_agent
+            agent = await get_production_agent("patient_en", "medical_interview", "en")
+            instruction = agent.instruction
+            
+            # Check that all required sections are present
+            assert "**Current Scenario:**" in instruction
+            assert "**Roleplay Instructions:**" in instruction
+            
+            # Check all roleplay instructions are present
+            assert "Stay fully in character" in instruction
+            assert "Do NOT break character or mention you are an AI" in instruction
+            assert "Respond naturally based on your character's personality" in instruction
+            assert "IMPORTANT: Respond in" in instruction  # Language instruction
+            assert "Engage with the user's messages within the roleplay context" in instruction
 
-    def test_system_prompt_with_missing_fields(self):
+    @pytest.mark.asyncio
+    async def test_system_prompt_with_missing_fields(self, mock_resource_loader):
         """Test system prompt generation with minimal character and scenario data."""
-        chat_handler = ChatHandler()
         minimal_character = {"id": "min_char"}
         minimal_scenario = {"id": "min_scenario"}
         
-        agent = chat_handler._create_roleplay_agent(minimal_character, minimal_scenario)
+        # Mock the resource loader to return our test data
+        mock_resource_loader.get_character_by_id.return_value = minimal_character
+        mock_resource_loader.get_scenario_by_id.return_value = minimal_scenario
         
-        # Should handle missing fields gracefully
-        assert agent is not None
-        instruction = agent.instruction
-        assert "You are a helpful assistant." in instruction  # Default system prompt
-        assert "No specific scenario description." in instruction  # Default scenario description
-        assert "Respond in English language" in instruction  # Default language
+        with patch('role_play.dev_agents.roleplay_agent.agent.resource_loader', mock_resource_loader):
+            from role_play.dev_agents.roleplay_agent.agent import get_production_agent
+            agent = await get_production_agent("min_char", "min_scenario", "en")
+            
+            # Should handle missing fields gracefully
+            assert agent is not None
+            instruction = agent.instruction
+            assert "You are a helpful assistant." in instruction  # Default system prompt
+            assert "No specific scenario description." in instruction  # Default scenario description
+            assert "Respond in English language" in instruction  # Default language
 
 
 class TestChatHandlerReadOnlySession:
@@ -591,3 +707,296 @@ class TestChatHandlerReadOnlySession:
             user_id="test_user_123",
             session_id=session_id
         )
+
+
+class TestChatHandlerSessionCreation:
+    """Test cases for ChatHandler session creation with script support."""
+
+    @pytest.fixture
+    def mock_user(self):
+        """Mock user object."""
+        user = Mock()
+        user.id = "test_user_123"
+        user.email = "test@example.com"
+        user.preferred_language = "en"
+        return user
+
+    @pytest.fixture
+    def mock_resource_loader(self):
+        """Mock ResourceLoader."""
+        return AsyncMock()
+
+    @pytest.fixture
+    def mock_chat_logger(self):
+        """Mock ChatLogger."""
+        mock = AsyncMock()
+        mock.start_session = AsyncMock(return_value=("session_123", "storage/path"))
+        return mock
+
+    @pytest.fixture
+    def mock_adk_session_service(self):
+        """Mock ADK session service."""
+        mock = AsyncMock()
+        mock.create_session = AsyncMock()
+        return mock
+
+    @pytest.fixture
+    def sample_scenario(self):
+        """Sample scenario data."""
+        return {
+            "id": "medical_interview",
+            "name": "Medical Interview",
+            "description": "Practice medical interviewing skills",
+            "compatible_characters": ["patient_acute", "patient_chronic"]
+        }
+
+    @pytest.fixture
+    def sample_character(self):
+        """Sample character data."""
+        return {
+            "id": "patient_acute",
+            "name": "Sarah - Acute Patient", 
+            "description": "Patient with acute symptoms",
+            "language": "en"
+        }
+
+    @pytest.fixture
+    def sample_script(self):
+        """Sample script data."""
+        return {
+            "id": "medical_acute_frustration_simple",
+            "scenario_id": "medical_interview",
+            "character_id": "patient_acute",
+            "language": "en",
+            "goal": "Practice handling a patient who is downplaying their pain",
+            "script": [
+                {"speaker": "character", "line": "I'm fine, doc. Just a little tweak."},
+                {"speaker": "participant", "line": "Describe the pain for me."},
+                {"speaker": "character", "line": "(Sighs) Okay, it's more of a sharp pain. A 6 or 7 maybe."},
+                {"speaker": "llm", "action": "stop"}
+            ]
+        }
+
+    @pytest.mark.asyncio
+    async def test_create_session_character_only_mode(
+        self, mock_user, mock_resource_loader, mock_chat_logger, mock_adk_session_service,
+        sample_scenario, sample_character
+    ):
+        """Test creating session with character_id only (free-form roleplay)."""
+        # Setup mocks
+        mock_resource_loader.get_scenario_by_id.return_value = sample_scenario
+        mock_resource_loader.get_character_by_id.return_value = sample_character
+        
+        # Create request - character only
+        from role_play.chat.models import CreateSessionRequest
+        request = CreateSessionRequest(
+            scenario_id="medical_interview",
+            character_id="patient_acute",
+            participant_name="Dr. Test"
+        )
+        
+        chat_handler = ChatHandler()
+        response = await chat_handler.create_session(
+            request=request,
+            current_user=mock_user,
+            chat_logger=mock_chat_logger,
+            adk_session_service=mock_adk_session_service,
+            resource_loader=mock_resource_loader
+        )
+        
+        # Verify response
+        assert response.success is True
+        assert response.session_id == "session_123"
+        assert response.scenario_name == "Medical Interview"
+        assert response.character_name == "Sarah - Acute Patient"
+        
+        # Verify chat logger was called with correct parameters
+        mock_chat_logger.start_session.assert_called_once()
+        call_args = mock_chat_logger.start_session.call_args
+        assert call_args[1]["character_id"] == "patient_acute"
+        assert call_args[1]["script_id"] is None
+        assert call_args[1]["goal"] is None
+
+    @pytest.mark.asyncio
+    async def test_create_session_script_only_mode(
+        self, mock_user, mock_resource_loader, mock_chat_logger, mock_adk_session_service,
+        sample_scenario, sample_character, sample_script
+    ):
+        """Test creating session with script_id only (character derived from script)."""
+        # Setup mocks
+        mock_resource_loader.get_scenario_by_id.return_value = sample_scenario
+        mock_resource_loader.get_character_by_id.return_value = sample_character
+        mock_resource_loader.get_script_id.return_value = sample_script
+        
+        # Create request - script only
+        from role_play.chat.models import CreateSessionRequest
+        request = CreateSessionRequest(
+            scenario_id="medical_interview",
+            script_id="medical_acute_frustration_simple",
+            participant_name="Dr. Test"
+        )
+        
+        chat_handler = ChatHandler()
+        response = await chat_handler.create_session(
+            request=request,
+            current_user=mock_user,
+            chat_logger=mock_chat_logger,
+            adk_session_service=mock_adk_session_service,
+            resource_loader=mock_resource_loader
+        )
+        
+        # Verify response
+        assert response.success is True
+        assert response.session_id == "session_123"
+        
+        # Verify script was loaded and character was derived
+        mock_resource_loader.get_script_id.assert_called_once_with("medical_acute_frustration_simple", "en")
+        mock_resource_loader.get_character_by_id.assert_called_once_with("patient_acute", "en")
+        
+        # Verify chat logger was called with script info
+        call_args = mock_chat_logger.start_session.call_args
+        assert call_args[1]["script_id"] == "medical_acute_frustration_simple"
+        assert call_args[1]["goal"] == "Practice handling a patient who is downplaying their pain"
+
+    @pytest.mark.asyncio
+    async def test_create_session_both_provided_valid(
+        self, mock_user, mock_resource_loader, mock_chat_logger, mock_adk_session_service,
+        sample_scenario, sample_character, sample_script
+    ):
+        """Test creating session with both character_id and script_id (consistent)."""
+        # Setup mocks
+        mock_resource_loader.get_scenario_by_id.return_value = sample_scenario
+        mock_resource_loader.get_character_by_id.return_value = sample_character
+        mock_resource_loader.get_script_id.return_value = sample_script
+        
+        # Create request - both character and script
+        from role_play.chat.models import CreateSessionRequest
+        request = CreateSessionRequest(
+            scenario_id="medical_interview",
+            character_id="patient_acute",
+            script_id="medical_acute_frustration_simple",
+            participant_name="Dr. Test"
+        )
+        
+        chat_handler = ChatHandler()
+        response = await chat_handler.create_session(
+            request=request,
+            current_user=mock_user,
+            chat_logger=mock_chat_logger,
+            adk_session_service=mock_adk_session_service,
+            resource_loader=mock_resource_loader
+        )
+        
+        # Verify successful creation
+        assert response.success is True
+        
+        # Verify consistency validation passed
+        mock_resource_loader.get_script_id.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_create_session_character_script_mismatch(
+        self, mock_user, mock_resource_loader, mock_chat_logger, mock_adk_session_service,
+        sample_scenario, sample_character, sample_script
+    ):
+        """Test creating session with mismatched character_id and script.character_id."""
+        # Setup mocks
+        mock_resource_loader.get_scenario_by_id.return_value = sample_scenario
+        mock_resource_loader.get_character_by_id.return_value = sample_character
+        mock_resource_loader.get_script_id.return_value = sample_script
+        
+        # Create request with mismatched character
+        from role_play.chat.models import CreateSessionRequest
+        request = CreateSessionRequest(
+            scenario_id="medical_interview",
+            character_id="different_character",  # Mismatch!
+            script_id="medical_acute_frustration_simple",
+            participant_name="Dr. Test"
+        )
+        
+        chat_handler = ChatHandler()
+        
+        # Should raise HTTPException
+        from fastapi import HTTPException
+        with pytest.raises(HTTPException) as exc_info:
+            await chat_handler.create_session(
+                request=request,
+                current_user=mock_user,
+                chat_logger=mock_chat_logger,
+                adk_session_service=mock_adk_session_service,
+                resource_loader=mock_resource_loader
+            )
+        
+        assert exc_info.value.status_code == 400
+        assert "Character ID mismatch" in str(exc_info.value.detail)
+
+    @pytest.mark.asyncio
+    async def test_create_session_script_scenario_mismatch(
+        self, mock_user, mock_resource_loader, mock_chat_logger, mock_adk_session_service,
+        sample_scenario, sample_character, sample_script
+    ):
+        """Test creating session with script not compatible with scenario."""
+        # Setup mocks
+        mock_resource_loader.get_scenario_by_id.return_value = sample_scenario
+        
+        # Script for different scenario
+        mismatched_script = sample_script.copy()
+        mismatched_script["scenario_id"] = "different_scenario"
+        mock_resource_loader.get_script_id.return_value = mismatched_script
+        
+        # Create request
+        from role_play.chat.models import CreateSessionRequest
+        request = CreateSessionRequest(
+            scenario_id="medical_interview",
+            script_id="medical_acute_frustration_simple",
+            participant_name="Dr. Test"
+        )
+        
+        chat_handler = ChatHandler()
+        
+        # Should raise HTTPException
+        from fastapi import HTTPException
+        with pytest.raises(HTTPException) as exc_info:
+            await chat_handler.create_session(
+                request=request,
+                current_user=mock_user,
+                chat_logger=mock_chat_logger,
+                adk_session_service=mock_adk_session_service,
+                resource_loader=mock_resource_loader
+            )
+        
+        assert exc_info.value.status_code == 400
+        assert "is not compatible with scenario" in str(exc_info.value.detail)
+
+    @pytest.mark.asyncio
+    async def test_create_session_invalid_script_id(
+        self, mock_user, mock_resource_loader, mock_chat_logger, mock_adk_session_service,
+        sample_scenario
+    ):
+        """Test creating session with non-existent script_id."""
+        # Setup mocks
+        mock_resource_loader.get_scenario_by_id.return_value = sample_scenario
+        mock_resource_loader.get_script_id.return_value = None  # Script not found
+        
+        # Create request
+        from role_play.chat.models import CreateSessionRequest
+        request = CreateSessionRequest(
+            scenario_id="medical_interview",
+            script_id="nonexistent_script",
+            participant_name="Dr. Test"
+        )
+        
+        chat_handler = ChatHandler()
+        
+        # Should raise HTTPException
+        from fastapi import HTTPException
+        with pytest.raises(HTTPException) as exc_info:
+            await chat_handler.create_session(
+                request=request,
+                current_user=mock_user,
+                chat_logger=mock_chat_logger,
+                adk_session_service=mock_adk_session_service,
+                resource_loader=mock_resource_loader
+            )
+        
+        assert exc_info.value.status_code == 400
+        assert "Invalid script ID" in str(exc_info.value.detail)

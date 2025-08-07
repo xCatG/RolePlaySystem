@@ -21,6 +21,12 @@
   "chat": {
     "selectScenario": "Select Scenario",
     "selectCharacter": "Select Character",
+    "selectScript": "Select a script",
+    "startWithScript": "Start with Script",
+    "startWithCharacter": "Start with Character",
+    "freeform": "Free-form",
+    "participantName": "Participant Name",
+    "enterParticipantName": "Enter participant's name",
     "startSession": "Start Session",
     "endSession": "End Session",
     "typeMessage": "Type your message...",
