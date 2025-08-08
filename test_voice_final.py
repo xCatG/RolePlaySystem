@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
 Final voice chat test - demonstrates full working flow with Gemini Live API.
+Uses ADK-style message format with mime_type and base64-encoded data.
 """
 
 import asyncio
@@ -8,6 +9,7 @@ import websockets
 import json
 import httpx
 import sys
+import base64
 
 BASE_URL = "http://localhost:8000/api"
 
@@ -18,8 +20,8 @@ async def test_voice_final():
         # 1. Login
         print("🔐 Logging in...")
         login_data = {
-            "email": "voicetest2@example.com",
-            "password": "TestPass123!"
+            "email": "test@example.com",
+            "password": "password"
         }
         
         resp = await client.post(f"{BASE_URL}/auth/login", json=login_data)
@@ -82,41 +84,62 @@ async def test_voice_final():
                 print("   ❌ Failed to get ready status")
                 return
             
-            # Send a text message
+            # Send a text message using ADK format
             print("\n💬 Sending message to character...")
+            text_content = "Hello! Can you tell me how you're feeling today in just a few words?"
+            
+            # Encode text as base64 (ADK format)
+            text_bytes = text_content.encode('utf-8')
+            text_base64 = base64.b64encode(text_bytes).decode('ascii')
+            
             text_msg = {
-                "type": "text",
-                "text": "Hello! Can you tell me how you're feeling today in just a few words?"
+                "mime_type": "text/plain",
+                "data": text_base64,
+                "end_session": False
             }
             await websocket.send(json.dumps(text_msg))
-            print(f'   → "{text_msg["text"]}"')
+            print(f'   → "{text_content}"')
             
             # Collect response
             print("\n🎧 Receiving response...")
             audio_chunks = []
             transcript = ""
             start_time = asyncio.get_event_loop().time()
+            response_complete = False
             
             try:
                 while True:
                     # Stop after 15 seconds max
                     if asyncio.get_event_loop().time() - start_time > 15:
+                        print("   ⏱️  Max time reached, ending session")
                         break
-                        
-                    message = await asyncio.wait_for(websocket.recv(), timeout=1.0)
                     
-                    if isinstance(message, bytes):
-                        # Audio data
-                        audio_chunks.append(len(message))
-                    elif isinstance(message, str):
-                        # JSON message
-                        data = json.loads(message)
-                        if data.get('type') == 'transcript':
-                            transcript = data.get('text', '')
-                            print(f'   ← "{transcript}"')
+                    # Wait for response_complete signal or timeout
+                    try:
+                        message = await asyncio.wait_for(websocket.recv(), timeout=1.0)
+                        
+                        if isinstance(message, bytes):
+                            # Audio data
+                            audio_chunks.append(len(message))
+                        elif isinstance(message, str):
+                            # JSON message
+                            data = json.loads(message)
+                            if data.get('type') == 'transcript':
+                                transcript = data.get('text', '')
+                                print(f'   ← "{transcript}"')
+                            elif data.get('type') == 'status':
+                                status = data.get('status', '')
+                                if status == 'response_complete':
+                                    print("   ✅ Response complete signal received")
+                                    response_complete = True
+                                    break
+                    except asyncio.TimeoutError:
+                        # If we haven't received the completion signal, keep waiting
+                        if not response_complete:
+                            continue
+                        else:
+                            break
                             
-            except asyncio.TimeoutError:
-                pass  # Normal end of stream
             except websockets.exceptions.ConnectionClosed:
                 pass  # Session ended
             
@@ -127,11 +150,23 @@ async def test_voice_final():
                 print(f"   📊 Average chunk size: {total_audio//len(audio_chunks):,} bytes")
             
             if transcript:
-                print(f"   📝 Transcript received: Yes")
+                print(f"   📝 Transcript received: Yes\n\t{transcript}")
             
-            # Clean shutdown
+            # Clean shutdown using ADK format
+            print("\n🔚 Ending session gracefully...")
             try:
-                await websocket.send(json.dumps({"type": "end_session"}))
+                end_msg = {
+                    "mime_type": "text/plain",
+                    "data": base64.b64encode(b"").decode('ascii'),  # Empty data
+                    "end_session": True
+                }
+                await websocket.send(json.dumps(end_msg))
+                
+                # Wait briefly for any final messages
+                try:
+                    await asyncio.wait_for(websocket.recv(), timeout=0.5)
+                except asyncio.TimeoutError:
+                    pass
             except:
                 pass
             

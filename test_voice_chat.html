@@ -238,61 +238,7 @@
     </div>
 
     <script type="text/javascript">
-        // Inlined Audio Processor
-        const audioProcessorCode = `
-        class AudioProcessor extends AudioWorkletProcessor {
-            constructor() {
-                super();
-                this.targetSampleRate = 16000;  // Target sample rate for the server
-                this.resampleRatio = 1; // Will be calculated once we know the sampleRate
-            }
-
-            process(inputs, outputs, parameters) {
-                // Calculate the resample ratio once, when the sampleRate is known.
-                if (this.resampleRatio === 1 && sampleRate > 0) {
-                    this.resampleRatio = sampleRate / this.targetSampleRate;
-                }
-
-                const input = inputs[0];
-                if (input.length > 0) {
-                    let audioData = input[0]; // Get first channel's data
-                    
-                    if (this.resampleRatio !== 1) {
-                        audioData = this.resample(audioData);
-                    }
-
-                    // Convert to 16-bit PCM before sending
-                    const pcm16Bit = this.floatTo16BitPCM(audioData);
-                    this.port.postMessage(pcm16Bit, [pcm16Bit.buffer]); // Post as transferable object
-                }
-                return true; // Keep processor alive
-            }
-
-            resample(audioData) {
-                const newLength = Math.round(audioData.length / this.resampleRatio);
-                const resampled = new Float32Array(newLength);
-
-                for (let i = 0; i < newLength; i++) {
-                    // A simple nearest-neighbor resampling.
-                    const srcIndex = Math.floor(i * this.resampleRatio);
-                    resampled[i] = audioData[srcIndex];
-                }
-                return resampled;
-            }
-
-            floatTo16BitPCM(input) {
-                const output = new Int16Array(input.length);
-                for (let i = 0; i < input.length; i++) {
-                    let s = Math.max(-1, Math.min(1, input[i]));
-                    output[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
-                }
-                return output;
-            }
-        }
-        registerProcessor('audio-processor', AudioProcessor);
-        `;
-        const audioProcessorBlob = new Blob([audioProcessorCode], { type: 'application/javascript' });
-        const audioProcessorUrl = URL.createObjectURL(audioProcessorBlob);
+        // No blob URLs needed - we'll use ScriptProcessorNode instead
 
         let ws = null;
         let audioContext = null;
@@ -304,7 +250,7 @@
         let audioConfig = {};
         let audioChunksSent = 0;
         let selectedMicId = null;
-        let workletNode = null;
+        let scriptProcessor = null;
         let audioBufferQueue = []; // Accumulate audio chunks
 
         // Load saved preferences
@@ -534,9 +480,10 @@
                 return;
             }
 
-            // Send text message
+            // Send text message using ADK format
             const message = {
-                text: text
+                mime_type: "text/plain",
+                data: btoa(unescape(encodeURIComponent(text)))  // Base64 encode the text
             };
             
             ws.send(JSON.stringify(message));
@@ -583,22 +530,46 @@
             }
 
             try {
-                if (!workletNode) {
-                    await audioContext.audioWorklet.addModule(audioProcessorUrl);
-                    workletNode = new AudioWorkletNode(audioContext, 'audio-processor');
+                if (!scriptProcessor) {
+                    // Create ScriptProcessorNode - no external module needed!
+                    const bufferSize = 4096; // Can be 256, 512, 1024, 2048, 4096, 8192, 16384
+                    scriptProcessor = audioContext.createScriptProcessor(bufferSize, 1, 1);
                     
-                    workletNode.port.onmessage = (event) => {
+                    scriptProcessor.onaudioprocess = (e) => {
                         if (!isRecording || ws.readyState !== WebSocket.OPEN) {
                             return;
                         }
                         
-                        // event.data is the Int16Array from the worklet
-                        const pcm16Bit = event.data;
+                        const inputData = e.inputBuffer.getChannelData(0);
+                        
+                        // Resample to 16kHz if needed
+                        const targetSampleRate = 16000;
+                        const resampleRatio = audioContext.sampleRate / targetSampleRate;
+                        let audioData = inputData;
+                        
+                        if (Math.abs(resampleRatio - 1) > 0.01) { // Only resample if significantly different
+                            const newLength = Math.round(inputData.length / resampleRatio);
+                            const resampled = new Float32Array(newLength);
+                            for (let i = 0; i < newLength; i++) {
+                                const srcIndex = Math.floor(i * resampleRatio);
+                                resampled[i] = inputData[srcIndex];
+                            }
+                            audioData = resampled;
+                        }
+                        
+                        // Convert to 16-bit PCM
+                        const pcm16Bit = new Int16Array(audioData.length);
+                        for (let i = 0; i < audioData.length; i++) {
+                            const s = Math.max(-1, Math.min(1, audioData[i]));
+                            pcm16Bit[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+                        }
                         
                         if (pcm16Bit.byteLength > 0) {
                             const base64Audio = arrayBufferToBase64(pcm16Bit.buffer);
+                            // Use ADK format with mime_type and data
                             const message = {
-                                audio_chunk: base64Audio
+                                mime_type: "audio/pcm",
+                                data: base64Audio
                             };
                             ws.send(JSON.stringify(message));
                             audioChunksSent++;
@@ -607,26 +578,25 @@
                     };
                 }
                 
-                // Connect the microphone stream to the worklet node
+                // Connect the microphone stream to the script processor
                 const source = audioContext.createMediaStreamSource(audioStream);
-                source.connect(workletNode);
-                workletNode.connect(audioContext.destination); // Optional: for monitoring
+                source.connect(scriptProcessor);
+                scriptProcessor.connect(audioContext.destination); // Optional: for monitoring
 
                 isRecording = true;
                 document.getElementById('pushToTalkBtn').classList.add('recording');
                 document.getElementById('recordingInfo').textContent = 'Recording...';
-                console.log('Recording started (using AudioWorklet)');
+                console.log('Recording started (using ScriptProcessor)');
 
             } catch (error) {
-                console.error('Failed to start recording with AudioWorklet:', error);
+                console.error('Failed to start recording:', error);
                 updateStatus(`Recording error: ${error.message}`, 'error');
             }
         }
 
         function stopRecording() {
-            if (workletNode && isRecording) {
-                workletNode.port.postMessage({ command: 'stop' }); // Optional: command to stop worklet
-                workletNode.disconnect();
+            if (scriptProcessor && isRecording) {
+                scriptProcessor.disconnect();
                 isRecording = false;
                 document.getElementById('pushToTalkBtn').classList.remove('recording');
                 

@@ -14,8 +14,8 @@ async def get_credentials():
         # Login
         print("Logging in...")
         login_data = {
-            "email": "voicetest2@example.com",
-            "password": "TestPass123!"
+            "email": "test@example.com",
+            "password": "password"
         }
         
         resp = await client.post(f"{BASE_URL}/auth/login", json=login_data)

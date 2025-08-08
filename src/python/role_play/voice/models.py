@@ -1,23 +1,33 @@
 """Data models for voice chat functionality."""
 
-from pydantic import BaseModel, ConfigDict
-from typing import Optional, Literal
+from pydantic import BaseModel, ConfigDict, Field
+from typing import Optional, Literal, Union
 from datetime import datetime
+import base64
 from google.genai import types
 
 
 class VoiceClientRequest(BaseModel):
-    """Request from client to voice handler."""
-
-    model_config = ConfigDict(ser_json_bytes="base64", val_json_bytes="base64")
-    """The pydantic model config."""
-
-    audio_chunk: Optional[bytes] = None
-    """If set, send the audio chunk to the model in realtime mode."""
-    text: Optional[str] = None
-    """If set, send the text to the model in turn-by-turn mode."""
-    end_session: bool = False
+    """Request from client using ADK-style format."""
+    
+    mime_type: str = Field(..., description="MIME type: 'audio/pcm' or 'text/plain'")
+    """The MIME type of the data."""
+    
+    data: str = Field(..., description="Base64 encoded content")
+    """Base64 encoded audio or text data."""
+    
+    end_session: bool = Field(default=False, description="End the voice session")
     """If set, close the session."""
+    
+    def decode_data(self) -> Union[bytes, str]:
+        """Decode the base64 data based on mime_type."""
+        if self.mime_type == "audio/pcm":
+            return base64.b64decode(self.data)
+        elif self.mime_type == "text/plain":
+            # Decode base64 then decode UTF-8
+            return base64.b64decode(self.data).decode('utf-8')
+        else:
+            raise ValueError(f"Unsupported mime_type: {self.mime_type}")
 
 
 class VoiceSessionInfo(BaseModel):
@@ -64,5 +74,5 @@ class VoiceErrorMessage(BaseModel):
 class VoiceStatusMessage(BaseModel):
     """Status update for voice session."""
     type: Literal["status"] = "status"
-    status: Literal["connected", "ready", "processing", "disconnected"]
+    status: Literal["connected", "ready", "processing", "disconnected", "response_complete"]
     message: Optional[str] = None
