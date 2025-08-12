@@ -411,15 +411,16 @@
                     document.getElementById('sendTextBtn').disabled = false;
                     document.getElementById('disconnectBtn').disabled = false;
                     document.getElementById('infoPanel').style.display = 'block';
+                    
+                    // Start processing the audio queue
+                    audioProcessingInterval = setInterval(processAudioQueue, 200);
                 };
 
                 ws.onmessage = async (event) => {
                     if (event.data instanceof Blob) {
-                        // Audio data received, add to queue
-                        console.log(`Received audio chunk: ${event.data.size} bytes`);
-                        audioBufferQueue.push(event.data);
+                        const arrayBuffer = await event.data.arrayBuffer();
+                        audioBufferQueue.push(new Uint8Array(arrayBuffer));
                     } else {
-                        // JSON message
                         const message = JSON.parse(event.data);
                         handleMessage(message);
                     }
@@ -433,6 +434,8 @@
                 ws.onclose = (event) => {
                     console.log('WebSocket closed:', event.code, event.reason);
                     updateStatus(`Disconnected: ${event.reason || 'Connection closed'}`, 'error');
+                    // Final playback attempt
+                    processAudioQueue();
                     resetUI();
                 };
 
@@ -457,8 +460,7 @@
                     break;
                 case 'transcript':
                     addTranscript(message.text, message.role);
-                    // When transcript arrives, play the accumulated audio
-                    playAccumulatedAudio();
+                    // DO NOT play audio here. We will play it all at the end.
                     break;
                 case 'error':
                     updateStatus(`Error: ${message.error}`, 'error');
@@ -467,7 +469,7 @@
         }
 
         function displayAudioConfig(config) {
-            document.getElementById('audioInfo').textContent = config.audio_format || 'unknown';
+            document.getElementById('audioInfo').textContent = `${config.output_audio_format} @ ${config.output_sample_rate / 1000}kHz`;
             document.getElementById('voiceInfo').textContent = config.voice_name || 'default';
             document.getElementById('languageInfo').textContent = config.language || 'en';
         }
@@ -594,6 +596,9 @@
             }
         }
 
+        let audioProcessingInterval = null;
+        let lastAudioTime = 0;
+
         function stopRecording() {
             if (scriptProcessor && isRecording) {
                 scriptProcessor.disconnect();
@@ -610,10 +615,55 @@
             }
         }
 
+        function processAudioQueue() {
+            if (audioBufferQueue.length === 0) return;
+
+            const totalLength = audioBufferQueue.reduce((acc, chunk) => acc + chunk.length, 0);
+            const combined = new Uint8Array(totalLength);
+            
+            let offset = 0;
+            for (const chunk of audioBufferQueue) {
+                combined.set(chunk, offset);
+                offset += chunk.length;
+            }
+            
+            audioBufferQueue = [];
+            playPCM(combined);
+        }
+
+        function playPCM(pcmData) {
+            // Convert 16-bit PCM to 32-bit Float
+            const float32Data = new Float32Array(pcmData.length / 2);
+            for (let i = 0; i < float32Data.length; i++) {
+                let int = pcmData[i * 2] | (pcmData[i * 2 + 1] << 8);
+                if (int >= 32768) {
+                    int -= 65536;
+                }
+                float32Data[i] = int / 32768;
+            }
+
+            const sampleRate = audioConfig.output_sample_rate || 24000;
+            const audioBuffer = audioContext.createBuffer(1, float32Data.length, sampleRate);
+            audioBuffer.copyToChannel(float32Data, 0);
+
+            const source = audioContext.createBufferSource();
+            source.buffer = audioBuffer;
+            source.connect(audioContext.destination);
+
+            const currentTime = audioContext.currentTime;
+            const startTime = Math.max(currentTime, lastAudioTime);
+            
+            console.log(`Scheduling audio playback at ${startTime} (current: ${currentTime}, last: ${lastAudioTime})`);
+            source.start(startTime);
+            
+            lastAudioTime = startTime + audioBuffer.duration;
+        }
+
         // Function to create WAV header for PCM data
         function createWavHeader(pcmLength, sampleRate = 16000, numChannels = 1, bitsPerSample = 16) {
             const header = new ArrayBuffer(44);
             const view = new DataView(header);
+            const isFloat = bitsPerSample === 32;
             
             // "RIFF" chunk descriptor
             view.setUint32(0, 0x46464952, false); // "RIFF"
@@ -623,7 +673,7 @@
             // "fmt " sub-chunk
             view.setUint32(12, 0x20746d66, false); // "fmt "
             view.setUint32(16, 16, true); // subchunk size
-            view.setUint16(20, 1, true); // audio format (1 = PCM)
+            view.setUint16(20, isFloat ? 3 : 1, true); // audio format (1 = PCM, 3 = IEEE float)
             view.setUint16(22, numChannels, true); // number of channels
             view.setUint32(24, sampleRate, true); // sample rate
             view.setUint32(28, sampleRate * numChannels * bitsPerSample / 8, true); // byte rate
@@ -637,66 +687,19 @@
             return header;
         }
 
-        async function playAccumulatedAudio() {
-            if (audioBufferQueue.length === 0) {
-                return;
-            }
-
-            console.log(`Attempting to play ${audioBufferQueue.length} accumulated audio chunks.`);
-            
-            // Concatenate all blobs in the queue
-            const combinedBlob = new Blob(audioBufferQueue);
-            audioBufferQueue = []; // Clear the queue
-
-            try {
-                document.getElementById('recordingInfo').textContent = 'Playing response...';
-                
-                // Convert blob to array buffer
-                const pcmData = await combinedBlob.arrayBuffer();
-                
-                // Create WAV header for the PCM data
-                const wavHeader = createWavHeader(pcmData.byteLength, 16000, 1, 16);
-                
-                // Combine header and PCM data
-                const wavBuffer = new ArrayBuffer(wavHeader.byteLength + pcmData.byteLength);
-                const wavView = new Uint8Array(wavBuffer);
-                wavView.set(new Uint8Array(wavHeader), 0);
-                wavView.set(new Uint8Array(pcmData), wavHeader.byteLength);
-                
-                // Decode the WAV audio data
-                const audioBuffer = await audioContext.decodeAudioData(wavBuffer);
-                
-                // Create buffer source and play
-                const source = audioContext.createBufferSource();
-                source.buffer = audioBuffer;
-                source.connect(audioContext.destination);
-                source.start(0);
-                
-                source.onended = () => {
-                    document.getElementById('recordingInfo').textContent = '';
-                };
-
-            } catch (error) {
-                console.error('Failed to play PCM audio:', error);
-                document.getElementById('recordingInfo').textContent = 'Audio playback error';
-            }
-        }
+        
 
         function disconnect() {
             if (ws) {
-                // Send end session message
                 try {
                     ws.send(JSON.stringify({end_session: true}));
-                } catch (e) {
-                    // Ignore if already closed
-                }
+                } catch (e) {}
                 ws.close();
                 ws = null;
             }
             
             stopRecording();
             
-            // Stop audio stream and clean up
             if (audioStream) {
                 audioStream.getTracks().forEach(track => track.stop());
                 audioStream = null;
@@ -705,6 +708,11 @@
             if (animationId) {
                 cancelAnimationFrame(animationId);
                 animationId = null;
+            }
+
+            if (audioProcessingInterval) {
+                clearInterval(audioProcessingInterval);
+                audioProcessingInterval = null;
             }
             
             resetUI();

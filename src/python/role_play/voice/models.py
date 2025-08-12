@@ -55,12 +55,13 @@ class TranscriptMessage(BaseModel):
 class VoiceConfigMessage(BaseModel):
     """Configuration message for voice session."""
     type: Literal["config"] = "config"
-    audio_format: str = "opus"
-    sample_rate: int = 48000
+    audio_format: str = "pcm"
+    sample_rate: int = 16000
     channels: int = 1
     voice_name: Optional[str] = None
     language: str = "en"
-    output_audio_format: str = "wav"
+    output_audio_format: str = "pcm"
+    output_sample_rate: Optional[int] = None
 
 
 class VoiceErrorMessage(BaseModel):

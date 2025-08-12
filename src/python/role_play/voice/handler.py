@@ -232,7 +232,8 @@ Stay in character at all times. Respond naturally as if in a real conversation.
                 audio_format="pcm",  # Expecting PCM input from client
                 language=language,
                 voice_name=voice_name,
-                output_audio_format="wav" # Sending WAV output to client
+                output_audio_format="pcm", # Sending MP3 output to client
+                #output_sample_rate=24000   # Gemini's default output sample rate
             ).dict()
         )
         
@@ -366,23 +367,34 @@ Stay in character at all times. Respond naturally as if in a real conversation.
             
             # Iterate over responses from Gemini
             async for response in session.receive():
+                logger.info(f"GEMINI LIVE RESPONSE: {response}")
                 # Handle different types of server messages
                 if hasattr(response, 'server_content'):
                     server_content = response.server_content
                     
-                    # Check for model turn with parts
+                    # 1. Handle user's transcribed speech
+                    if hasattr(server_content, 'input_transcription') and server_content.input_transcription and server_content.input_transcription.text:
+                        try:
+                            await websocket.send_json(
+                                TranscriptMessage(
+                                    text=server_content.input_transcription.text,
+                                    role="user",
+                                    timestamp=utc_now_isoformat()
+                                ).dict()
+                            )
+                        except (WebSocketDisconnect, ConnectionError):
+                            logger.info(f"Client disconnected during user transcript send for session {session_id}")
+                            return
+
+                    # 2. Handle model's audio data
                     if hasattr(server_content, 'model_turn') and server_content.model_turn:
-                        model_turn = server_content.model_turn
-                        
-                        if hasattr(model_turn, 'parts') and model_turn.parts:
-                            for part in model_turn.parts:
-                                # Handle inline data (audio)
+                        if hasattr(server_content.model_turn, 'parts') and server_content.model_turn.parts:
+                            for part in server_content.model_turn.parts:
                                 if hasattr(part, 'inline_data') and hasattr(part.inline_data, 'data'):
                                     audio_data = part.inline_data.data
                                     try:
                                         await websocket.send_bytes(audio_data)
                                     except (WebSocketDisconnect, ConnectionError):
-                                        # Client disconnected, stop sending
                                         logger.info(f"Client disconnected during audio send for session {session_id}")
                                         return
                                     
@@ -390,35 +402,34 @@ Stay in character at all times. Respond naturally as if in a real conversation.
                                     timestamp = utc_now_isoformat().replace(":", "_")
                                     audio_path = f"users/{user_id}/voice_sessions/{session_id}/audio/char_{timestamp}.pcm"
                                     await storage.write(audio_path, base64.b64encode(audio_data).decode())
-                                
-                                # Handle text parts (transcripts)
-                                if hasattr(part, 'text') and part.text:
-                                    message_count += 1
-                                    
-                                    # Send transcript to client
-                                    try:
-                                        await websocket.send_json(
-                                            TranscriptMessage(
-                                                text=part.text,
-                                                role="assistant",
-                                                timestamp=utc_now_isoformat()
-                                            ).dict()
-                                        )
-                                    except (WebSocketDisconnect, ConnectionError):
-                                        # Client disconnected, stop sending
-                                        logger.info(f"Client disconnected during transcript send for session {session_id}")
-                                        return
-                                    
-                                    # Log to chat logger
-                                    await chat_logger.log_message(
-                                        user_id=user_id,
-                                        session_id=session_id,
-                                        role="character",
-                                        content=part.text,
-                                        message_number=message_count,
-                                        metadata={"source": "voice", "has_audio": True}
-                                    )
-                
+
+                    # 3. Handle model's transcribed speech
+                    if hasattr(server_content, 'output_transcription') and server_content.output_transcription and server_content.output_transcription.text:
+                        message_count += 1
+                        text = server_content.output_transcription.text
+                        
+                        try:
+                            await websocket.send_json(
+                                TranscriptMessage(
+                                    text=text,
+                                    role="assistant",
+                                    timestamp=utc_now_isoformat()
+                                ).dict()
+                            )
+                        except (WebSocketDisconnect, ConnectionError):
+                            logger.info(f"Client disconnected during assistant transcript send for session {session_id}")
+                            return
+                        
+                        # Log to chat logger
+                        await chat_logger.log_message(
+                            user_id=user_id,
+                            session_id=session_id,
+                            role="character",
+                            content=text,
+                            message_number=message_count,
+                            metadata={"source": "voice", "has_audio": True}
+                        )
+
                 # Also handle tool calls or other message types if needed
                 if hasattr(response, 'tool_call'):
                     logger.debug(f"Received tool call: {response.tool_call}")
