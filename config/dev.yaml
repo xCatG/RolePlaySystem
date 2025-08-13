@@ -59,6 +59,7 @@ enabled_handlers:
   user_account: "role_play.server.user_account_handler.UserAccountHandler"
   chat: "role_play.chat.handler.ChatHandler"
   evaluation: "role_play.evaluation.handler.EvaluationHandler"
+  voice: "role_play.voice.handler.VoiceChatHandler"
   # Add more handlers as they're implemented:
   # scripter: "role_play.scripter.handler.ScripterHandler"
 
