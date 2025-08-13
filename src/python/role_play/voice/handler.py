@@ -16,7 +16,8 @@ import io
 # Correct imports for google-genai
 from google import genai
 from google.genai import types
-from google.genai.types import AudioTranscriptionConfig
+from google.genai.types import AudioTranscriptionConfig, AutomaticActivityDetection, RealtimeInputConfig, \
+    SessionResumptionConfig
 
 from ..server.base_handler import BaseHandler
 from ..server.dependencies import (
@@ -213,7 +214,7 @@ Stay in character at all times. Respond naturally as if in a real conversation.
         
         # Create Gemini Live configuration
         config = types.LiveConnectConfig(
-            response_modalities=["AUDIO"],
+            response_modalities=[types.Modality.AUDIO],
             speech_config=types.SpeechConfig(
                 voice_config=types.VoiceConfig(
                     prebuilt_voice_config=types.PrebuiltVoiceConfig(
@@ -223,7 +224,7 @@ Stay in character at all times. Respond naturally as if in a real conversation.
             ),
             output_audio_transcription=AudioTranscriptionConfig(),
             input_audio_transcription=AudioTranscriptionConfig(),
-            system_instruction=system_instruction,
+            system_instruction=system_instruction
         )
         
         # Send configuration to client
@@ -251,35 +252,22 @@ Stay in character at all times. Respond naturally as if in a real conversation.
                 model="gemini-2.0-flash-exp",
                 config=config
             ) as session:
+                # Shared state for coordinating tasks
+                conversation_state = {
+                    "active": True,
+                    "session_ended": False
+                }
+                
                 # Create bidirectional streaming tasks
                 receive_task = asyncio.create_task(
-                    self._receive_audio_from_client(websocket, session, storage, user_id, session_id)
+                    self._receive_audio_from_client(websocket, session, storage, user_id, session_id, conversation_state)
                 )
                 send_task = asyncio.create_task(
-                    self._send_audio_to_client(websocket, session, chat_logger, user_id, session_id)
+                    self._send_audio_to_client(websocket, session, chat_logger, user_id, session_id, conversation_state)
                 )
                 
-                # Wait for either task to complete
-                done, pending = await asyncio.wait(
-                    {receive_task, send_task},
-                    return_when=asyncio.FIRST_COMPLETED
-                )
-                
-                # If receive task completed (client ended session), wait briefly for send task
-                if receive_task in done:
-                    logger.info(f"Receive task completed for {session_id}, waiting for send task...")
-                    try:
-                        # Give send task 2 seconds to finish sending any remaining data
-                        await asyncio.wait_for(send_task, timeout=2.0)
-                    except asyncio.TimeoutError:
-                        logger.info(f"Send task timeout for {session_id}, cancelling...")
-                        send_task.cancel()
-                    except:
-                        pass
-                else:
-                    # Send task completed first, cancel receive task
-                    for task in pending:
-                        task.cancel()
+                # Wait for both tasks to complete (only when conversation truly ends)
+                await asyncio.gather(receive_task, send_task, return_exceptions=True)
                     
         except Exception as e:
             logger.error(f"Gemini session error: {e}")
@@ -291,11 +279,12 @@ Stay in character at all times. Respond naturally as if in a real conversation.
         session: Any,  # Gemini Live session
         storage: StorageBackend,
         user_id: str,
-        session_id: str
+        session_id: str,
+        conversation_state: dict
     ):
         """Receive audio from client and forward to Gemini Live."""
         try:
-            while True:
+            while conversation_state["active"]:
                 # Receive data from WebSocket
                 data = await websocket.receive_text()
                 request = VoiceClientRequest.model_validate_json(data)
@@ -310,7 +299,7 @@ Stay in character at all times. Respond naturally as if in a real conversation.
                         # Create a Blob object with the audio data
                         audio_blob = types.Blob(
                             data=audio_bytes,
-                            mime_type="audio/pcm;rate=16000"
+                            mimeType="audio/pcm;rate=16000"
                         )
                         await session.send_realtime_input(audio=audio_blob)
                     except Exception as audio_error:
@@ -338,18 +327,17 @@ Stay in character at all times. Respond naturally as if in a real conversation.
                 
                 if request.end_session:
                     logger.info(f"Client requested session end for {session_id}")
-                    # Signal the Gemini session to stop by sending an empty message
-                    # This will cause the send task to complete naturally
-                    try:
-                        await session.send_realtime_input(text="[Session ending]")
-                    except:
-                        pass
+                    # Signal end to both tasks
+                    conversation_state["active"] = False
+                    conversation_state["session_ended"] = True
                     break
                     
         except WebSocketDisconnect:
             logger.info(f"Client disconnected from voice session {session_id}")
+            conversation_state["active"] = False
         except Exception as e:
             logger.error(f"Error receiving from client: {e}")
+            conversation_state["active"] = False
             raise
 
     async def _send_audio_to_client(
@@ -358,107 +346,121 @@ Stay in character at all times. Respond naturally as if in a real conversation.
         session: Any,  # Gemini Live session
         chat_logger: ChatLogger,
         user_id: str,
-        session_id: str
+        session_id: str,
+        conversation_state: dict
     ):
-        """Receive from Gemini Live and forward to client."""
+        """Receive from Gemini Live and forward to client using JSON protocol."""
         try:
             message_count = 0
-            storage = get_storage_backend()
             
-            # Iterate over responses from Gemini
-            async for response in session.receive():
-                logger.info(f"GEMINI LIVE RESPONSE: {response}")
-                # Handle different types of server messages
-                if hasattr(response, 'server_content'):
-                    server_content = response.server_content
+            # Keep the conversation alive until explicitly ended
+            while conversation_state["active"]:
+                try:
+                    async for response in session.receive():
+                        if not conversation_state["active"]:
+                            break
+                            
+                        if not hasattr(response, 'server_content'):
+                            continue
+
+                        server_content = response.server_content
+
+                        # Check for interruption
+                        if hasattr(server_content, 'interrupted') and server_content.interrupted:
+                            logger.info(f"Interruption detected in session {session_id}")
+                            try:
+                                await websocket.send_json({"type": "interrupted"})
+                            except (WebSocketDisconnect, ConnectionError):
+                                conversation_state["active"] = False
+                                return
+
+                        # Handle user's transcribed speech
+                        if hasattr(server_content, 'input_transcription') and server_content.input_transcription and server_content.input_transcription.text:
+                            try:
+                                await websocket.send_json({
+                                    "type": "text",
+                                    "data": {
+                                        "text": server_content.input_transcription.text,
+                                        "role": "user"
+                                    }
+                                })
+                            except (WebSocketDisconnect, ConnectionError):
+                                conversation_state["active"] = False
+                                return
+
+                        # Handle model's audio data
+                        if hasattr(server_content, 'model_turn') and server_content.model_turn:
+                            if hasattr(server_content.model_turn, 'parts') and server_content.model_turn.parts:
+                                for part in server_content.model_turn.parts:
+                                    if hasattr(part, 'inline_data') and hasattr(part.inline_data, 'data'):
+                                        audio_data = part.inline_data.data
+                                        try:
+                                            await websocket.send_json({
+                                                "type": "audio",
+                                                "data": base64.b64encode(audio_data).decode('utf-8')
+                                            })
+                                        except (WebSocketDisconnect, ConnectionError):
+                                            conversation_state["active"] = False
+                                            return
+
+                        # Handle model's transcribed speech
+                        if hasattr(server_content, 'output_transcription') and server_content.output_transcription and server_content.output_transcription.text:
+                            message_count += 1
+                            text = server_content.output_transcription.text
+                            try:
+                                await websocket.send_json({
+                                    "type": "text",
+                                    "data": {
+                                        "text": text,
+                                        "role": "assistant"
+                                    }
+                                })
+                            except (WebSocketDisconnect, ConnectionError):
+                                conversation_state["active"] = False
+                                return
+                            
+                            # Log to chat logger
+                            await chat_logger.log_message(
+                                user_id=user_id,
+                                session_id=session_id,
+                                role="character",
+                                content=text,
+                                message_number=message_count,
+                                metadata={"source": "voice", "has_audio": True}
+                            )
+                        
+                        # Handle turn completion - DON'T exit, just notify client
+                        if hasattr(server_content, 'turn_complete') and server_content.turn_complete:
+                            try:
+                                await websocket.send_json({"type": "turn_complete"})
+                            except (WebSocketDisconnect, ConnectionError):
+                                conversation_state["active"] = False
+                                return
+                            # Continue listening for more messages after turn complete
+                
+                except StopAsyncIteration:
+                    # The session.receive() generator ended, but conversation continues
+                    logger.debug(f"Session receive generator ended for {session_id}, continuing...")
+                    # Small delay before checking for more messages
+                    await asyncio.sleep(0.1)
+                    continue
                     
-                    # 1. Handle user's transcribed speech
-                    if hasattr(server_content, 'input_transcription') and server_content.input_transcription and server_content.input_transcription.text:
-                        try:
-                            await websocket.send_json(
-                                TranscriptMessage(
-                                    text=server_content.input_transcription.text,
-                                    role="user",
-                                    timestamp=utc_now_isoformat()
-                                ).dict()
-                            )
-                        except (WebSocketDisconnect, ConnectionError):
-                            logger.info(f"Client disconnected during user transcript send for session {session_id}")
-                            return
+                # Check if we should continue the conversation
+                if not conversation_state["active"]:
+                    break
 
-                    # 2. Handle model's audio data
-                    if hasattr(server_content, 'model_turn') and server_content.model_turn:
-                        if hasattr(server_content.model_turn, 'parts') and server_content.model_turn.parts:
-                            for part in server_content.model_turn.parts:
-                                if hasattr(part, 'inline_data') and hasattr(part.inline_data, 'data'):
-                                    audio_data = part.inline_data.data
-                                    try:
-                                        await websocket.send_bytes(audio_data)
-                                    except (WebSocketDisconnect, ConnectionError):
-                                        logger.info(f"Client disconnected during audio send for session {session_id}")
-                                        return
-                                    
-                                    # Store audio
-                                    timestamp = utc_now_isoformat().replace(":", "_")
-                                    audio_path = f"users/{user_id}/voice_sessions/{session_id}/audio/char_{timestamp}.pcm"
-                                    await storage.write(audio_path, base64.b64encode(audio_data).decode())
-
-                    # 3. Handle model's transcribed speech
-                    if hasattr(server_content, 'output_transcription') and server_content.output_transcription and server_content.output_transcription.text:
-                        message_count += 1
-                        text = server_content.output_transcription.text
-                        
-                        try:
-                            await websocket.send_json(
-                                TranscriptMessage(
-                                    text=text,
-                                    role="assistant",
-                                    timestamp=utc_now_isoformat()
-                                ).dict()
-                            )
-                        except (WebSocketDisconnect, ConnectionError):
-                            logger.info(f"Client disconnected during assistant transcript send for session {session_id}")
-                            return
-                        
-                        # Log to chat logger
-                        await chat_logger.log_message(
-                            user_id=user_id,
-                            session_id=session_id,
-                            role="character",
-                            content=text,
-                            message_number=message_count,
-                            metadata={"source": "voice", "has_audio": True}
-                        )
-
-                # Also handle tool calls or other message types if needed
-                if hasattr(response, 'tool_call'):
-                    logger.debug(f"Received tool call: {response.tool_call}")
-            
-            # Send completion signal when done
-            try:
-                await websocket.send_json(
-                    VoiceStatusMessage(
-                        status="response_complete",
-                        message="All responses have been sent"
-                    ).dict()
-                )
-            except:
-                pass  # Client may have already disconnected
-        
         except asyncio.CancelledError:
-            # Task was cancelled (normal during shutdown)
             logger.info(f"Send task cancelled for session {session_id}")
             raise
         except WebSocketDisconnect:
-            # Client disconnected
             logger.info(f"WebSocket disconnected while sending for session {session_id}")
+            conversation_state["active"] = False
         except Exception as e:
-            # Log other errors but don't raise if it's just a connection issue
-            if "Connection" in str(e) or "WebSocket" in str(e):
-                logger.info(f"Connection closed while sending: {e}")
-            else:
-                logger.error(f"Error sending to client: {e}")
-                raise
+            logger.error(f"Error sending to client: {e}", exc_info=True)
+            conversation_state["active"] = False
+            raise
+        finally:
+            logger.info(f"Send task completed for session {session_id}")
 
     async def _run_mock_session(
         self,
