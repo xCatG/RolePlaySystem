@@ -4,7 +4,7 @@ import logging
 import os
 from typing import Any, Dict, List
 
-from role_play.common.storage import StorageBackend
+from .storage import StorageBackend
 
 logger = logging.getLogger(__name__)
 

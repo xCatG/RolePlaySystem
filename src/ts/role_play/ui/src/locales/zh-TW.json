@@ -39,7 +39,27 @@
     "continueExistingSession": "查看先前對話：",
     "deleteSession": "刪除對話",
     "confirmDeleteSession": "確定要刪除此對話嗎？此操作無法復原。",
-    "confirmEndSession": "確定要結束此對話嗎？結束後將無法再發送訊息。"
+    "confirmEndSession": "確定要結束此對話嗎？結束後將無法再發送訊息。",
+    "voice": {
+      "connect": "開始語音對話",
+      "connecting": "連接中...",
+      "disconnect": "結束語音對話",
+      "startRecording": "開始說話",
+      "stop": "停止說話",
+      "send": "發送",
+      "textFallback": "輸入您的訊息...",
+      "speaking": "說話中...",
+      "processing": "處理中...",
+      "stability": "轉錄穩定度",
+      "you": "您",
+      "character": "角色",
+      "transcriptPlaceholder": "您的對話記錄將顯示在這裡...",
+      "permissionDenied": "麥克風權限被拒絕",
+      "notSupported": "不支援語音對話",
+      "connectionError": "連接錯誤",
+      "recordingError": "錄音錯誤",
+      "playbackError": "播放錯誤"
+    }
   },
   "warnings": {
     "languageSwitch": "切換語言將隱藏目前語言的情境，直到您切換回來。是否繼續？",

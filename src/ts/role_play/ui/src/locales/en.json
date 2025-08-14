@@ -39,7 +39,27 @@
     "continueExistingSession": "View Previous Sessions:",
     "deleteSession": "Delete session",
     "confirmDeleteSession": "Are you sure you want to delete this session? This action cannot be undone.",
-    "confirmEndSession": "Are you sure you want to end this session? You will no longer be able to send messages."
+    "confirmEndSession": "Are you sure you want to end this session? You will no longer be able to send messages.",
+    "voice": {
+      "connect": "Start Voice Chat",
+      "connecting": "Connecting...",
+      "disconnect": "End Voice Chat",
+      "startRecording": "Start Talking",
+      "stop": "Stop Talking",
+      "send": "Send",
+      "textFallback": "Type your message...",
+      "speaking": "Speaking...",
+      "processing": "Processing...",
+      "stability": "Transcript Stability",
+      "you": "You",
+      "character": "Character",
+      "transcriptPlaceholder": "Your conversation will appear here...",
+      "permissionDenied": "Microphone permission denied",
+      "notSupported": "Voice chat not supported",
+      "connectionError": "Connection error",
+      "recordingError": "Recording error",
+      "playbackError": "Playback error"
+    }
   },
   "warnings": {
     "languageSwitch": "Switching language will hide scenarios in the current language until you switch back. Continue?",

@@ -59,6 +59,7 @@ enabled_handlers:
   user_account: "role_play.server.user_account_handler.UserAccountHandler"
   chat: "role_play.chat.handler.ChatHandler"
   evaluation: "role_play.evaluation.handler.EvaluationHandler"
+  voice: "role_play.voice.handler.VoiceChatHandler"
   # Add more handlers as they're implemented:
   # scripter: "role_play.scripter.handler.ScripterHandler"
 
@@ -71,3 +72,29 @@ supported_languages:
 # Resource configuration
 resources:
   base_prefix: "resources/"
+
+# Voice chat configuration
+voice:
+  # Transcript buffering settings
+  transcript:
+    stability_threshold: "${VOICE_STABILITY_THRESHOLD:0.8}"
+    finalization_timeout_ms: "${VOICE_FINALIZATION_TIMEOUT:2000}"
+    min_utterance_length: "${VOICE_MIN_UTTERANCE_LENGTH:3}"
+    sentence_boundary_patterns:
+      - "[.!?]+\\s*$"
+      - "\\n+"
+  
+  # Audio processing settings
+  audio:
+    default_format: "pcm"
+    default_sample_rate: 16000
+    default_channels: 1
+    default_bit_depth: 16
+    chunk_size_ms: "${VOICE_CHUNK_SIZE_MS:100}"
+    
+  # Voice model settings
+  model:
+    default_voice: "Aoede"
+    gemini_api_key: "${GEMINI_API_KEY:}"
+    # Mock mode when no API key is available
+    enable_mock: "${VOICE_ENABLE_MOCK:true}"
