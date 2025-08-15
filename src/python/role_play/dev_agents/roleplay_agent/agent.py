@@ -10,41 +10,48 @@ from google.adk.agents import Agent
 # Add project root to path
 PROJECT_ROOT = Path(__file__).parent.parent.parent.parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "src" / "python"))
-DEFAULT_MODEL = "gemini-2.5-flash" # Set a reasonable default
+DEFAULT_MODEL = "gemini-1.5-flash" # Set a reasonable default
 AGENT_MODEL = os.getenv("ADK_MODEL", DEFAULT_MODEL) # <-- Read from env
 
-from .tools import dev_tools, resource_loader
+from .tools import resource_loader
+from role_play.chat.orchestrator_agent import (
+    Orchestrator,
+    ScriptTracker,
+    SideEffectExecutor,
+    observer_agent,
+    actor_agent,
+)
 
-# --- Development Agent for adk web ---
+# --- Bootstrap and create the final root_agent ---
+
+# This would load your script rules from a file (e.g., data/resources/scripts/scripts.json)
+tracker = ScriptTracker(rules=[
+    # ... your ScriptRule instances ...
+])
+
+executor = SideEffectExecutor()
+
+# This is the single entry point for your entire role-play system.
+# This agent will be picked up by `adk web`.
+root_agent = Orchestrator(
+    name="RolePlaySystem",
+    tracker=tracker,
+    observer=observer_agent,
+    actor=actor_agent,
+    executor=executor,
+)
+
+agent = root_agent
+
+
+# --- Configuration Export for Production (Legacy) ---
+# Note: The primary agent is now the Orchestrator above. 
+# This function remains for reference but creates a different, simpler agent type.
+# It may need to be adapted or removed in the future.
 
 class RolePlayAgent(Agent):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-
-
-root_agent = RolePlayAgent(
-        name="roleplay_dev_agent",
-        model=AGENT_MODEL, # Use a capable model
-        description="Development agent for testing roleplay prompts and tools.",
-        instruction="""You are a development assistant for a roleplay system.
-Your main purpose is to help test character prompts and interaction flows using 'adk web'.
-
-Use your tools to:
-1.  List available scenarios.
-2.  List characters for a scenario.
-3.  List available scripts
-4.  Show the system prompt for a character.
-
-To test a character, get their prompt using 'get_character_prompt', copy it,
-and then paste it into a new chat session (or imagine you are that character).
-You DO NOT need to manage state or *become* the character in this dev view.
-Focus on providing information and allowing prompt testing.""",
-        tools=dev_tools,
-    )
-
-agent = root_agent
-
-# --- Configuration Export for Production ---
 
 async def get_production_agent(character_id: str, scenario_id: str, language: str = "en", scripted: bool = False) -> Optional[Agent]:
     """
@@ -77,55 +84,14 @@ async def get_production_agent(character_id: str, scenario_id: str, language: st
     scripted_prompt = None
     if scripted:
         # we store the script in state[script_data], should be able to retrive it using {script_data} in the prompt
-        scripted_prompt = """
+        scripted_prompt = '''
 You are improvising based on "character" part of the script below, DO NOT say the lines in "participant" part. 
 Try to steer conversation to follow the script. 
 However when you are unable to steer the user back, please respond with "STOP". If you feel you can continue to improvise after the script end, please continue.
 
 Here is the script:
 {script_data}
-"""
+'''
 
     # Production-focused prompt: Combines character, scenario, and language instructions
-    prod_prompt = f"""{character.get("system_prompt", "You are a helpful assistant.")}
-
-**Current Scenario:**
-{scenario.get("description", "No specific scenario description.")}
-
-**Roleplay Instructions:**
--   **Stay fully in character.** Do NOT break character or mention you are an AI.
--   Respond naturally based on your character's personality and the scenario.
--   **IMPORTANT: Respond in {language_name} language as specified by your character and scenario.**
--   Engage with the user's messages within the roleplay context.
-"""
-    if scripted_prompt is not None:
-        prod_prompt += scripted_prompt
-    # Create and return the configured agent
-    return RolePlayAgent(
-        name=f"roleplay_{character_id}_{scenario_id}",
-        model=AGENT_MODEL,
-        description=f"Roleplay agent for {character.get('name', 'Unknown Character')} in {scenario.get('name', 'Unknown Scenario')}",
-        instruction=prod_prompt
-    )
-
-# --- Main block for verification ---
-if __name__ == "__main__":
-    import asyncio
-
-    async def test_module():
-        print("Roleplay Development Agent Module")
-        print(f"Agent Name: {root_agent.name}")
-        print(f"Tools loaded: {len(dev_tools)}")
-
-        print("\nTesting production agent creation:")
-        # Assuming 'medical_interview' and 'patient_chronic' exist in scenarios.json
-        agent = await get_production_agent("patient_chronic", "medical_interview")
-        if agent:
-            print("Successfully created agent for 'patient_chronic'.")
-            print(f"  Model: {agent.model}")
-            print(f"  Name: {agent.name}")
-            print(f"  Instruction starts with: {agent.instruction[:100]}...")
-        else:
-            print("Failed to create agent (check scenarios.json?).")
-
-    asyncio.run(test_module())
+    prod_prompt = f'''{character.get(
