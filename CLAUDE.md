@@ -182,6 +182,39 @@ make test-specific TEST_PATH="test/python/unit/chat/test_chat_logger.py"
 - [x] **Internationalization**: Full English/Traditional Chinese support for new UI elements
 - [x] **CSS Improvements**: Fixed radio button alignment issues with proper flexbox layout
 
+### Voice Chat with Intelligent Transcript Management (Completed)
+- [x] **Three-Tier Transcript System**: Implemented sophisticated buffering to prevent fragmented logs
+  - **Live Display Buffer**: Real-time partial transcript updates for immediate user feedback
+  - **Stabilization Buffer**: Quality filtering using stability thresholds and sentence boundary detection
+  - **Persistent Log**: Only finalized, coherent utterances saved to ChatLogger with voice metadata
+- [x] **Backend Voice Module** (`src/python/role_play/voice/`):
+  - **TranscriptBuffer**: Intelligent partial→final transitions with configurable quality controls
+  - **SessionTranscriptManager**: Dual-buffer management for user/assistant speech separation
+  - **ADKVoiceService**: Native ADK `run_live()` integration with `LiveRequestQueue` for bidirectional streaming
+  - **VoiceChatHandler**: WebSocket endpoint (`/api/voice/ws/{session_id}`) with JWT authentication
+  - **Voice Models**: Complete data models for audio chunks, transcripts, and session management
+- [x] **Extended ChatLogger Integration**: New voice logging methods preserve existing JSONL format
+  - `log_voice_message()`: Stores transcripts with duration, confidence, and voice metadata
+  - `log_voice_session_start/end()`: Session lifecycle tracking with statistics
+  - Voice events logged alongside text messages for unified conversation history
+- [x] **Frontend Voice Components** (`src/ts/role_play/ui/src/`):
+  - **VoiceTranscript.vue**: Intelligent UI with real-time partial updates and stability indicators
+  - **useTranscriptBuffer.ts**: Frontend buffering logic mirroring backend quality control
+  - **useVoiceWebSocket.ts**: Modern AudioWorkletNode integration with robust connection management
+  - **Voice Types**: Complete TypeScript definitions for voice communication
+- [x] **Configuration & Quality Control**:
+  - Configurable transcript parameters: stability threshold (0.8), finalization timeout (2s), min utterance length
+  - Smart sentence boundary detection and timeout-based finalization
+  - Mock mode for development without API keys
+  - Voice handler registered in server configuration
+- [x] **Internationalization**: Full bilingual support (English/Traditional Chinese) for voice UI
+- [x] **Comprehensive Testing**: Unit tests for transcript buffering logic and WebSocket handler integration
+- [x] **Key Innovations**:
+  - **Prevents Fragmented Logs**: No more "I", "I want", "I want to" entries - only complete utterances
+  - **Real-time UX**: Live partial feedback while maintaining log quality
+  - **ADK Native**: Uses `run_live()` instead of direct Gemini API for better integration
+  - **Character Consistency**: Reuses existing agent system for voice responses
+
 ### Pending Development
 - [ ] **Resource Architecture for Script Creator**:
   - [x] Design LayeredResourceLoader for base + user resources (see RESOURCE_ARCHITECTURE.md)
@@ -197,7 +230,6 @@ make test-specific TEST_PATH="test/python/unit/chat/test_chat_logger.py"
   - [ ] Create utility functions for date formatting across components
   - [ ] Add validation that session belongs to requesting user before creating evaluation reports
   - [ ] Add retry logic for transient storage failures in evaluation system
-- [ ] WebSocket: `server/websocket.py` connection manager
 - [ ] Auth Module: Complete OAuth implementation
 - [ ] Scripter: Complete module implementation  
 - [ ] Frontend: Modular monolith restructure, chat/eval interfaces
@@ -279,6 +311,7 @@ make test-specific TEST_PATH="test/python/unit/chat/test_chat_logger.py"
 ### Architecture Highlights
 - **Storage**: Async distributed locking, lease (60-300s) vs timeout (5-30s) separation
 - **Chat**: Separated ADK runtime from JSONL persistence, per-message Runner creation, utility methods for JSONL parsing, centralized agent configuration
+- **Voice**: Three-tier transcript management (partial/stabilization/final), ADK `run_live()` integration, intelligent buffering prevents fragmented logs
 - **Backend Structure**: Helper methods for session validation, message logging, content loading, response generation
 - **Frontend Patterns**: Composable architecture for modal management, async operations, data loading, dual-flow session creation with script/character selection
 - **Config**: YAML + env vars, dynamic handler loading, fail-fast validation
