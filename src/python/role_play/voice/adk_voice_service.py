@@ -392,6 +392,21 @@ class VoiceSession:
             **session_stats
         }
         
+        # Attempt to gracefully close runner/live events
+        try:
+            if hasattr(self.live_events, "aclose") and callable(self.live_events.aclose):
+                await self.live_events.aclose()
+        except Exception as e:
+            logger.warning(f"Error closing live_events for session {self.session_id}: {e}")
+
+        try:
+            if hasattr(self.runner, "close") and callable(self.runner.close):
+                maybe_coro = self.runner.close()
+                if asyncio.iscoroutine(maybe_coro):
+                    await maybe_coro
+        except Exception as e:
+            logger.warning(f"Error closing runner for session {self.session_id}: {e}")
+
         logger.info(f"Voice session {self.session_id} cleanup completed: {final_stats}")
         return final_stats
 

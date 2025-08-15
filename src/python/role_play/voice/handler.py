@@ -61,17 +61,24 @@ class VoiceChatHandler(BaseHandler):
             async def voice_websocket_endpoint(
                 websocket: WebSocket,
                 session_id: str,
+                token: str | None = Query(None, description="JWT token (preferred via header/subprotocol)"),
             ):
-                # Accept the WebSocket connection first
-                await websocket.accept()
-                
-                # Extract token from query parameters
-                token = websocket.query_params.get("token")
-                if not token:
+                # Pre-accept auth check to avoid upgrading unauthenticated connections
+                token_param = token or websocket.query_params.get("token")
+                if not token_param:
                     await websocket.close(code=1008, reason="Missing token parameter")
                     return
-                
-                await self.handle_voice_session(websocket, session_id, token)
+
+                user = await self._prevalidate_token(token_param)
+                if not user:
+                    await websocket.close(code=1008, reason="Invalid authentication token")
+                    return
+
+                # Now accept the connection
+                await websocket.accept()
+
+                # Delegate to main handler (will re-validate quickly for defense in depth)
+                await self.handle_voice_session(websocket, session_id, token_param)
             
             # REST endpoints for voice session management
             @self._router.get("/session/{session_id}/info")
@@ -109,6 +116,9 @@ class VoiceChatHandler(BaseHandler):
         user = None
         voice_session = None
         message_counter = 0
+        audio_seq = 0
+        MAX_AUDIO_CHUNK_BYTES = 256 * 1024  # 256KB per chunk
+        PING_INTERVAL_SEC = 20
         
         try:
             logger.info(f"Voice WebSocket connection attempt for session {session_id}")
@@ -186,10 +196,144 @@ class VoiceChatHandler(BaseHandler):
                 VoiceStatusMessage(status="ready", message="Voice session ready").dict()
             )
             
-            # 6. Start bidirectional streaming
-            await self._handle_bidirectional_streaming(
-                websocket, voice_session, chat_logger, user.id, session_id, message_counter
-            )
+            # 6. Start bidirectional streaming with backpressure and heartbeat
+            queue: asyncio.Queue = asyncio.Queue(maxsize=32)
+
+            async def producer():
+                try:
+                    async for event in voice_session.process_events():
+                        if event.get("type") == "transcript_partial" and queue.full():
+                            # Drop partials under pressure
+                            continue
+                        await queue.put(event)
+                except Exception as e:
+                    logger.error(f"Producer error for session {session_id}: {e}")
+
+            async def sender():
+                nonlocal audio_seq, message_counter
+                try:
+                    while voice_session.active:
+                        event = await queue.get()
+                        et = event.get("type")
+                        if et == "audio_chunk":
+                            audio_seq += 1
+                            audio_msg = AudioChunkMessage(
+                                data=base64.b64encode(event["data"]).decode('utf-8'),
+                                mime_type=event["mime_type"],
+                                sequence=audio_seq,
+                                timestamp=event["timestamp"],
+                            )
+                            await websocket.send_json(audio_msg.dict())
+                        elif et == "transcript_partial":
+                            partial_msg = TranscriptPartialMessage(
+                                text=event["text"],
+                                role=event["role"],
+                                stability=event["stability"],
+                                timestamp=event["timestamp"],
+                            )
+                            await websocket.send_json(partial_msg.dict())
+                        elif et == "transcript_final":
+                            final_msg = TranscriptFinalMessage(
+                                text=event["text"],
+                                role=event["role"],
+                                duration_ms=event["duration_ms"],
+                                confidence=event["confidence"],
+                                metadata=event["metadata"],
+                                timestamp=event["timestamp"],
+                            )
+                            await websocket.send_json(final_msg.dict())
+                            # Log finalized transcript to ChatLogger
+                            message_counter += 1
+                            await chat_logger.log_voice_message(
+                                user_id=user.id,
+                                session_id=session_id,
+                                role=event["role"],
+                                transcript_text=event["text"],
+                                duration_ms=event["duration_ms"],
+                                confidence=event["confidence"],
+                                message_number=message_counter,
+                                voice_metadata=event["metadata"],
+                            )
+                        elif et == "turn_status":
+                            status_msg = TurnStatusMessage(
+                                turn_complete=event["turn_complete"],
+                                interrupted=event.get("interrupted", False),
+                                timestamp=event["timestamp"],
+                            )
+                            await websocket.send_json(status_msg.dict())
+                        elif et == "error":
+                            error_msg = VoiceErrorMessage(
+                                error=event["error"],
+                                timestamp=event["timestamp"],
+                            )
+                            await websocket.send_json(error_msg.dict())
+                except WebSocketDisconnect:
+                    logger.info(f"Client disconnected in sender for session {session_id}")
+                except Exception as e:
+                    logger.error(f"Sender error in session {session_id}: {e}")
+
+            async def receiver():
+                try:
+                    while voice_session.active:
+                        frame = await websocket.receive()
+                        if "bytes" in frame and frame["bytes"] is not None:
+                            audio_bytes = frame["bytes"]
+                            if len(audio_bytes) > MAX_AUDIO_CHUNK_BYTES:
+                                await websocket.send_json(VoiceErrorMessage(error="Audio chunk too large").dict())
+                                await websocket.close(code=1009)
+                                break
+                            await voice_session.send_audio(audio_bytes, "audio/pcm")
+                        elif "text" in frame and frame["text"] is not None:
+                            data = frame["text"]
+                            request = VoiceClientRequest.model_validate_json(data)
+                            if request.end_session:
+                                logger.info(f"Client requested end of voice session {voice_session.session_id}")
+                                await voice_session.end_session()
+                                break
+                            if request.mime_type == "audio/pcm":
+                                audio_bytes = request.decode_data()
+                                if isinstance(audio_bytes, bytes) and len(audio_bytes) > MAX_AUDIO_CHUNK_BYTES:
+                                    await websocket.send_json(VoiceErrorMessage(error="Audio chunk too large").dict())
+                                    await websocket.close(code=1009)
+                                    break
+                                await voice_session.send_audio(audio_bytes, request.mime_type)
+                            elif request.mime_type == "text/plain":
+                                text = request.decode_data()
+                                await voice_session.send_text(text)
+                        else:
+                            # Ignore control frames other than close/ping handled by server
+                            continue
+                except WebSocketDisconnect:
+                    logger.info(f"Client disconnected from voice session {voice_session.session_id}")
+                    await voice_session.end_session()
+                except Exception as e:
+                    logger.error(f"Error receiving from client in session {voice_session.session_id}: {e}")
+                    await voice_session.end_session()
+                    raise
+
+            async def heartbeat():
+                try:
+                    while voice_session.active:
+                        await asyncio.sleep(PING_INTERVAL_SEC)
+                        await websocket.send_json({"type": "ping", "timestamp": utc_now_isoformat()})
+                except Exception:
+                    # Ignore ping send failures; sender/receiver will handle closure
+                    pass
+
+            tasks = [
+                asyncio.create_task(producer()),
+                asyncio.create_task(sender()),
+                asyncio.create_task(receiver()),
+                asyncio.create_task(heartbeat()),
+            ]
+
+            done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+            for t in pending:
+                t.cancel()
+                try:
+                    await t
+                except asyncio.CancelledError:
+                    pass
             
         except WebSocketDisconnect:
             logger.info(f"WebSocket disconnected for session {session_id}")
@@ -223,6 +367,17 @@ class VoiceChatHandler(BaseHandler):
                     logger.info(f"Voice session {session_id} cleanup completed")
                 except Exception as cleanup_error:
                     logger.error(f"Error during voice session cleanup: {cleanup_error}")
+
+    async def _prevalidate_token(self, token: str) -> Optional[User]:
+        """Lightweight token validation before accepting WebSocket upgrade."""
+        try:
+            storage = get_storage_backend()
+            auth_manager = get_auth_manager(storage)
+            token_data = auth_manager.verify_token(token)
+            user = await storage.get_user(token_data.user_id)
+            return user
+        except Exception:
+            return None
 
     async def _handle_bidirectional_streaming(
         self,
