@@ -325,26 +325,35 @@ run-local-docker: build-docker
 dev-setup: load-env-mk validate-resources
 	@echo "=== Setting up development environment ==="
 	@echo ""
+	@# Check for virtual environment
+	@if [ ! -d "venv" ]; then \
+		echo "Python virtual environment 'venv' not found. Creating it..."; \
+		python3 -m venv venv; \
+		echo "Virtual environment created."; \
+	else \
+		echo "Python virtual environment 'venv' found."; \
+	fi;
+	@echo ""
 	@# Determine storage path from config
-	@STORAGE_PATH=$$(bash -c "source venv/bin/activate && python scripts/get_storage_path.py"); \
-	echo "Storage path: $$STORAGE_PATH"; \
+	@STORAGE_PATH=$(bash -c "source venv/bin/activate && python scripts/get_storage_path.py"); \
+	echo "Storage path: $STORAGE_PATH"; \
 	echo ""; \
-	if [ ! -d "$$STORAGE_PATH" ]; then \
-		echo "Creating storage directory: $$STORAGE_PATH"; \
-		mkdir -p "$$STORAGE_PATH"; \
+	if [ ! -d "$STORAGE_PATH" ]; then \
+		echo "Creating storage directory: $STORAGE_PATH"; \
+		mkdir -p "$STORAGE_PATH"; \
 	fi; \
-	if [ "$$(realpath data)" = "$$(realpath $$STORAGE_PATH)" ]; then \
+	if [ "$(realpath data)" = "$(realpath $STORAGE_PATH)" ]; then \
 		echo "Storage path is the same as project data directory - resources already in place"; \
 	else \
-		echo "Copying resources to $$STORAGE_PATH/resources..."; \
-		mkdir -p "$$STORAGE_PATH/resources"; \
-		cp -r data/resources/* "$$STORAGE_PATH/resources/" 2>/dev/null || true; \
+		echo "Copying resources to $STORAGE_PATH/resources..."; \
+		mkdir -p "$STORAGE_PATH/resources"; \
+		cp -r data/resources/* "$STORAGE_PATH/resources/" 2>/dev/null || true; \
 	fi; \
 	echo ""; \
 	echo "Resources copied successfully!"; \
 	echo ""; \
 	echo "Storage structure:"; \
-	find "$$STORAGE_PATH/resources" -type f -name "*.json" | sort; \
+	find "$STORAGE_PATH/resources" -type f -name "*.json" | sort; \
 	echo ""; \
 	echo "=== Development setup complete ==="
 	@echo ""
