@@ -6,7 +6,7 @@ from typing import AsyncGenerator, Optional, Dict, Any, Tuple, List
 from google.adk.runners import Runner
 from google.adk.agents import LiveRequestQueue
 from google.adk.agents.run_config import RunConfig
-from google.adk.sessions import InMemorySessionService
+from google.adk.sessions import BaseSessionService
 from google.genai.types import (
     Content, Part, Blob, 
     AudioTranscriptionConfig,
@@ -44,7 +44,7 @@ class ADKVoiceService:
         scenario_id: str,
         language: str = "en",
         script_data: Optional[Dict] = None,
-        adk_session_service: Optional[InMemorySessionService] = None,
+        adk_session_service: Optional[BaseSessionService] = None,
         transcript_config: Optional[Dict] = None
     ) -> 'VoiceSession':
         """

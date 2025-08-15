@@ -6,7 +6,7 @@ from typing import List, Annotated, Optional, Dict, Any
 from fastapi import HTTPException, Depends, APIRouter
 from fastapi.responses import PlainTextResponse
 from google.adk.runners import Runner
-from google.adk.sessions import InMemorySessionService
+from google.adk.sessions import BaseSessionService
 from google.genai.types import Content, Part
 from pydantic import BaseModel
 
@@ -215,7 +215,7 @@ class EvaluationHandler(BaseHandler):
         request: EvaluationRequest,
         current_user: Annotated[User, Depends(require_user_or_higher)],
         chat_logger: Annotated[ChatLogger, Depends(get_chat_logger)],
-        adk_session_service: Annotated[InMemorySessionService, Depends(get_adk_session_service)],
+        adk_session_service: Annotated[BaseSessionService, Depends(get_adk_session_service)],
         storage: Annotated[StorageBackend, Depends(get_storage_backend)]
     ) -> EvaluationResponse:
         """Evaluate a roleplay session using the AI evaluator agent.
@@ -398,7 +398,7 @@ class EvaluationHandler(BaseHandler):
         evaluation_type: str = "comprehensive",
         current_user: Annotated[User, Depends(require_user_or_higher)] = None,
         chat_logger: Annotated[ChatLogger, Depends(get_chat_logger)] = None,
-        adk_session_service: Annotated[InMemorySessionService, Depends(get_adk_session_service)] = None,
+        adk_session_service: Annotated[BaseSessionService, Depends(get_adk_session_service)] = None,
         storage: Annotated[StorageBackend, Depends(get_storage_backend)] = None
     ) -> EvaluationResponse:
         """Create a new evaluation for a session (always generates a new report)."""

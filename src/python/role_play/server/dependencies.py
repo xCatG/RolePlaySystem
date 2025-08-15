@@ -6,7 +6,7 @@ from functools import lru_cache
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from typing import Annotated, Set
-from google.adk.sessions import InMemorySessionService
+from google.adk.sessions import BaseSessionService
 
 from ..common.auth import AuthManager
 from ..common.storage import StorageBackend, FileStorage, FileStorageConfig, LockConfig
@@ -178,9 +178,24 @@ def get_chat_logger(
     return ChatLogger(storage_backend=storage)
 
 
+from ..common.redis_session_service import RedisSessionService
+from google.adk.sessions import BaseSessionService
+
+# ... (other imports)
+
 @lru_cache(maxsize=None)
-def get_adk_session_service() -> InMemorySessionService:
+def get_adk_session_service() -> BaseSessionService:
     """
-    Provides a singleton instance of ADK's InMemorySessionService.
+    Provides a singleton instance of the ADK Session Service.
+    
+    Uses RedisSessionService if REDIS_URL is set in the environment,
+    otherwise falls back to InMemorySessionService for local development.
     """
-    return InMemorySessionService()
+    redis_url = os.getenv("REDIS_URL")
+    if redis_url:
+        logger.info("Using Redis for session management.")
+        return RedisSessionService(redis_url=redis_url)
+    else:
+        logger.warning("REDIS_URL not set, falling back to in-memory session management. "
+                       "This is not suitable for production.")
+        return InMemorySessionService()

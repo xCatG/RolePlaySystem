@@ -4,7 +4,7 @@ from fastapi import HTTPException, Depends, APIRouter, Query
 from fastapi.responses import PlainTextResponse
 from google.adk.runners import Runner
 from google.adk.agents import Agent
-from google.adk.sessions import InMemorySessionService
+from google.adk.sessions import BaseSessionService
 from google.genai.types import Content, Part
 import logging
 import os
@@ -75,7 +75,7 @@ class ChatHandler(BaseHandler):
         return "/chat"
 
     async def _validate_active_session(self, session_id: str, user_id: str, 
-                                      adk_session_service: InMemorySessionService,
+                                      adk_session_service: BaseSessionService,
                                       chat_logger: ChatLogger) -> Any:
         """
         Validate that a session exists and is active, returning the ADK session.
@@ -141,7 +141,7 @@ class ChatHandler(BaseHandler):
 
     async def _generate_character_response(self, adk_session: Any, message: str, user_id: str,
                                           session_id: str, character_dict: Dict, scenario_dict: Dict,
-                                          adk_session_service: InMemorySessionService) -> str:
+                                          adk_session_service: BaseSessionService) -> str:
         """Generate character response using ADK Runner."""
         # Get character, scenario IDs and language from session state
         character_id = adk_session.state.get("character_id")
@@ -280,7 +280,7 @@ class ChatHandler(BaseHandler):
         request: CreateSessionRequest,
         current_user: Annotated[User, Depends(require_user_or_higher)],
         chat_logger: Annotated[ChatLogger, Depends(get_chat_logger)],
-        adk_session_service: Annotated[InMemorySessionService, Depends(get_adk_session_service)],
+        adk_session_service: Annotated[BaseSessionService, Depends(get_adk_session_service)],
         resource_loader: Annotated[ResourceLoader, Depends(get_resource_loader)],
     ) -> CreateSessionResponse:
         """Create a new chat session (ADK session in memory, log via ChatLogger)."""
@@ -415,7 +415,7 @@ class ChatHandler(BaseHandler):
         self,
         current_user: Annotated[User, Depends(require_user_or_higher)],
         chat_logger: Annotated[ChatLogger, Depends(get_chat_logger)],
-        adk_session_service: Annotated[InMemorySessionService, Depends(get_adk_session_service)],
+        adk_session_service: Annotated[BaseSessionService, Depends(get_adk_session_service)],
     ) -> SessionListResponse:
         """Get all sessions for the current user by listing logs from ChatLogger."""
         try:
@@ -465,7 +465,7 @@ class ChatHandler(BaseHandler):
         request: ChatMessageRequest,
         current_user: Annotated[User, Depends(require_user_or_higher)],
         chat_logger: Annotated[ChatLogger, Depends(get_chat_logger)],
-        adk_session_service: Annotated[InMemorySessionService, Depends(get_adk_session_service)],
+        adk_session_service: Annotated[BaseSessionService, Depends(get_adk_session_service)],
         resource_loader: Annotated[ResourceLoader, Depends(get_resource_loader)],
     ) -> ChatMessageResponse:
         """Send a message, creating the Runner on-demand."""
@@ -512,7 +512,7 @@ class ChatHandler(BaseHandler):
         session_id: str,
         current_user: Annotated[User, Depends(require_user_or_higher)],
         chat_logger: Annotated[ChatLogger, Depends(get_chat_logger)],
-        adk_session_service: Annotated[InMemorySessionService, Depends(get_adk_session_service)],
+        adk_session_service: Annotated[BaseSessionService, Depends(get_adk_session_service)],
     ):
         """Ends a chat session, logging it and removing from ADK InMemory service."""
         try:
@@ -583,7 +583,7 @@ class ChatHandler(BaseHandler):
         self,
         session_id: str,
         current_user: Annotated[User, Depends(require_user_or_higher)],
-        adk_session_service: Annotated[InMemorySessionService, Depends(get_adk_session_service)],
+        adk_session_service: Annotated[BaseSessionService, Depends(get_adk_session_service)],
         chat_logger: Annotated[ChatLogger, Depends(get_chat_logger)],
     ) -> SessionStatusResponse:
         """Get the status of a session (active or ended)."""
@@ -636,7 +636,7 @@ class ChatHandler(BaseHandler):
         self,
         session_id: str,
         current_user: Annotated[User, Depends(require_user_or_higher)],
-        adk_session_service: Annotated[InMemorySessionService, Depends(get_adk_session_service)],
+        adk_session_service: Annotated[BaseSessionService, Depends(get_adk_session_service)],
         chat_logger: Annotated[ChatLogger, Depends(get_chat_logger)],
     ):
         """Delete a session completely (both from memory and storage)."""

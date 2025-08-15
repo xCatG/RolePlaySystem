@@ -16,3 +16,4 @@ boto3
 redis
 aiofiles
 importlib_resources>=5.0;python_version<'3.9'
+redis
