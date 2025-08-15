@@ -45,9 +45,13 @@ make run-local-docker
 ### **Option 2: Local Development**
 
 ```bash
-# Backend
-python3 -m venv venv && source venv/bin/activate
-pip install -r src/python/requirements-all.txt
+# Setup development environment (creates venv, installs all dependencies)
+make dev-setup
+
+# Activate virtual environment
+source venv/bin/activate
+
+# Run backend server
 export JWT_SECRET_KEY="demo-secret-key"
 python src/python/run_server.py &
 

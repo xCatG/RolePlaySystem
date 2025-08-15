@@ -556,9 +556,7 @@ fetch(url, {
 import { Message } from '../types/chat';
 import Message from './Message.vue';
 
-defineProps<{
-  messages: Message[]
-}>();
+defineProps<{ messages: Message[] }>();
 </script>
 ```
 
@@ -985,3 +983,7 @@ async def test_update_language_preference(client, authenticated_user):
 - **Vitest**: Unit testing for components and composables
 - **Cypress**: E2E testing for user flows
 - **Storybook**: Component isolation and visual regression testing
+
+## TODO
+
+- [X] Modify `dev-setup` target in `Makefile` to create `venv` if it doesn't exist.
