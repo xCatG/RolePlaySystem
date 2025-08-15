@@ -113,7 +113,13 @@ class VoiceChatHandler(BaseHandler):
         try:
             logger.info(f"Voice WebSocket connection attempt for session {session_id}")
             
-            # 1. Validate JWT token
+            # 1. Check for missing token
+            if not token:
+                logger.error(f"Missing token for session {session_id}")
+                await websocket.close(code=1008, reason="Missing token parameter")
+                return
+            
+            # 2. Validate JWT token
             user = await self._validate_jwt_token(token)
             if not user:
                 logger.error(f"JWT validation failed for session {session_id}")

@@ -134,8 +134,9 @@ class TestTranscriptBuffer:
     async def test_sentence_boundary_detection(self, transcript_buffer):
         """Test sentence boundary detection."""
         boundaries = transcript_buffer._detect_sentence_boundaries("Hello world. How are you?")
-        assert len(boundaries) == 1
+        assert len(boundaries) == 2
         assert boundaries[0] == 11  # Position of the period
+        assert boundaries[1] == 24  # Position of the question mark
 
     async def test_timeout_finalization(self, transcript_buffer):
         """Test timeout-based finalization."""
