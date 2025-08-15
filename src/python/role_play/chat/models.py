@@ -45,7 +45,7 @@ class SessionInfo(BaseModel):
     created_at: str
     message_count: int
     jsonl_filename: str
-    is_active: bool = True  # Whether session exists in InMemorySessionService
+    is_active: bool = True  # Whether the session is currently active in the session service
     goal: Optional[str] = Field(default=None, description="Goal of this session, could be written in local language.")
     ended_at: Optional[str] = None
     ended_reason: Optional[str] = None

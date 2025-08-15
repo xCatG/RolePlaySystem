@@ -22,7 +22,7 @@ from ..common.time_utils import utc_now_isoformat
 from ..common.storage import StorageBackend
 from ..chat.chat_logger import ChatLogger
 from ..common.resource_loader import ResourceLoader
-from google.adk.sessions import InMemorySessionService
+from google.adk.sessions import BaseSessionService
 
 from .models import (
     VoiceClientRequest,
@@ -395,7 +395,7 @@ class VoiceChatHandler(BaseHandler):
         self, 
         session_id: str, 
         user_id: str,
-        adk_session_service: InMemorySessionService,
+        adk_session_service: BaseSessionService,
         chat_logger: ChatLogger
     ):
         """Validate that session exists and belongs to user."""
