@@ -60,12 +60,15 @@ class TestVoiceChatHandler:
     @pytest.fixture
     def mock_user(self):
         """Create a mock user."""
+        from datetime import datetime, timezone
         return User(
             id="user123",
             username="testuser",
             email="test@example.com",
             role=UserRole.USER,
-            preferred_language="en"
+            preferred_language="en",
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc)
         )
 
     @pytest.fixture
@@ -93,32 +96,31 @@ class TestVoiceChatHandler:
         assert "/test" in routes
 
     @patch('src.python.role_play.voice.handler.get_storage_backend')
-    @patch('src.python.role_play.voice.handler.get_chat_logger')
-    @patch('src.python.role_play.voice.handler.get_adk_session_service')
-    @patch('src.python.role_play.voice.handler.get_resource_loader')
+    @patch('src.python.role_play.voice.handler.get_auth_manager')
     async def test_jwt_validation_success(
         self, 
-        mock_resource_loader,
-        mock_adk_service,
-        mock_chat_logger,
-        mock_storage,
+        mock_get_auth_manager,
+        mock_get_storage,
         handler, 
         mock_user
     ):
         """Test successful JWT token validation."""
-        # Mock dependencies
-        mock_storage_instance = Mock()
-        mock_storage.return_value = mock_storage_instance
+        # Mock storage backend
+        mock_storage = AsyncMock()
+        mock_storage.get_user.return_value = mock_user
+        mock_get_storage.return_value = mock_storage
         
+        # Mock auth manager
         mock_auth_manager = Mock()
-        mock_auth_manager.verify_token.return_value = Mock(user_id="user123")
-        mock_storage_instance.get_user.return_value = mock_user
+        mock_token_data = Mock(user_id="user123")
+        mock_auth_manager.verify_token.return_value = mock_token_data
+        mock_get_auth_manager.return_value = mock_auth_manager
         
-        with patch('src.python.role_play.voice.handler.get_auth_manager', return_value=mock_auth_manager):
-            result = await handler._validate_jwt_token("valid_token")
-            
-            assert result == mock_user
-            mock_auth_manager.verify_token.assert_called_once_with("valid_token")
+        result = await handler._validate_jwt_token("valid_token")
+        
+        assert result == mock_user
+        mock_auth_manager.verify_token.assert_called_once_with("valid_token")
+        mock_storage.get_user.assert_called_once_with("user123")
 
     async def test_jwt_validation_failure(self, handler):
         """Test JWT token validation failure."""
@@ -149,11 +151,11 @@ class TestVoiceChatHandler:
             "scenario_id": "scenario123"
         }
         
-        mock_adk_service_instance = Mock()
+        mock_adk_service_instance = AsyncMock()
         mock_adk_service_instance.get_session.return_value = mock_adk_session
         mock_adk_service.return_value = mock_adk_service_instance
         
-        mock_chat_logger_instance = Mock()
+        mock_chat_logger_instance = AsyncMock()
         mock_chat_logger.return_value = mock_chat_logger_instance
         
         result = await handler._validate_session(
@@ -176,11 +178,11 @@ class TestVoiceChatHandler:
         handler
     ):
         """Test session validation when session not found."""
-        mock_adk_service_instance = Mock()
+        mock_adk_service_instance = AsyncMock()
         mock_adk_service_instance.get_session.return_value = None
         mock_adk_service.return_value = mock_adk_service_instance
         
-        mock_chat_logger_instance = Mock()
+        mock_chat_logger_instance = AsyncMock()
         mock_chat_logger_instance.get_session_end_info.side_effect = Exception("Not found")
         mock_chat_logger.return_value = mock_chat_logger_instance
         
@@ -335,14 +337,38 @@ class TestVoiceChatHandler:
         }
         mock_validate_session.return_value = mock_adk_session
         
-        # Mock voice service
-        mock_voice_session = Mock()
-        mock_voice_session.active = False  # Will exit streaming loop immediately
-        mock_voice_session.cleanup.return_value = {"stats": "test"}
+        # Mock chat logger with async methods
+        mock_chat_logger_instance = AsyncMock()
+        mock_chat_logger.return_value = mock_chat_logger_instance
+        
+        # Mock voice session with proper async iterator
+        class MockVoiceSession:
+            def __init__(self):
+                self.active = False
+                self.session_id = "session123"
+            
+            def process_events(self):
+                return MockAsyncIterator()
+            
+            async def cleanup(self):
+                return {"stats": "test"}
+        
+        class MockAsyncIterator:
+            def __aiter__(self):
+                return self
+            
+            async def __anext__(self):
+                # Immediately raise StopAsyncIteration to end the loop
+                raise StopAsyncIteration
+        
+        mock_voice_session = MockVoiceSession()
         
         with patch.object(handler.voice_service, 'create_voice_session', return_value=mock_voice_session):
             ws = MockWebSocket()
             ws.query_params = {"token": "valid_token"}
+            
+            # Accept the WebSocket first (normally done by router)
+            await ws.accept()
             
             # This should complete without errors
             await handler.handle_voice_session(ws, "session123", "valid_token")
@@ -364,7 +390,7 @@ class TestVoiceChatHandler:
         mock_voice_session.end_session = AsyncMock()
         
         # Mock WebSocket that returns a text message then ends
-        ws = Mock()
+        ws = AsyncMock()
         text_request = {
             "mime_type": "text/plain",
             "data": "dGVzdCBtZXNzYWdl",  # "test message" in base64
@@ -396,7 +422,7 @@ class TestVoiceChatHandler:
         mock_voice_session.end_session = AsyncMock()
         
         # Mock WebSocket that returns an audio message then ends
-        ws = Mock()
+        ws = AsyncMock()
         audio_request = {
             "mime_type": "audio/pcm",
             "data": "dGVzdCBhdWRpbw==",  # "test audio" in base64

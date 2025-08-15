@@ -56,7 +56,7 @@ class TranscriptBuffer:
         
         # Default sentence boundary patterns
         self.sentence_patterns = sentence_boundary_patterns or [
-            r'[.!?]+\s*$',  # Sentence endings
+            r'[.!?]+',      # Sentence endings (removed $ to match all, not just end)
             r'\n+',         # Line breaks
         ]
         self._compiled_patterns = [re.compile(pattern) for pattern in self.sentence_patterns]
