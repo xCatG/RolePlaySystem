@@ -268,6 +268,12 @@ deploy-image: load-env-mk # Added dependency
 	@echo "Service URL: $$(gcloud run services describe $(CLOUD_RUN_SERVICE_NAME) --platform managed --region $(GCP_REGION) --project=$(TARGET_GCP_PROJECT_ID) --format 'value(status.url)')"
 
 # --- Local Development ---
+.PHONY: clean-venv
+clean-venv:
+	@echo "Removing Python virtual environment..."
+	@rm -rf venv
+	@echo "Virtual environment removed."
+
 .PHONY: run-local-docker
 run-local-docker: build-docker
 	@echo "Running Docker container locally..."
