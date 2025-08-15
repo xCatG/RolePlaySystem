@@ -194,11 +194,11 @@ build-docker:
 	@make list-config
 	@# Determine build tag based on whether TARGET_GCP_PROJECT_ID is a placeholder
 	@if echo "$(TARGET_GCP_PROJECT_ID)" | grep -q "placeholder"; then \
-		echo "Building Docker image rps-local:$(IMAGE_TAG) (local only - no GCP project set)..."; \
-		docker build --build-arg GIT_VERSION=$(IMAGE_TAG) --build-arg BUILD_DATE="$$(date -u +%Y-%m-%dT%H:%M:%SZ)" -t rps-local:$(IMAGE_TAG) -f Dockerfile .; \
+		echo "Building Docker image rps-local:$(IMAGE_TAG) (local only - no GCP project set)..."
+		docker build --build-arg GIT_VERSION=$(IMAGE_TAG) --build-arg BUILD_DATE="$$(date -u +%Y-%m-%dT%H:%M:%SZ)" -t rps-local:$(IMAGE_TAG) -f Dockerfile .;
 	else \
-		echo "Building Docker image $(IMAGE_NAME_BASE):$(IMAGE_TAG)..."; \
-		docker build --build-arg GIT_VERSION=$(IMAGE_TAG) --build-arg BUILD_DATE="$$(date -u +%Y-%m-%dT%H:%M:%SZ)" -t $(IMAGE_NAME_BASE):$(IMAGE_TAG) -f Dockerfile .; \
+		echo "Building Docker image $(IMAGE_NAME_BASE):$(IMAGE_TAG)..."
+		docker build --build-arg GIT_VERSION=$(IMAGE_TAG) --build-arg BUILD_DATE="$$(date -u +%Y-%m-%dT%H:%M:%SZ)" -t $(IMAGE_NAME_BASE):$(IMAGE_TAG) -f Dockerfile .;
 	fi
 	@echo "Docker image built."
 
@@ -208,9 +208,9 @@ push-docker: build-docker
 	@make list-config
 	@# Check if we're using a placeholder project ID
 	@if echo "$(TARGET_GCP_PROJECT_ID)" | grep -q "placeholder"; then \
-		echo "ERROR: Cannot push to Artifact Registry with placeholder project ID."; \
-		echo "Please set GCP_PROJECT_ID_$(shell echo $(ENV) | tr '[:lower:]' '[:upper:]') in .env.mk or environment."; \
-		exit 1; \
+		echo "ERROR: Cannot push to Artifact Registry with placeholder project ID."
+		echo "Please set GCP_PROJECT_ID_$(shell echo $(ENV) | tr '[:lower:]' '[:upper:]') in .env.mk or environment."
+		exit 1;
 	fi
 	@echo "Authenticating Docker with Artifact Registry for $(GCP_REGION)..."
 	@gcloud auth configure-docker $(GCP_REGION)-docker.pkg.dev --project=$(TARGET_GCP_PROJECT_ID)
@@ -228,13 +228,13 @@ CLOUD_RUN_ENV_VARS_LIST = \
 	CONFIG_FILE=$(CONFIG_FILE_PATH_IN_CONTAINER),\
 	LOG_LEVEL=$(LOG_LEVEL_CONFIG),\
 	CORS_ALLOWED_ORIGINS='$(CORS_ORIGINS_CONFIG)',\
-	PYTHONUNBUFFERED=1,\
-	GIT_VERSION=$(IMAGE_TAG),\
-	SERVICE_NAME=$(SERVICE_NAME),\
-	API_BASE_URL=$(API_BASE_URL_FOR_APP),\
-	GOOGLE_GENAI_USE_VERTEXAI=TRUE,\
-	GOOGLE_CLOUD_PROJECT=$(TARGET_GCP_PROJECT_ID),\
-	GOOGLE_CLOUD_LOCATION=us-central1,\
+	PYTHONUNBUFFERED=1,\ 
+	GIT_VERSION=$(IMAGE_TAG),\ 
+	SERVICE_NAME=$(SERVICE_NAME),\ 
+	API_BASE_URL=$(API_BASE_URL_FOR_APP),\ 
+	GOOGLE_GENAI_USE_VERTEXAI=TRUE,\ 
+	GOOGLE_CLOUD_PROJECT=$(TARGET_GCP_PROJECT_ID),\ 
+	GOOGLE_CLOUD_LOCATION=us-central1,\ 
 	ADK_MODEL=$(ADK_MODEL)
 
 .PHONY: deploy
@@ -246,9 +246,9 @@ deploy-image: load-env-mk # Added dependency
 	@make list-config # IMAGE_TAG will be shown as the one passed on cmd line or default
 	@# Check if we're using a placeholder project ID
 	@if echo "$(TARGET_GCP_PROJECT_ID)" | grep -q "placeholder"; then \
-		echo "ERROR: Cannot deploy with placeholder project ID."; \
-		echo "Please set GCP_PROJECT_ID_$(shell echo $(ENV) | tr '[:lower:]' '[:upper:]') in .env.mk or environment."; \
-		exit 1; \
+		echo "ERROR: Cannot deploy with placeholder project ID."
+		echo "Please set GCP_PROJECT_ID_$(shell echo $(ENV) | tr '[:lower:]' '[:upper:]') in .env.mk or environment."
+		exit 1;
 	fi
 	@echo "Deploying $(CLOUD_RUN_SERVICE_NAME) to Cloud Run in $(GCP_REGION) from existing image $(IMAGE_NAME_BASE):$(IMAGE_TAG)..."
 	@gcloud run deploy $(CLOUD_RUN_SERVICE_NAME) \
@@ -268,6 +268,12 @@ deploy-image: load-env-mk # Added dependency
 	@echo "Service URL: $$(gcloud run services describe $(CLOUD_RUN_SERVICE_NAME) --platform managed --region $(GCP_REGION) --project=$(TARGET_GCP_PROJECT_ID) --format 'value(status.url)')"
 
 # --- Local Development ---
+.PHONY: clean-venv
+clean-venv:
+	@echo "Removing Python virtual environment..."
+	@rm -rf venv
+	@echo "Virtual environment removed."
+
 .PHONY: run-local-docker
 run-local-docker: build-docker
 	@echo "Running Docker container locally..."
@@ -289,7 +295,7 @@ run-local-docker: build-docker
 		IMAGE_TO_RUN="$(IMAGE_NAME_BASE):$(IMAGE_TAG)"; \
 	fi; \
 	if [ -f ".env" ]; then \
-		echo "Loading environment variables from .env file"; \
+		echo "Loading environment variables from .env file"
 		docker run --rm -p 8080:8080 \
 			--env-file .env \
 			-v "$(DATA_DIR):/app/data" \
@@ -304,7 +310,7 @@ run-local-docker: build-docker
 			-e PORT=8080 \
 			"$$IMAGE_TO_RUN"; \
 	else \
-		echo "No .env file found, using default environment variables"; \
+		echo "No .env file found, using default environment variables"
 		docker run --rm -p 8080:8080 \
 			-v "$(DATA_DIR):/app/data" \
 			-e ENV=dev \
@@ -322,8 +328,21 @@ run-local-docker: build-docker
 
 # --- Local Development ---
 .PHONY: dev-setup
-dev-setup: load-env-mk validate-resources
+dev-setup: load-env-mk
 	@echo "=== Setting up development environment ==="
+	@echo ""
+	@# Check for virtual environment and dependencies
+	@if [ ! -f "venv/bin/pip" ]; then \
+		echo "Python virtual environment 'venv' or its dependencies not found. Creating/recreating it..."; \
+		rm -rf venv; \
+		python3 -m venv venv; \
+		echo "Virtual environment created."; \
+		echo "Installing dependencies..."; \
+		./venv/bin/pip install -r src/python/requirements-all.txt; \
+	else \
+		echo "Python virtual environment and dependencies are already set up."; \
+	fi
+	@make validate-resources
 	@echo ""
 	@# Determine storage path from config
 	@STORAGE_PATH=$$(bash -c "source venv/bin/activate && python scripts/get_storage_path.py"); \
@@ -373,9 +392,9 @@ setup-gcp-infra: load-env-mk # Added load-env-mk dependency
 	@make list-config
 	@# Check if we're using a placeholder project ID
 	@if echo "$(TARGET_GCP_PROJECT_ID)" | grep -q "placeholder"; then \
-		echo "ERROR: Cannot setup GCP infrastructure with placeholder project ID."; \
-		echo "Please set GCP_PROJECT_ID_$(shell echo $(ENV) | tr '[:lower:]' '[:upper:]') in .env.mk or environment."; \
-		exit 1; \
+		echo "ERROR: Cannot setup GCP infrastructure with placeholder project ID."
+		echo "Please set GCP_PROJECT_ID_$(shell echo $(ENV) | tr '[:lower:]' '[:upper:]') in .env.mk or environment."
+		exit 1;
 	fi
 	@echo "--- Setting up GCP infrastructure for ENV=$(ENV) in project $(TARGET_GCP_PROJECT_ID) ---"
 	@echo "This is best-effort. Manual verification in GCP Console is recommended."
@@ -398,23 +417,23 @@ setup-gcp-infra: load-env-mk # Added load-env-mk dependency
 	@echo ""
 	@echo "Creating Secret Manager secret container for JWT key: '$(JWT_SECRET_NAME_IN_SM)'..."
 	@gcloud secrets create $(JWT_SECRET_NAME_IN_SM) --project=$(TARGET_GCP_PROJECT_ID) \
-		--replication-policy="automatic" || echo "Secret container already exists or failed to create."
+		--replication-policy=\"automatic\" || echo "Secret container already exists or failed to create."
 	@echo ""
 	@echo "IMPORTANT: You must add the actual secret value (version) to '$(JWT_SECRET_NAME_IN_SM)' manually:"
-	@echo "  echo -n \"\$$(openssl rand -base64 32)\" | gcloud secrets versions add $(JWT_SECRET_NAME_IN_SM) --data-file=- --project=$(TARGET_GCP_PROJECT_ID)"
+	@echo "  echo -n \"$$$(openssl rand -base64 32)\" | gcloud secrets versions add $(JWT_SECRET_NAME_IN_SM) --data-file=- --project=$(TARGET_GCP_PROJECT_ID)"
 	@echo ""
 	@echo "Granting Service Account '$(SERVICE_ACCOUNT_EMAIL)' access to the JWT secret..."
 	@gcloud secrets add-iam-policy-binding $(JWT_SECRET_NAME_IN_SM) --project=$(TARGET_GCP_PROJECT_ID) \
-		--member="serviceAccount:$(SERVICE_ACCOUNT_EMAIL)" \
-		--role="roles/secretmanager.secretAccessor" || echo "Failed to grant secret access or already granted."
+		--member=\"serviceAccount:$(SERVICE_ACCOUNT_EMAIL)\" \
+		--role=\"roles/secretmanager.secretAccessor\" || echo "Failed to grant secret access or already granted."
 	@echo "Granting Service Account '$(SERVICE_ACCOUNT_EMAIL)' GCS bucket access (Object Admin)..."
 	@gsutil iam ch serviceAccount:$(SERVICE_ACCOUNT_EMAIL):objectAdmin gs://$(GCS_BUCKET_APP_DATA) || echo "Failed to grant GCS app data bucket access."
 	@gsutil iam ch serviceAccount:$(SERVICE_ACCOUNT_EMAIL):objectAdmin gs://$(GCS_BUCKET_LOG_EXPORTS) || echo "Failed to grant GCS log exports bucket access."
 	@echo ""
 	@echo "Granting Service Account '$(SERVICE_ACCOUNT_EMAIL)' Vertex AI access..."
 	@gcloud projects add-iam-policy-binding $(TARGET_GCP_PROJECT_ID) \
-		--member="serviceAccount:$(SERVICE_ACCOUNT_EMAIL)" \
-		--role="roles/aiplatform.user" || echo "Failed to grant Vertex AI access or already granted."
+		--member=\"serviceAccount:$(SERVICE_ACCOUNT_EMAIL)\" \
+		--role=\"roles/aiplatform.user\" || echo "Failed to grant Vertex AI access or already granted."
 	@echo ""
 	@echo "--- GCP Infrastructure setup for ENV=$(ENV) complete. Please verify in Console. ---"
 
@@ -480,9 +499,9 @@ upload-resources: load-env-mk validate-resources
 	@make list-config
 	@# Check if we're using a placeholder project ID
 	@if echo "$(TARGET_GCP_PROJECT_ID)" | grep -q "placeholder"; then \
-		echo "ERROR: Cannot upload resources with placeholder project ID."; \
-		echo "Please set GCP_PROJECT_ID_$(shell echo $(ENV) | tr '[:lower:]' '[:upper:]') in .env.mk or environment."; \
-		exit 1; \
+		echo "ERROR: Cannot upload resources with placeholder project ID."
+		echo "Please set GCP_PROJECT_ID_$(shell echo $(ENV) | tr '[:lower:]' '[:upper:]') in .env.mk or environment."
+		exit 1;
 	fi
 	@echo "Uploading resources to GCS bucket gs://$(GCS_BUCKET_APP_DATA)/$(GCS_PREFIX_APP_DATA)resources/..."
 	@gsutil -m cp -r data/resources/* gs://$(GCS_BUCKET_APP_DATA)/$(GCS_PREFIX_APP_DATA)resources/
@@ -493,9 +512,9 @@ download-resources: load-env-mk
 	@make list-config
 	@# Check if we're using a placeholder project ID
 	@if echo "$(TARGET_GCP_PROJECT_ID)" | grep -q "placeholder"; then \
-		echo "ERROR: Cannot download resources with placeholder project ID."; \
-		echo "Please set GCP_PROJECT_ID_$(shell echo $(ENV) | tr '[:lower:]' '[:upper:]') in .env.mk or environment."; \
-		exit 1; \
+		echo "ERROR: Cannot download resources with placeholder project ID."
+		echo "Please set GCP_PROJECT_ID_$(shell echo $(ENV) | tr '[:lower:]' '[:upper:]') in .env.mk or environment."
+		exit 1;
 	fi
 	@echo "Downloading resources from GCS bucket gs://$(GCS_BUCKET_APP_DATA)/$(GCS_PREFIX_APP_DATA)resources/..."
 	@mkdir -p data/resources
@@ -513,7 +532,7 @@ logs:
 	@make list-config
 	@echo "Fetching logs for $(CLOUD_RUN_SERVICE_NAME) in $(GCP_REGION) from project $(TARGET_GCP_PROJECT_ID)..."
 	@gcloud logging read "resource.type=cloud_run_revision AND resource.labels.service_name=$(CLOUD_RUN_SERVICE_NAME) AND resource.labels.configuration_name=$(CLOUD_RUN_SERVICE_NAME)" \
-		--project=$(TARGET_GCP_PROJECT_ID) --limit=50 --format="table(timestamp,logName,severity,jsonPayload.message)"
+		--project=$(TARGET_GCP_PROJECT_ID) --limit=50 --format=\"table(timestamp,logName,severity,jsonPayload.message)\"
 
 # Default target
 .DEFAULT_GOAL := help
