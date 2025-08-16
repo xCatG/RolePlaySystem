@@ -457,3 +457,107 @@ class ChatLogger:
         lines.append("=" * 70)
 
         return "\n".join(lines)
+
+    async def log_voice_message(
+            self,
+            user_id: str,
+            session_id: str,
+            role: str,
+            transcript_text: str,
+            duration_ms: int,
+            confidence: float,
+            message_number: int,
+            voice_metadata: Optional[Dict[str, Any]] = None
+    ) -> None:
+        """
+        Logs a message to the specified session.
+
+        Args:
+            user_id: The user ID who owns the session.
+            session_id: The application session ID.
+            role: The role of the message sender (e.g., "participant", "character").
+            transcript_text: The message content.
+            duration_ms: The message duration in ms.
+            confidence: Confidence score of the transcription (0.0-1.0).
+            message_number: The sequential number of the message in the session.
+            voice_metadata: Optional additional data for the message.
+        """
+        storage_path = self._get_chat_log_path(user_id, session_id)
+
+        if not await self.storage.exists(storage_path):
+            logger.error(f"Log file {storage_path} does not exist. Cannot log message.")
+            raise StorageError(f"Session log file not found: {storage_path}")
+
+        message_event = {
+            "type": "voice_message",
+            "timestamp": utc_now_isoformat(),
+            "app_session_id": session_id,
+            "role": role,
+            "content": transcript_text,
+            "message_number": message_number,
+            "voice_metadata": {
+                "duration_ms": duration_ms,
+                "confidence": confidence,
+                "is_voice": True,
+                **(voice_metadata or {})
+            }
+        }
+
+        try:
+            async with self.storage.lock(storage_path):
+                # Append the message event as a new line
+                event_line = json.dumps(message_event) + '\n'
+                await self.storage.append(storage_path, event_line)
+
+            logger.debug(f"Logged voice message to {storage_path} (Msg#: {message_number}, Role: {role}, Duration: {duration_ms}ms)")
+        except Exception as e:
+            logger.error(f"Error logging message to {storage_path}: {e}")
+            raise
+
+    async def log_voice_session_start(self, user_id:str, session_id:str, voice_config:Dict[str, str]):
+        storage_path = self._get_chat_log_path(user_id, session_id)
+
+        if not await self.storage.exists(storage_path):
+            logger.error(f"Log file {storage_path} does not exist. Cannot log message.")
+            raise StorageError(f"Session log file not found: {storage_path}")
+
+        voice_start_event = {
+            "type": "voice_session_start",
+            "timestamp": utc_now_isoformat(),
+            "app_session_id": session_id,
+            "voice_config": voice_config
+        }
+
+        try:
+            async with self.storage.lock(storage_path):
+                # Append the voice session start event
+                event_line = json.dumps(voice_start_event) + '\n'
+                await self.storage.append(storage_path, event_line)
+            logger.info(f"Logged voice session start for {session_id}")
+        except Exception as e:
+            logger.error(f"Error logging voice session start for {session_id}: {e}")
+            raise
+
+    async def log_voice_session_end(self, user_id:str, session_id:str, voice_stats:dict):
+        storage_path = self._get_chat_log_path(user_id, session_id)
+
+        if not await self.storage.exists(storage_path):
+            logger.warning(f"Log file {storage_path} does not exist for voice session end.")
+            return  # Don't raise error since session might be deleted
+        voice_end_event = {
+            "type": "voice_session_end",
+            "timestamp": utc_now_isoformat(),
+            "app_session_id": session_id,
+            "voice_stats": voice_stats
+        }
+
+        try:
+            async with self.storage.lock(storage_path):
+                # Append the voice session end event
+                event_line = json.dumps(voice_end_event) + '\n'
+                await self.storage.append(storage_path, event_line)
+
+            logger.info(f"Logged voice session end for {session_id}")
+        except Exception as e:
+            logger.error(f"Error logging voice session end for {session_id}: {e}")
+            raise

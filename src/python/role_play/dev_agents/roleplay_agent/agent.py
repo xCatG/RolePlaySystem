@@ -46,7 +46,7 @@ agent = root_agent
 
 # --- Configuration Export for Production ---
 
-async def get_production_agent(character_id: str, scenario_id: str, language: str = "en", scripted: bool = False) -> Optional[Agent]:
+async def get_production_agent(character_id: str, scenario_id: str, language: str = "en", scripted: bool = False, agent_model: str = AGENT_MODEL) -> Optional[Agent]:
     """
     Creates a production-ready RolePlayAgent for a specific
     character, scenario, and language.
@@ -55,6 +55,8 @@ async def get_production_agent(character_id: str, scenario_id: str, language: st
         character_id: The ID of the character
         scenario_id: The ID of the scenario
         language: The language code (e.g., "en", "zh-TW", "ja")
+        scripted: whether the session is scripted or not
+        agent_model: id of the llm model to use
     
     Returns:
         A configured RolePlayAgent instance or None if character/scenario not found
@@ -103,7 +105,7 @@ Here is the script:
     # Create and return the configured agent
     return RolePlayAgent(
         name=f"roleplay_{character_id}_{scenario_id}",
-        model=AGENT_MODEL,
+        model=agent_model,
         description=f"Roleplay agent for {character.get('name', 'Unknown Character')} in {scenario.get('name', 'Unknown Scenario')}",
         instruction=prod_prompt
     )
