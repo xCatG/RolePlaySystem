@@ -22,19 +22,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, List, Union, AsyncGenerator, Optional
 
-from google.adk.agents import BaseAgent, LlmAgent, Event, InvocationContext
+from google.adk.agents import BaseAgent, LlmAgent, InvocationContext
+from google.adk.events import Event
 from google.genai import types
 
 # --- Import your typed models from a central location ---
-# It's good practice to place these in a file like `role_play/common/models.py`
-try:
-    from .models import SideEffect, ObserverOutput, Progress, State
-except ImportError:
-    # Define placeholders if models.py is not updated yet
-    SideEffect = Dict[str, Any]
-    ObserverOutput = Dict[str, Any]
-    Progress = Dict[str, Any]
-    State = Dict[str, Any]
+from .models import SideEffect, ObserverOutput, Progress, State
 
 
 # --- Lightweight rule-based tracker (Your implementation) ---
@@ -94,19 +87,23 @@ actor_agent = LlmAgent(
     output_key="actor_text"
 )
 
+from pydantic import BaseModel
+
+
 # --- The Main Orchestrator (As an ADK CustomAgent) ---
 class Orchestrator(BaseAgent):
-    def __init__(self, name: str, tracker: ScriptTracker, observer: LlmAgent, actor: LlmAgent, executor: SideEffectExecutor):
-        # The observer and actor are sub-agents for organizational purposes
-        super().__init__(name=name, sub_agents=[observer, actor])
-        self.tracker = tracker
-        self.observer = observer
-        self.actor = actor
-        self.exec = executor
+    tracker: ScriptTracker
+    executor: SideEffectExecutor
 
     async def _run_async_impl(self, ctx: InvocationContext) -> AsyncGenerator[Event, None]:
         """This is the main "game loop" for each conversational turn."""
         state: State = ctx.session.state
+
+        # Get sub-agents by name for robustness
+        observer = next((agent for agent in self.sub_agents if agent.name == "observer"), None)
+        actor = next((agent for agent in self.sub_agents if agent.name == "actor"), None)
+        if not observer or not actor:
+            raise RuntimeError("Observer or Actor sub-agents not found")
         
         # 1. Clear transient state from the previous turn
         state["side_effects"] = []
@@ -123,7 +120,7 @@ class Orchestrator(BaseAgent):
         
         if needs_observer:
             # The runner will execute the observer agent. We just need to process the result.
-            async for event in self.observer.run_async(ctx):
+            async for event in observer.run_async(ctx):
                 if event.is_final_response():
                     # The result is automatically placed in state['observer_output'] by the agent's output_key
                     obs_out = state.get("observer_output")
@@ -134,7 +131,7 @@ class Orchestrator(BaseAgent):
         # 4. Process the decision and execute side-effects
         if obs_out:
             if effects := obs_out.get("side_effects"):
-                self.exec.apply(ctx, effects)
+                self.executor.apply(ctx, effects)
             if prog_update := obs_out.get("progress_update"):
                 state["progress"] = prog_update
             state["actor_hint"] = obs_out.get("actor_hint", "Respond naturally.")
@@ -151,7 +148,7 @@ class Orchestrator(BaseAgent):
             return
 
         # 6. If no interrupt, call the Actor to generate the user-facing response
-        async for event in self.actor.run_async(ctx):
+        async for event in actor.run_async(ctx):
             if event.is_final_response():
                 # The actor's dialogue is the primary output of the turn.
                 # The final response text is in event.content.parts[0].text

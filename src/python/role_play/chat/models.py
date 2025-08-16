@@ -2,7 +2,7 @@
 from enum import Enum
 
 from pydantic import BaseModel, Field, model_validator
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Union, TypedDict
 from ..common.models import BaseResponse
 
 class CreateSessionRequest(BaseModel):
@@ -135,3 +135,38 @@ class ChatInfo(BaseModel):
     char_info: CharacterInfo
     transcript_text: str = Field(description="The text of the session transcript.")
     participant_name: str = Field(description="The name of the participant")
+
+# --- Models for Orchestrator Agent ---
+
+class CollectInputSideEffect(BaseModel):
+    type: str = "collect_input"
+
+class RetrieveKbSideEffect(BaseModel):
+    type: str = "retrieve_kb"
+    query: str
+
+# A Union of all possible side effects.
+SideEffect = Union[CollectInputSideEffect, RetrieveKbSideEffect]
+
+class Progress(BaseModel):
+    scene: str
+    step: int
+    objectives: List[str] = Field(default_factory=list)
+
+class ObserverOutput(BaseModel):
+    actor_hint: str = Field(description="Guidance for the performer, <=80 words.")
+    side_effects: Optional[List[SideEffect]] = Field(default=None, description="Optional list of system commands.")
+    progress_update: Optional[Progress] = Field(default=None)
+    risk: Optional[str] = Field(default=None, description="An assessment of risk, if any.")
+
+# State is a TypedDict because it's used for type hinting the `ctx.session.state` dict,
+# which is not a Pydantic model instance.
+class State(TypedDict, total=False):
+    messages: List[Dict[str, str]]
+    progress: Progress
+    side_effects: List[SideEffect]
+    interrupt: bool
+    kb_ctx: List[Dict[str, str]]
+    actor_hint: str
+    observer_output: ObserverOutput
+    actor_text: str

@@ -1,6 +1,4 @@
-"""
-Development agent for adk web and configuration export for production.
-"""
+"Development agent for adk web and configuration export for production."
 import os
 import sys
 from pathlib import Path
@@ -13,7 +11,7 @@ sys.path.insert(0, str(PROJECT_ROOT / "src" / "python"))
 DEFAULT_MODEL = "gemini-1.5-flash" # Set a reasonable default
 AGENT_MODEL = os.getenv("ADK_MODEL", DEFAULT_MODEL) # <-- Read from env
 
-from .tools import resource_loader
+from role_play.dev_agents.roleplay_agent.tools import resource_loader
 from role_play.chat.orchestrator_agent import (
     Orchestrator,
     ScriptTracker,
@@ -36,10 +34,10 @@ executor = SideEffectExecutor()
 root_agent = Orchestrator(
     name="RolePlaySystem",
     tracker=tracker,
-    observer=observer_agent,
-    actor=actor_agent,
     executor=executor,
 )
+# Manually assign sub-agents after instantiation to avoid Pydantic validation conflicts
+root_agent.sub_agents = [observer_agent, actor_agent]
 
 agent = root_agent
 
@@ -94,4 +92,45 @@ Here is the script:
 '''
 
     # Production-focused prompt: Combines character, scenario, and language instructions
-    prod_prompt = f'''{character.get(
+    prod_prompt = f"""{character.get("system_prompt", "You are a helpful assistant.")}
+
+**Current Scenario:**
+{scenario.get("description", "No specific scenario description.")}
+
+**Roleplay Instructions:**
+-   **Stay fully in character.** Do NOT break character or mention you are an AI.
+-   Respond naturally based on your character's personality and the scenario.
+-   **IMPORTANT: Respond in {language_name} language as specified by your character and scenario.**
+-   Engage with the user's messages within the roleplay context.
+"""
+    if scripted_prompt is not None:
+        prod_prompt += scripted_prompt
+    # Create and return the configured agent
+    return RolePlayAgent(
+        name=f"roleplay_{character_id}_{scenario_id}",
+        model=AGENT_MODEL,
+        description=f"Roleplay agent for {character.get('name', 'Unknown Character')} in {scenario.get('name', 'Unknown Scenario')}",
+        instruction=prod_prompt
+    )
+
+# --- Main block for verification ---
+if __name__ == "__main__":
+    import asyncio
+
+    async def test_module():
+        print("Roleplay System Agent Module")
+        print(f"Root Agent Name: {root_agent.name}")
+
+        print("\n---")
+        print("Testing legacy production agent creation:")
+        # Assuming 'medical_interview' and 'patient_chronic' exist in scenarios.json
+        legacy_agent = await get_production_agent("patient_chronic", "medical_interview")
+        if legacy_agent:
+            print("Successfully created legacy agent for 'patient_chronic'.")
+            print(f"  Model: {legacy_agent.model}")
+            print(f"  Name: {legacy_agent.name}")
+            print(f"  Instruction starts with: {legacy_agent.instruction[:100]}...")
+        else:
+            print("Failed to create legacy agent (check scenarios.json?).")
+
+    asyncio.run(test_module())
