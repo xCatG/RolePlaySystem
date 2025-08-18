@@ -194,11 +194,11 @@ build-docker:
 	@make list-config
 	@# Determine build tag based on whether TARGET_GCP_PROJECT_ID is a placeholder
 	@if echo "$(TARGET_GCP_PROJECT_ID)" | grep -q "placeholder"; then \
-		echo "Building Docker image rps-local:$(IMAGE_TAG) (local only - no GCP project set)..."
-		docker build --build-arg GIT_VERSION=$(IMAGE_TAG) --build-arg BUILD_DATE="$$(date -u +%Y-%m-%dT%H:%M:%SZ)" -t rps-local:$(IMAGE_TAG) -f Dockerfile .;
+		echo "Building Docker image rps-local:$(IMAGE_TAG) (local only - no GCP project set)..."; \
+		docker build --build-arg GIT_VERSION=$(IMAGE_TAG) --build-arg BUILD_DATE="$$(date -u +%Y-%m-%dT%H:%M:%SZ)" -t rps-local:$(IMAGE_TAG) -f Dockerfile .; \
 	else \
-		echo "Building Docker image $(IMAGE_NAME_BASE):$(IMAGE_TAG)..."
-		docker build --build-arg GIT_VERSION=$(IMAGE_TAG) --build-arg BUILD_DATE="$$(date -u +%Y-%m-%dT%H:%M:%SZ)" -t $(IMAGE_NAME_BASE):$(IMAGE_TAG) -f Dockerfile .;
+		echo "Building Docker image $(IMAGE_NAME_BASE):$(IMAGE_TAG)..."; \
+		docker build --build-arg GIT_VERSION=$(IMAGE_TAG) --build-arg BUILD_DATE="$$(date -u +%Y-%m-%dT%H:%M:%SZ)" -t $(IMAGE_NAME_BASE):$(IMAGE_TAG) -f Dockerfile .; \
 	fi
 	@echo "Docker image built."
 
@@ -208,9 +208,9 @@ push-docker: build-docker
 	@make list-config
 	@# Check if we're using a placeholder project ID
 	@if echo "$(TARGET_GCP_PROJECT_ID)" | grep -q "placeholder"; then \
-		echo "ERROR: Cannot push to Artifact Registry with placeholder project ID."
-		echo "Please set GCP_PROJECT_ID_$(shell echo $(ENV) | tr '[:lower:]' '[:upper:]') in .env.mk or environment."
-		exit 1;
+		echo "ERROR: Cannot push to Artifact Registry with placeholder project ID."; \
+		echo "Please set GCP_PROJECT_ID_$(shell echo $(ENV) | tr '[:lower:]' '[:upper:]') in .env.mk or environment."; \
+		exit 1; \
 	fi
 	@echo "Authenticating Docker with Artifact Registry for $(GCP_REGION)..."
 	@gcloud auth configure-docker $(GCP_REGION)-docker.pkg.dev --project=$(TARGET_GCP_PROJECT_ID)
@@ -246,9 +246,9 @@ deploy-image: load-env-mk # Added dependency
 	@make list-config # IMAGE_TAG will be shown as the one passed on cmd line or default
 	@# Check if we're using a placeholder project ID
 	@if echo "$(TARGET_GCP_PROJECT_ID)" | grep -q "placeholder"; then \
-		echo "ERROR: Cannot deploy with placeholder project ID."
-		echo "Please set GCP_PROJECT_ID_$(shell echo $(ENV) | tr '[:lower:]' '[:upper:]') in .env.mk or environment."
-		exit 1;
+		echo "ERROR: Cannot deploy with placeholder project ID."; \
+		echo "Please set GCP_PROJECT_ID_$(shell echo $(ENV) | tr '[:lower:]' '[:upper:]') in .env.mk or environment."; \
+		exit 1; \
 	fi
 	@echo "Deploying $(CLOUD_RUN_SERVICE_NAME) to Cloud Run in $(GCP_REGION) from existing image $(IMAGE_NAME_BASE):$(IMAGE_TAG)..."
 	@gcloud run deploy $(CLOUD_RUN_SERVICE_NAME) \
