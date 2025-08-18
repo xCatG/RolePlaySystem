@@ -42,9 +42,14 @@ jobs:
           make -n test-coverage-html
           make -n test-no-coverage
 
+      - name: Show Python version for reference
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: '.python-version'
+      - run: python --version
+
       - name: Dry run — GCP operations
         run: |
           make -n setup-gcp-infra ENV=dev || true
           make -n upload-resources ENV=dev || true
           make -n download-resources ENV=dev || true
-

@@ -27,6 +27,9 @@ GIT_VERSION ?= $(shell git describe --tags --always --dirty --match "v*" 2>/dev/
 # IMAGE_TAG: Tag for the Docker image (e.g., git version or 'latest').
 IMAGE_TAG ?= $(GIT_VERSION)
 
+# Central Python version for local tools and Docker (fallback 3.12)
+PYTHON_VERSION ?= $(shell cat .python-version 2>/dev/null || echo 3.12)
+
 # Frontend source directory
 FRONTEND_DIR = src/ts/role_play/ui
 # Backend source directory (Python)
@@ -200,10 +203,10 @@ build-docker:
 	@# Determine build target using Make conditionals, no shell if
 ifeq ($(findstring placeholder,$(TARGET_GCP_PROJECT_ID)),placeholder)
 	@echo "Building Docker image rps-local:$(IMAGE_TAG) (local only - no GCP project set)..."
-	docker build --build-arg GIT_VERSION=$(IMAGE_TAG) --build-arg BUILD_DATE="$$(date -u +%Y-%m-%dT%H:%M:%SZ)" -t rps-local:$(IMAGE_TAG) -f Dockerfile .
+	docker build --build-arg PYTHON_VERSION=$(PYTHON_VERSION) --build-arg GIT_VERSION=$(IMAGE_TAG) --build-arg BUILD_DATE="$$(date -u +%Y-%m-%dT%H:%M:%SZ)" -t rps-local:$(IMAGE_TAG) -f Dockerfile .
 else
 	@echo "Building Docker image $(IMAGE_NAME_BASE):$(IMAGE_TAG)..."
-	docker build --build-arg GIT_VERSION=$(IMAGE_TAG) --build-arg BUILD_DATE="$$(date -u +%Y-%m-%dT%H:%M:%SZ)" -t $(IMAGE_NAME_BASE):$(IMAGE_TAG) -f Dockerfile .
+	docker build --build-arg PYTHON_VERSION=$(PYTHON_VERSION) --build-arg GIT_VERSION=$(IMAGE_TAG) --build-arg BUILD_DATE="$$(date -u +%Y-%m-%dT%H:%M:%SZ)" -t $(IMAGE_NAME_BASE):$(IMAGE_TAG) -f Dockerfile .
 endif
 	@echo "Docker image built."
 
