@@ -1,5 +1,10 @@
 # Makefile for Role Play System (RPS)
 
+# Run each recipe in a single bash shell for safer multiline commands
+SHELL := /bin/bash
+.SHELLFLAGS := -eu -o pipefail -c
+.ONESHELL:
+
 # --- Configuration ---
 # SERVICE_NAME: Used for naming resources. Override for different services.
 SERVICE_NAME ?= rps
