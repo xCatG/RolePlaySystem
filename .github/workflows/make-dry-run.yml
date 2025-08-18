@@ -1,0 +1,50 @@
+name: Make Dry Run
+
+on:
+  push:
+    branches:
+      - "**"
+  pull_request:
+
+jobs:
+  dry-run:
+    name: Validate Make targets (no execution)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Show environment
+        run: |
+          echo "Runner: $RUNNER_OS $(uname -a)"
+          echo "Make: $(make --version | head -n1)"
+
+      - name: Dry run — core targets
+        run: |
+          make -n help
+          make -n list-config ENV=dev
+          make -n build-docker ENV=dev
+          make -n push-docker ENV=dev
+          make -n deploy-image ENV=dev
+
+      - name: Dry run — dev + runtime
+        run: |
+          make -n clean-venv
+          make -n dev-setup
+          make -n run-local-docker DATA_DIR=./data_ci
+
+      - name: Dry run — tests
+        run: |
+          make -n test
+          make -n test-quiet
+          make -n test-unit
+          make -n test-integration
+          make -n test-coverage-html
+          make -n test-no-coverage
+
+      - name: Dry run — GCP operations
+        run: |
+          make -n setup-gcp-infra ENV=dev || true
+          make -n upload-resources ENV=dev || true
+          make -n download-resources ENV=dev || true
+
