@@ -396,11 +396,11 @@ endif
 setup-gcp-infra: load-env-mk # Added load-env-mk dependency
 	@make list-config
 	@# Check if we're using a placeholder project ID
-	@if echo "$(TARGET_GCP_PROJECT_ID)" | grep -q "placeholder"; then \
-		echo "ERROR: Cannot setup GCP infrastructure with placeholder project ID."
-		echo "Please set GCP_PROJECT_ID_$(shell echo $(ENV) | tr '[:lower:]' '[:upper:]') in .env.mk or environment."
-		exit 1;
-	fi
+ifeq ($(findstring placeholder,$(TARGET_GCP_PROJECT_ID)),placeholder)
+	@echo "ERROR: Cannot setup GCP infrastructure with placeholder project ID."
+	@echo "Please set GCP_PROJECT_ID_$(shell echo $(ENV) | tr '[:lower:]' '[:upper:]') in .env.mk or environment."
+	exit 1
+else
 	@echo "--- Setting up GCP infrastructure for ENV=$(ENV) in project $(TARGET_GCP_PROJECT_ID) ---"
 	@echo "This is best-effort. Manual verification in GCP Console is recommended."
 	@echo ""
@@ -441,6 +441,7 @@ setup-gcp-infra: load-env-mk # Added load-env-mk dependency
 		--role=\"roles/aiplatform.user\" || echo "Failed to grant Vertex AI access or already granted."
 	@echo ""
 	@echo "--- GCP Infrastructure setup for ENV=$(ENV) complete. Please verify in Console. ---"
+endif
 
 # --- Testing Targets ---
 .PHONY: test
@@ -503,28 +504,30 @@ update-resource-metadata:
 upload-resources: load-env-mk validate-resources
 	@make list-config
 	@# Check if we're using a placeholder project ID
-	@if echo "$(TARGET_GCP_PROJECT_ID)" | grep -q "placeholder"; then \
-		echo "ERROR: Cannot upload resources with placeholder project ID."
-		echo "Please set GCP_PROJECT_ID_$(shell echo $(ENV) | tr '[:lower:]' '[:upper:]') in .env.mk or environment."
-		exit 1;
-	fi
+ifeq ($(findstring placeholder,$(TARGET_GCP_PROJECT_ID)),placeholder)
+	@echo "ERROR: Cannot upload resources with placeholder project ID."
+	@echo "Please set GCP_PROJECT_ID_$(shell echo $(ENV) | tr '[:lower:]' '[:upper:]') in .env.mk or environment."
+	exit 1
+else
 	@echo "Uploading resources to GCS bucket gs://$(GCS_BUCKET_APP_DATA)/$(GCS_PREFIX_APP_DATA)resources/..."
 	@gsutil -m cp -r data/resources/* gs://$(GCS_BUCKET_APP_DATA)/$(GCS_PREFIX_APP_DATA)resources/
 	@echo "Resources uploaded successfully."
+endif
 
 .PHONY: download-resources
 download-resources: load-env-mk
 	@make list-config
 	@# Check if we're using a placeholder project ID
-	@if echo "$(TARGET_GCP_PROJECT_ID)" | grep -q "placeholder"; then \
-		echo "ERROR: Cannot download resources with placeholder project ID."
-		echo "Please set GCP_PROJECT_ID_$(shell echo $(ENV) | tr '[:lower:]' '[:upper:]') in .env.mk or environment."
-		exit 1;
-	fi
+ifeq ($(findstring placeholder,$(TARGET_GCP_PROJECT_ID)),placeholder)
+	@echo "ERROR: Cannot download resources with placeholder project ID."
+	@echo "Please set GCP_PROJECT_ID_$(shell echo $(ENV) | tr '[:lower:]' '[:upper:]') in .env.mk or environment."
+	exit 1
+else
 	@echo "Downloading resources from GCS bucket gs://$(GCS_BUCKET_APP_DATA)/$(GCS_PREFIX_APP_DATA)resources/..."
 	@mkdir -p data/resources
 	@gsutil -m cp -r gs://$(GCS_BUCKET_APP_DATA)/$(GCS_PREFIX_APP_DATA)resources/* data/resources/
 	@echo "Resources downloaded successfully."
+endif
 
 
 .PHONY: deploy-with-resources
