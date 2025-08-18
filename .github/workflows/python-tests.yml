@@ -13,10 +13,19 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Resolve Python version (fallback 3.12)
+        shell: bash
+        run: |
+          if [ -f .python-version ]; then
+            echo "PY_VER=$(cat .python-version)" >> $GITHUB_ENV
+          else
+            echo "PY_VER=3.12" >> $GITHUB_ENV
+          fi
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version-file: '.python-version'
+          python-version: ${{ env.PY_VER }}
 
       - name: Cache pip
         uses: actions/cache@v4
