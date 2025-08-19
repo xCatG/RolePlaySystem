@@ -2,9 +2,25 @@ name: Python Unit Tests
 
 on:
   push:
-    branches:
-      - "**"
+    branches: [ main ]
+    tags: [ 'v*.*.*' ]
+    paths:
+      - 'src/python/**'
+      - 'test/python/**'
+      - '.github/workflows/python-tests.yml'
+      - 'Makefile'
+      - 'Dockerfile'
   pull_request:
+    paths:
+      - 'src/python/**'
+      - 'test/python/**'
+      - '.github/workflows/python-tests.yml'
+      - 'Makefile'
+      - 'Dockerfile'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   tests:

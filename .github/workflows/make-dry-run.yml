@@ -2,9 +2,27 @@ name: Make Dry Run
 
 on:
   push:
-    branches:
-      - "**"
+    branches: [ main ]
+    tags: [ 'v*.*.*' ]
+    paths:
+      - 'Makefile'
+      - '.github/workflows/make-dry-run.yml'
+      - 'Dockerfile'
+      - 'src/**'
+      - 'scripts/**'
+      - 'config/**'
   pull_request:
+    paths:
+      - 'Makefile'
+      - '.github/workflows/make-dry-run.yml'
+      - 'Dockerfile'
+      - 'src/**'
+      - 'scripts/**'
+      - 'config/**'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   dry-run:
