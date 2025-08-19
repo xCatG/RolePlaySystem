@@ -28,6 +28,7 @@ jobs:
   dry-run:
     name: Validate Make targets (no execution)
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -60,20 +61,8 @@ jobs:
           make -n test-coverage-html
           make -n test-no-coverage
 
-      - name: Resolve Python version (fallback 3.12)
-        shell: bash
-        run: |
-          if [ -f .python-version ]; then
-            echo "PY_VER=$(cat .python-version)" >> $GITHUB_ENV
-          else
-            echo "PY_VER=3.12" >> $GITHUB_ENV
-          fi
-
-      - name: Setup Python and show version
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PY_VER }}
-      - run: python --version
+      - name: Show system Python version (informational)
+        run: python3 --version || true
 
       - name: Dry run — GCP operations
         run: |

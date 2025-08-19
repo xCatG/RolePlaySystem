@@ -16,6 +16,7 @@ concurrency:
 jobs:
   tests:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -38,7 +39,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('src/python/requirements-all.txt', 'src/python/requirements.txt', 'src/python/requirements-test.txt', 'src/python/requirements-dev.txt') }}
+          key: ${{ runner.os }}-pip-${{ hashFiles('src/python/requirements*.txt') }}
           restore-keys: |
             ${{ runner.os }}-pip-
 
