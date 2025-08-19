@@ -543,7 +543,7 @@ logs:
 	@make list-config
 	@echo "Fetching logs for $(CLOUD_RUN_SERVICE_NAME) in $(GCP_REGION) from project $(TARGET_GCP_PROJECT_ID)..."
 	@gcloud logging read "resource.type=cloud_run_revision AND resource.labels.service_name=$(CLOUD_RUN_SERVICE_NAME) AND resource.labels.configuration_name=$(CLOUD_RUN_SERVICE_NAME)" \
-		--project=$(TARGET_GCP_PROJECT_ID) --limit=50 --format=\"table(timestamp,logName,severity,jsonPayload.message)\"
+		--project=$(TARGET_GCP_PROJECT_ID) --limit=50 --format='table(timestamp,logName,severity,jsonPayload.message)'
 
 # Default target
 .DEFAULT_GOAL := help
