@@ -1,3 +1,5 @@
+ARG PYTHON_VERSION=3.12
+
 # Stage 1: Build Vue.js Frontend
 # Use a specific Node.js version for reproducibility
 FROM node:lts-slim AS frontend-builder
@@ -25,7 +27,7 @@ RUN VITE_APP_VERSION=${GIT_VERSION} VITE_BUILD_DATE=${BUILD_DATE} npm run build
 
 # Stage 2: Setup Python Backend and Serve Frontend
 # Use a specific Python version for reproducibility
-FROM python:3.11.5-slim
+FROM python:${PYTHON_VERSION}-slim
 
 WORKDIR /app
 
