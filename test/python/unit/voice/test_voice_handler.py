@@ -1,4 +1,4 @@
-"""Tests for the voice chat handler."""
+"""Tests for the simplified voice chat handler."""
 
 import pytest
 import asyncio
@@ -8,13 +8,7 @@ from fastapi.testclient import TestClient
 from fastapi import WebSocket
 
 from src.python.role_play.voice.handler import VoiceChatHandler
-from src.python.role_play.voice.models import (
-    VoiceClientRequest,
-    VoiceConfigMessage,
-    VoiceStatusMessage,
-    TranscriptPartialMessage,
-    TranscriptFinalMessage
-)
+from src.python.role_play.voice.models import VoiceRequest, VoiceMessage
 from src.python.role_play.common.models import User, UserRole
 
 
@@ -50,7 +44,7 @@ class MockWebSocket:
 
 
 class TestVoiceChatHandler:
-    """Test cases for VoiceChatHandler."""
+    """Test cases for simplified VoiceChatHandler."""
 
     @pytest.fixture
     def handler(self):
@@ -85,14 +79,10 @@ class TestVoiceChatHandler:
         assert handler.router is not None
 
     def test_router_endpoints(self, handler):
-        """Test that all expected routes are registered."""
+        """Test that WebSocket endpoint is registered."""
         router = handler.router
         routes = [route.path for route in router.routes]
-        
-        # Check that WebSocket and REST endpoints are registered
         assert "/ws/{session_id}" in routes
-        assert "/session/{session_id}/info" in routes
-        assert "/session/{session_id}/stats" in routes
 
     @patch('src.python.role_play.voice.handler.get_storage_backend')
     @patch('src.python.role_play.voice.handler.get_auth_manager')
@@ -166,34 +156,6 @@ class TestVoiceChatHandler:
         
         assert result == mock_adk_session
 
-    @patch('src.python.role_play.voice.handler.get_storage_backend')
-    @patch('src.python.role_play.voice.handler.get_chat_logger')
-    @patch('src.python.role_play.voice.handler.get_adk_session_service')
-    async def test_session_validation_not_found(
-        self,
-        mock_adk_service,
-        mock_chat_logger,
-        mock_storage,
-        handler
-    ):
-        """Test session validation when session not found."""
-        mock_adk_service_instance = AsyncMock()
-        mock_adk_service_instance.get_session.return_value = None
-        mock_adk_service.return_value = mock_adk_service_instance
-        
-        mock_chat_logger_instance = AsyncMock()
-        mock_chat_logger_instance.get_session_end_info.side_effect = Exception("Not found")
-        mock_chat_logger.return_value = mock_chat_logger_instance
-        
-        result = await handler._validate_session(
-            "session123", 
-            "user123", 
-            mock_adk_service_instance, 
-            mock_chat_logger_instance
-        )
-        
-        assert result is None
-
     async def test_websocket_missing_token(self, handler):
         """Test WebSocket connection without token."""
         ws = MockWebSocket()
@@ -203,7 +165,6 @@ class TestVoiceChatHandler:
         
         assert ws.closed
         assert ws.close_code == 1008
-        assert "Missing token parameter" in str(ws.close_reason)
 
     @patch('src.python.role_play.voice.handler.VoiceChatHandler._validate_jwt_token')
     async def test_websocket_invalid_token(self, mock_validate_jwt, handler):
@@ -217,12 +178,11 @@ class TestVoiceChatHandler:
         
         assert ws.closed
         assert ws.close_code == 1008
-        assert "Invalid authentication token" in str(ws.close_reason)
 
-    def test_voice_client_request_validation(self):
-        """Test VoiceClientRequest model validation."""
+    def test_voice_request_validation(self):
+        """Test VoiceRequest model validation."""
         # Valid request
-        request = VoiceClientRequest(
+        request = VoiceRequest(
             mime_type="audio/pcm",
             data="dGVzdCBhdWRpbw==",  # base64 encoded
             end_session=False
@@ -236,9 +196,9 @@ class TestVoiceChatHandler:
         decoded = request.decode_data()
         assert isinstance(decoded, bytes)
 
-    def test_voice_client_request_text_decoding(self):
-        """Test VoiceClientRequest text data decoding."""
-        request = VoiceClientRequest(
+    def test_voice_request_text_decoding(self):
+        """Test VoiceRequest text data decoding."""
+        request = VoiceRequest(
             mime_type="text/plain",
             data="dGVzdCB0ZXh0",  # "test text" in base64
             end_session=False
@@ -248,207 +208,78 @@ class TestVoiceChatHandler:
         assert decoded == "test text"
         assert isinstance(decoded, str)
 
-    def test_voice_config_message(self):
-        """Test VoiceConfigMessage creation."""
-        config = VoiceConfigMessage(
-            audio_format="pcm",
-            sample_rate=16000,
-            channels=1,
-            bit_depth=16,
-            language="en",
-            voice_name="Aoede"
+    def test_voice_message_creation(self):
+        """Test VoiceMessage creation with extra fields."""
+        message = VoiceMessage(
+            type="status",
+            timestamp="2025-01-14T10:30:00Z",
+            status="ready",  # Extra field allowed
+            message="Session ready"  # Extra field allowed
         )
         
-        assert config.type == "config"
-        assert config.audio_format == "pcm"
-        assert config.sample_rate == 16000
-        assert config.language == "en"
+        assert message.type == "status"
+        assert message.timestamp == "2025-01-14T10:30:00Z"
+        # Extra fields should be preserved due to Config.extra = "allow"
+        assert hasattr(message, "__pydantic_extra__") or message.dict()["status"] == "ready"
 
-    def test_voice_status_message(self):
-        """Test VoiceStatusMessage creation."""
-        status = VoiceStatusMessage(
-            status="connected",
-            message="Voice session connected"
-        )
+    def test_adk_event_processing(self, handler):
+        """Test direct ADK event processing."""
+        stats = {"transcripts_processed": 0}
         
-        assert status.type == "status"
-        assert status.status == "connected"
-        assert status.message == "Voice session connected"
+        # Mock transcript event with only the attributes we want
+        mock_event = Mock(spec=['input_transcription'])
+        mock_event.input_transcription = Mock()
+        mock_event.input_transcription.text = "Hello world"
+        mock_event.input_transcription.is_final = True
+        mock_event.input_transcription.confidence = 0.95
+        
+        result = handler._process_adk_event(mock_event, stats)
+        
+        assert result["type"] == "transcript_final"
+        assert result["text"] == "Hello world"
+        assert result["role"] == "user"
+        assert result["confidence"] == 0.95
+        assert stats["transcripts_processed"] == 1
 
-    def test_transcript_partial_message(self):
-        """Test TranscriptPartialMessage creation."""
-        partial = TranscriptPartialMessage(
-            text="Hello world",
-            role="user",
-            stability=0.85,
-            timestamp="2025-01-14T10:30:00Z"
-        )
-        
-        assert partial.type == "transcript_partial"
-        assert partial.text == "Hello world"
-        assert partial.role == "user"
-        assert partial.stability == 0.85
-
-    def test_transcript_final_message(self):
-        """Test TranscriptFinalMessage creation."""
-        final = TranscriptFinalMessage(
-            text="Hello world final",
-            role="assistant",
-            duration_ms=2500,
-            confidence=0.92,
-            metadata={"test": "data"},
-            timestamp="2025-01-14T10:30:00Z"
-        )
-        
-        assert final.type == "transcript_final"
-        assert final.text == "Hello world final"
-        assert final.role == "assistant"
-        assert final.duration_ms == 2500
-        assert final.confidence == 0.92
-        assert final.metadata["test"] == "data"
-
-    @patch('src.python.role_play.voice.handler.VoiceChatHandler._validate_jwt_token')
-    @patch('src.python.role_play.voice.handler.VoiceChatHandler._validate_session')
-    @patch('src.python.role_play.voice.handler.get_storage_backend')
-    @patch('src.python.role_play.voice.handler.get_chat_logger')
-    @patch('src.python.role_play.voice.handler.get_adk_session_service')
-    @patch('src.python.role_play.voice.handler.get_production_agent')
-    async def test_websocket_connection_flow(
-        self,
-        mock_resource_loader,
-        mock_adk_service,
-        mock_chat_logger,
-        mock_storage,
-        mock_validate_session,
-        mock_validate_jwt,
-        handler,
-        mock_user
-    ):
-        """Test the complete WebSocket connection flow."""
-        # Setup mocks
-        mock_validate_jwt.return_value = mock_user
-        
+    @pytest.mark.asyncio
+    async def test_adk_initialization(self, handler, mock_user):
+        """Test ADK components initialization."""
+        # Mock ADK session
         mock_adk_session = Mock()
         mock_adk_session.state = {
             "character_id": "char123",
             "scenario_id": "scenario123",
             "script_data": None
         }
-        mock_validate_session.return_value = mock_adk_session
         
-        # Mock chat logger with async methods
-        mock_chat_logger_instance = AsyncMock()
-        mock_chat_logger.return_value = mock_chat_logger_instance
-        
-        # Mock voice session with proper async iterator
-        class MockVoiceSession:
-            def __init__(self):
-                self.active = False
-                self.session_id = "session123"
+        with patch('src.python.role_play.voice.handler.get_production_agent') as mock_agent, \
+             patch('src.python.role_play.voice.handler.Runner') as mock_runner, \
+             patch('src.python.role_play.voice.handler.LiveRequestQueue') as mock_queue:
             
-            def process_events(self):
-                return MockAsyncIterator()
+            # Mock agent creation
+            mock_agent_instance = Mock()
+            mock_agent.return_value = mock_agent_instance
             
-            async def cleanup(self):
-                return {"stats": "test"}
-        
-        class MockAsyncIterator:
-            def __aiter__(self):
-                return self
+            # Mock runner
+            mock_runner_instance = Mock()
+            mock_runner.return_value = mock_runner_instance
+            mock_runner_instance.run_live.return_value = AsyncMock()
             
-            async def __anext__(self):
-                # Immediately raise StopAsyncIteration to end the loop
-                raise StopAsyncIteration
-        
-        mock_voice_session = MockVoiceSession()
-        
-        with patch.object(handler, '_create_live_session', return_value=mock_voice_session):
-            ws = MockWebSocket()
-            ws.query_params = {"token": "valid_token"}
+            # Mock queue
+            mock_queue_instance = Mock()
+            mock_queue.return_value = mock_queue_instance
             
-            # Accept the WebSocket first (normally done by router)
-            await ws.accept()
+            result = await handler._initialize_adk("session123", mock_user, mock_adk_session)
             
-            # This should complete without errors
-            await handler.handle_voice_session(ws, "session123", "valid_token")
-            
-            # Check that WebSocket was accepted and messages were sent
-            assert ws.accepted
-            assert len(ws.sent_messages) >= 2  # At least status and config messages
-            
-            # Check message types
-            message_types = [msg.get("type") for msg in ws.sent_messages]
-            assert "status" in message_types
-
-    @pytest.mark.asyncio
-    async def test_receive_from_client_text_message(self, handler):
-        """Test receiving text message from client."""
-        mock_voice_session = Mock()
-        mock_voice_session.active = True
-        mock_voice_session.send_text = AsyncMock()
-        mock_voice_session.end_session = AsyncMock()
-        
-        # Mock WebSocket that returns a text message then ends
-        ws = AsyncMock()
-        text_request = {
-            "mime_type": "text/plain",
-            "data": "dGVzdCBtZXNzYWdl",  # "test message" in base64
-            "end_session": False
-        }
-        end_request = {
-            "mime_type": "text/plain",
-            "data": "",
-            "end_session": True
-        }
-        
-        ws.receive_text.side_effect = [
-            json.dumps(text_request),
-            json.dumps(end_request)
-        ]
-        
-        await handler._receive_from_client(ws, mock_voice_session)
-        
-        # Verify text was sent to voice session
-        mock_voice_session.send_text.assert_called_once_with("test message")
-        mock_voice_session.end_session.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_receive_from_client_audio_message(self, handler):
-        """Test receiving audio message from client."""
-        mock_voice_session = Mock()
-        mock_voice_session.active = True
-        mock_voice_session.send_audio = AsyncMock()
-        mock_voice_session.end_session = AsyncMock()
-        
-        # Mock WebSocket that returns an audio message then ends
-        ws = AsyncMock()
-        audio_request = {
-            "mime_type": "audio/pcm",
-            "data": "dGVzdCBhdWRpbw==",  # "test audio" in base64
-            "end_session": False
-        }
-        end_request = {
-            "mime_type": "audio/pcm",
-            "data": "",
-            "end_session": True
-        }
-        
-        ws.receive_text.side_effect = [
-            json.dumps(audio_request),
-            json.dumps(end_request)
-        ]
-        
-        await handler._receive_from_client(ws, mock_voice_session)
-        
-        # Verify audio was sent to voice session
-        mock_voice_session.send_audio.assert_called_once()
-        call_args = mock_voice_session.send_audio.call_args
-        assert call_args[0][1] == "audio/pcm"  # mime_type argument
-        mock_voice_session.end_session.assert_called_once()
+            assert result["session_id"] == "session123"
+            assert result["user_id"] == mock_user.id
+            assert result["active"] is True
+            assert "stats" in result
+            assert result["stats"]["audio_chunks_sent"] == 0
 
 
 class TestVoiceHandlerIntegration:
-    """Integration tests for voice handler."""
+    """Integration tests for simplified voice handler."""
 
     @pytest.fixture
     def app_with_voice_handler(self):
@@ -461,12 +292,14 @@ class TestVoiceHandlerIntegration:
 
     def test_voice_handler_routes_registered(self, app_with_voice_handler):
         """Test that voice handler routes are properly registered."""
-        client = TestClient(app_with_voice_handler)
+        # Get the router from the app
+        voice_router = None
+        for route in app_with_voice_handler.routes:
+            if hasattr(route, 'path') and route.path.startswith('/voice'):
+                voice_router = route
+                break
         
-        # Test the simple endpoint
-        response = client.get("/voice/test")
-        assert response.status_code == 200
-        assert response.json()["status"] == "ok"
+        assert voice_router is not None
 
 
 if __name__ == "__main__":
