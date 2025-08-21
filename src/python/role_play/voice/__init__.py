@@ -1,7 +1,7 @@
 """Voice chat module for real-time bidirectional audio communication."""
 
 from .handler import VoiceChatHandler
-from .adk_voice_service import ADKVoiceService, VoiceSession
+from .adk_voice_service import LiveVoiceSession
 from .models import (
     VoiceClientRequest,
     VoiceConfigMessage,
@@ -13,7 +13,6 @@ from .models import (
     TurnStatusMessage,
     VoiceSessionInfo,
     VoiceSessionStats,
-    VoiceTranscriptConfig
 )
 
 __all__ = [
@@ -21,9 +20,7 @@ __all__ = [
     "VoiceChatHandler",
     
     # Core services
-    "ADKVoiceService",
-    "VoiceSession",
-    
+    "LiveVoiceSession",
     
     # Models
     "VoiceClientRequest",
@@ -36,5 +33,4 @@ __all__ = [
     "TurnStatusMessage",
     "VoiceSessionInfo",
     "VoiceSessionStats",
-    "VoiceTranscriptConfig",
 ]

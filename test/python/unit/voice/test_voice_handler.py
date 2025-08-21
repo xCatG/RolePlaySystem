@@ -81,7 +81,7 @@ class TestVoiceChatHandler:
     def test_handler_initialization(self, handler):
         """Test handler initializes correctly."""
         assert handler.prefix == "/voice"
-        assert handler.voice_service is not None
+        assert handler.active_sessions is not None
         assert handler.router is not None
 
     def test_router_endpoints(self, handler):
@@ -93,7 +93,6 @@ class TestVoiceChatHandler:
         assert "/ws/{session_id}" in routes
         assert "/session/{session_id}/info" in routes
         assert "/session/{session_id}/stats" in routes
-        assert "/test" in routes
 
     @patch('src.python.role_play.voice.handler.get_storage_backend')
     @patch('src.python.role_play.voice.handler.get_auth_manager')
@@ -313,7 +312,7 @@ class TestVoiceChatHandler:
     @patch('src.python.role_play.voice.handler.get_storage_backend')
     @patch('src.python.role_play.voice.handler.get_chat_logger')
     @patch('src.python.role_play.voice.handler.get_adk_session_service')
-    @patch('src.python.role_play.voice.handler.get_resource_loader')
+    @patch('src.python.role_play.voice.handler.get_production_agent')
     async def test_websocket_connection_flow(
         self,
         mock_resource_loader,
@@ -363,7 +362,7 @@ class TestVoiceChatHandler:
         
         mock_voice_session = MockVoiceSession()
         
-        with patch.object(handler.voice_service, 'create_voice_session', return_value=mock_voice_session):
+        with patch.object(handler, '_create_live_session', return_value=mock_voice_session):
             ws = MockWebSocket()
             ws.query_params = {"token": "valid_token"}
             
