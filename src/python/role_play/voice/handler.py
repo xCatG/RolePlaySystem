@@ -39,7 +39,6 @@ from .models import (
     VoiceSessionStats
 )
 from .adk_voice_service import ADKVoiceService
-from .transcript_manager import TranscriptSegment
 
 logger = logging.getLogger(__name__)
 
@@ -149,9 +148,7 @@ class VoiceChatHandler(BaseHandler):
                 VoiceStatusMessage(status="connecting", message="Initializing voice session").dict()
             )
             
-            # 3. Create voice session with transcript configuration
-            transcript_config = VoiceTranscriptConfig().dict()
-            
+            # 3. Create voice session
             voice_session = await self.voice_service.create_voice_session(
                 session_id=session_id,
                 user_id=user.id,
@@ -159,8 +156,7 @@ class VoiceChatHandler(BaseHandler):
                 scenario_id=adk_session.state.get("scenario_id"),
                 language=getattr(user, 'preferred_language', 'en'),
                 script_data=adk_session.state.get("script_data"),
-                adk_session_service=adk_session_service,
-                transcript_config=transcript_config
+                adk_session_service=adk_session_service
             )
             
             # 4. Send voice configuration to client

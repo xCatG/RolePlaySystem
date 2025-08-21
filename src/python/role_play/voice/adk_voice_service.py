@@ -16,11 +16,6 @@ from google.genai.types import (
 from ..dev_agents.roleplay_agent.agent import get_production_agent
 from ..chat.chat_logger import ChatLogger
 from ..common.time_utils import utc_now_isoformat
-from .transcript_manager import (
-    SessionTranscriptManager, 
-    TranscriptSegment, 
-    BufferedTranscript
-)
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +40,6 @@ class ADKVoiceService:
         language: str = "en",
         script_data: Optional[Dict] = None,
         adk_session_service: Optional[InMemorySessionService] = None,
-        transcript_config: Optional[Dict] = None
     ) -> 'VoiceSession':
         """
         Create and start an ADK live voice session.
@@ -58,7 +52,6 @@ class ADKVoiceService:
             language: Language for responses (en, zh-TW, ja)
             script_data: Optional script data for guided conversations
             adk_session_service: ADK session service instance
-            transcript_config: Configuration for transcript buffering
             
         Returns:
             VoiceSession: Active voice session instance
@@ -124,8 +117,6 @@ class ADKVoiceService:
             run_config=run_config
         )
 
-        # Create transcript manager
-        transcript_manager = SessionTranscriptManager(**(transcript_config or {}))
 
         # Create voice session wrapper
         voice_session = VoiceSession(
@@ -134,7 +125,6 @@ class ADKVoiceService:
             runner=runner,
             live_events=live_events,
             live_request_queue=live_request_queue,
-            transcript_manager=transcript_manager,
             adk_session=adk_session
         )
         
@@ -172,7 +162,6 @@ class VoiceSession:
         runner: Runner,
         live_events: AsyncGenerator,
         live_request_queue: LiveRequestQueue,
-        transcript_manager: SessionTranscriptManager,
         adk_session: Optional[Any] = None
     ):
         self.session_id = session_id
@@ -180,7 +169,6 @@ class VoiceSession:
         self.runner = runner
         self.live_events = live_events
         self.live_request_queue = live_request_queue
-        self.transcript_manager = transcript_manager
         self.adk_session = adk_session
         
         # Session state
@@ -214,17 +202,7 @@ class VoiceSession:
             content = Content(parts=[Part(text=text)])
             await self.live_request_queue.send_content(content)
             
-            # Create transcript segment for immediate display
-            segment = TranscriptSegment(
-                text=text,
-                stability=1.0,
-                is_final=True,
-                timestamp=utc_now_isoformat(),
-                confidence=1.0,
-                role="user"
-            )
-            
-            await self.transcript_manager.add_user_segment(segment)
+            # Text input is always final - no transcript management needed
             
         except Exception as e:
             logger.error(f"Error sending text in session {self.session_id}: {e}")
@@ -275,69 +253,49 @@ class VoiceSession:
         # Input transcription (user speech)
         if hasattr(event, 'input_transcription') and event.input_transcription:
             transcription = event.input_transcription
+            is_final = getattr(transcription, 'is_final', True)
             
-            segment = TranscriptSegment(
-                text=transcription.text,
-                stability=getattr(transcription, 'stability', 1.0),
-                is_final=getattr(transcription, 'is_final', True),
-                timestamp=utc_now_isoformat(),
-                confidence=getattr(transcription, 'confidence', None),
-                role="user"
-            )
-            
-            display_text, finalized = await self.transcript_manager.add_user_segment(segment)
-            
-            if finalized:
+            if is_final:
                 return {
                     "type": "transcript_final",
-                    "text": finalized.text,
+                    "text": transcription.text,
                     "role": "user",
-                    "duration_ms": finalized.duration_ms,
-                    "confidence": finalized.confidence,
-                    "metadata": finalized.voice_metadata,
-                    "timestamp": finalized.timestamp
+                    "duration_ms": 0,  # Could calculate if needed
+                    "confidence": getattr(transcription, 'confidence', 1.0),
+                    "metadata": {},
+                    "timestamp": utc_now_isoformat()
                 }
             else:
                 return {
                     "type": "transcript_partial",
-                    "text": display_text or "",
+                    "text": transcription.text,
                     "role": "user",
-                    "stability": segment.stability,
-                    "timestamp": segment.timestamp
+                    "stability": getattr(transcription, 'stability', 1.0),
+                    "timestamp": utc_now_isoformat()
                 }
 
         # Output transcription (assistant speech)
         if hasattr(event, 'output_transcription') and event.output_transcription:
             transcription = event.output_transcription
+            is_final = getattr(transcription, 'is_final', True)
             
-            segment = TranscriptSegment(
-                text=transcription.text,
-                stability=getattr(transcription, 'stability', 1.0),
-                is_final=getattr(transcription, 'is_final', True),
-                timestamp=utc_now_isoformat(),
-                confidence=getattr(transcription, 'confidence', None),
-                role="assistant"
-            )
-            
-            display_text, finalized = await self.transcript_manager.add_assistant_segment(segment)
-            
-            if finalized:
+            if is_final:
                 return {
                     "type": "transcript_final",
-                    "text": finalized.text,
+                    "text": transcription.text,
                     "role": "assistant",
-                    "duration_ms": finalized.duration_ms,
-                    "confidence": finalized.confidence,
-                    "metadata": finalized.voice_metadata,
-                    "timestamp": finalized.timestamp
+                    "duration_ms": 0,  # Could calculate if needed
+                    "confidence": getattr(transcription, 'confidence', 1.0),
+                    "metadata": {},
+                    "timestamp": utc_now_isoformat()
                 }
             else:
                 return {
                     "type": "transcript_partial",
-                    "text": display_text or "",
+                    "text": transcription.text,
                     "role": "assistant",
-                    "stability": segment.stability,
-                    "timestamp": segment.timestamp
+                    "stability": getattr(transcription, 'stability', 1.0),
+                    "timestamp": utc_now_isoformat()
                 }
 
         # Audio content (assistant response)
@@ -370,26 +328,15 @@ class VoiceSession:
         if self.live_request_queue:
             self.live_request_queue.close()
 
-    async def flush_transcripts(self) -> List[BufferedTranscript]:
-        """Flush all pending transcripts."""
-        return await self.transcript_manager.flush_all()
 
     async def cleanup(self) -> Dict[str, Any]:
         """Cleanup session and return final statistics."""
         if self.active:
             await self.end_session()
         
-        # Flush any remaining transcripts
-        pending_transcripts = await self.flush_transcripts()
-        
-        # Get session statistics
-        session_stats = self.transcript_manager.get_session_stats()
-        
         final_stats = {
             **self.stats,
-            "ended_at": utc_now_isoformat(),
-            "pending_transcripts_flushed": len(pending_transcripts),
-            **session_stats
+            "ended_at": utc_now_isoformat()
         }
         
         logger.info(f"Voice session {self.session_id} cleanup completed: {final_stats}")
@@ -397,7 +344,4 @@ class VoiceSession:
 
     def get_stats(self) -> Dict[str, Any]:
         """Get current session statistics."""
-        return {
-            **self.stats,
-            **self.transcript_manager.get_session_stats()
-        }
+        return self.stats
