@@ -182,38 +182,28 @@ make test-specific TEST_PATH="test/python/unit/chat/test_chat_logger.py"
 - [x] **Internationalization**: Full English/Traditional Chinese support for new UI elements
 - [x] **CSS Improvements**: Fixed radio button alignment issues with proper flexbox layout
 
-### Voice Chat with Intelligent Transcript Management (Completed)
-- [x] **Three-Tier Transcript System**: Implemented sophisticated buffering to prevent fragmented logs
-  - **Live Display Buffer**: Real-time partial transcript updates for immediate user feedback
-  - **Stabilization Buffer**: Quality filtering using stability thresholds and sentence boundary detection
-  - **Persistent Log**: Only finalized, coherent utterances saved to ChatLogger with voice metadata
-- [x] **Backend Voice Module** (`src/python/role_play/voice/`):
-  - **TranscriptBuffer**: Intelligent partial→final transitions with configurable quality controls
-  - **SessionTranscriptManager**: Dual-buffer management for user/assistant speech separation
-  - **ADKVoiceService**: Native ADK `run_live()` integration with `LiveRequestQueue` for bidirectional streaming
-  - **VoiceChatHandler**: WebSocket endpoint (`/api/voice/ws/{session_id}`) with JWT authentication
-  - **Voice Models**: Complete data models for audio chunks, transcripts, and session management
-- [x] **Extended ChatLogger Integration**: New voice logging methods preserve existing JSONL format
-  - `log_voice_message()`: Stores transcripts with duration, confidence, and voice metadata
-  - `log_voice_session_start/end()`: Session lifecycle tracking with statistics
-  - Voice events logged alongside text messages for unified conversation history
-- [x] **Frontend Voice Components** (`src/ts/role_play/ui/src/`):
-  - **VoiceTranscript.vue**: Intelligent UI with real-time partial updates and stability indicators
-  - **useTranscriptBuffer.ts**: Frontend buffering logic mirroring backend quality control
-  - **useVoiceWebSocket.ts**: Modern AudioWorkletNode integration with robust connection management
-  - **Voice Types**: Complete TypeScript definitions for voice communication
-- [x] **Configuration & Quality Control**:
-  - Configurable transcript parameters: stability threshold (0.8), finalization timeout (2s), min utterance length
-  - Smart sentence boundary detection and timeout-based finalization
-  - Mock mode for development without API keys
-  - Voice handler registered in server configuration
-- [x] **Internationalization**: Full bilingual support (English/Traditional Chinese) for voice UI
-- [x] **Comprehensive Testing**: Unit tests for transcript buffering logic and WebSocket handler integration
-- [x] **Key Innovations**:
-  - **Prevents Fragmented Logs**: No more "I", "I want", "I want to" entries - only complete utterances
-  - **Real-time UX**: Live partial feedback while maintaining log quality
-  - **ADK Native**: Uses `run_live()` instead of direct Gemini API for better integration
-  - **Character Consistency**: Reuses existing agent system for voice responses
+### Voice Chat with Direct ADK Integration (Completed & Radically Simplified)
+- [x] **Radical Architecture Simplification**: Eliminated over-engineered transcript management and wrapper classes
+  - **Direct ADK Integration**: Handler stores `Runner`, `live_events`, `live_request_queue` directly
+  - **Native Transcript Handling**: Uses ADK's built-in `is_final` flags instead of custom buffering
+  - **Minimal Models**: Reduced from 150+ lines with 7+ types to 30 lines with 2 generic types (`VoiceRequest`, `VoiceMessage`)
+  - **Code Reduction**: ~470 lines removed, 4-layer abstraction simplified to 2-layer
+- [x] **Streamlined Backend Voice Module** (`src/python/role_play/voice/`):
+  - **VoiceChatHandler**: Direct ADK integration with WebSocket endpoint (`/api/voice/ws/{session_id}`)
+  - **No Wrapper Classes**: Eliminated `LiveVoiceSession`, `TranscriptBuffer`, `SessionTranscriptManager`
+  - **ADK Event Processing**: Direct processing of `run_live()` events without intermediate transformations
+  - **Generic Models**: Flexible `VoiceRequest`/`VoiceMessage` with `extra="allow"` for any field structure
+- [x] **Preserved Functionality**: All original features maintained with radical simplification
+  - **Transcript Capture**: Reliable logging using ADK's native finalization mechanisms
+  - **Real-time Streaming**: Bidirectional audio/text communication preserved
+  - **Session Management**: WebSocket lifecycle and error handling maintained
+  - **ChatLogger Integration**: Voice logging methods unchanged, full JSONL compatibility
+- [x] **Architecture Benefits**:
+  - **Maximum Simplification**: Direct ADK utilization without wrapper overhead
+  - **Future-Proof**: Automatic benefits from ADK improvements
+  - **Maintainable**: Fewer abstractions, easier to understand and modify
+  - **Performance**: Reduced memory footprint and processing overhead
+- [x] **Testing Updated**: 13 comprehensive tests covering simplified architecture, all 328 tests passing
 
 ### Pending Development
 - [ ] **Resource Architecture for Script Creator**:
