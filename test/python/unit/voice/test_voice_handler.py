@@ -3,9 +3,10 @@
 import pytest
 import asyncio
 import json
+import base64
 from unittest.mock import Mock, AsyncMock, patch, MagicMock
 from fastapi.testclient import TestClient
-from fastapi import WebSocket
+from fastapi import WebSocket, WebSocketDisconnect
 
 from src.python.role_play.voice.handler import VoiceChatHandler
 from src.python.role_play.voice.models import VoiceRequest, VoiceMessage
@@ -300,6 +301,157 @@ class TestVoiceHandlerIntegration:
                 break
         
         assert voice_router is not None
+
+
+class TestVoiceValidationAndLimits:
+    """Test validation and security limits."""
+
+    @pytest.fixture
+    def handler(self):
+        return VoiceChatHandler()
+
+    @pytest.fixture
+    def mock_user(self):
+        """Create a mock user."""
+        from datetime import datetime, timezone
+        return User(
+            id="user123",
+            username="testuser",
+            email="test@example.com",
+            role=UserRole.USER,
+            preferred_language="en",
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc)
+        )
+
+    def test_audio_chunk_size_validation(self):
+        """Test audio chunk size limit validation."""
+        from src.python.role_play.voice.config import VoiceConfig
+        
+        # Create oversized audio data
+        large_audio = b"x" * (VoiceConfig.MAX_AUDIO_CHUNK_SIZE + 1)
+        large_audio_b64 = base64.b64encode(large_audio).decode()
+        
+        request = VoiceRequest(
+            mime_type="audio/pcm",
+            data=large_audio_b64,
+            end_session=False
+        )
+        
+        # Should raise ValueError on decode
+        with pytest.raises(ValueError, match="Audio chunk too large"):
+            request.decode_data()
+
+    def test_text_size_validation(self):
+        """Test text size limit validation."""
+        from src.python.role_play.voice.config import VoiceConfig
+        
+        # Create oversized text data
+        large_text = "x" * (VoiceConfig.MAX_TEXT_SIZE + 1)
+        large_text_b64 = base64.b64encode(large_text.encode()).decode()
+        
+        request = VoiceRequest(
+            mime_type="text/plain",
+            data=large_text_b64,
+            end_session=False
+        )
+        
+        # Should raise ValueError on decode
+        with pytest.raises(ValueError, match="Text too large"):
+            request.decode_data()
+
+    def test_invalid_mime_type_validation(self):
+        """Test unsupported MIME type validation."""
+        with pytest.raises(ValueError, match="Unsupported MIME type"):
+            VoiceRequest(
+                mime_type="video/mp4",  # Unsupported
+                data="dGVzdA==",
+                end_session=False
+            )
+
+    def test_malformed_base64_data(self):
+        """Test malformed base64 data handling."""
+        request = VoiceRequest(
+            mime_type="text/plain",
+            data="invalid_base64!!!",  # Malformed base64
+            end_session=False
+        )
+        
+        with pytest.raises(ValueError, match="Invalid base64 data"):
+            request.decode_data()
+
+    def test_session_limit_per_user(self, handler):
+        """Test session limit enforcement per user."""
+        from src.python.role_play.voice.config import VoiceConfig
+        
+        # Create max allowed sessions for user
+        for i in range(VoiceConfig.MAX_SESSIONS_PER_USER):
+            handler.active_sessions[f"session_{i}"] = {"user_id": "user123"}
+        
+        # Should still allow for this user
+        assert handler._check_session_limit("user123") is False
+        
+        # Should allow for different user
+        assert handler._check_session_limit("user456") is True
+        
+        # Remove one session
+        del handler.active_sessions["session_0"]
+        assert handler._check_session_limit("user123") is True
+
+    @pytest.mark.asyncio
+    async def test_connection_error_cleanup(self, handler):
+        """Test connection error cleanup."""
+        # Setup mock session
+        mock_adk = {
+            "session_id": "test_session",
+            "user_id": "user123",
+            "active": True,
+            "live_request_queue": Mock(),
+            "stats": {}
+        }
+        handler.active_sessions["test_session"] = mock_adk
+        
+        with patch.object(handler, '_cleanup_adk') as mock_cleanup:
+            mock_cleanup.return_value = {"stats": "test"}
+            
+            # Test cleanup
+            await handler._handle_connection_error("test_session")
+            
+            # Should call cleanup and remove session
+            mock_cleanup.assert_called_once_with(mock_adk)
+            assert "test_session" not in handler.active_sessions
+
+    @pytest.mark.asyncio 
+    async def test_websocket_disconnect_during_streaming(self, handler):
+        """Test WebSocket disconnect during active streaming."""
+        mock_adk = {
+            "session_id": "test_session",
+            "active": True,
+            "stats": {"errors": 0}
+        }
+        
+        # Mock WebSocket that raises disconnect
+        mock_websocket = AsyncMock()
+        mock_websocket.receive_text.side_effect = WebSocketDisconnect()
+        
+        # Should handle disconnect gracefully
+        await handler._receive_from_client(mock_websocket, mock_adk)
+        
+        # Session should be marked inactive
+        assert mock_adk["active"] is False
+
+    @pytest.mark.asyncio
+    async def test_adk_initialization_failure(self, handler, mock_user):
+        """Test ADK initialization failure handling."""
+        mock_adk_session = Mock()
+        mock_adk_session.state = {"character_id": "char123", "scenario_id": "scenario123"}
+        
+        with patch('src.python.role_play.voice.handler.get_production_agent') as mock_agent:
+            # Mock agent creation failure
+            mock_agent.return_value = None
+            
+            with pytest.raises(ValueError, match="Failed to create roleplay agent"):
+                await handler._initialize_adk("session123", mock_user, mock_adk_session)
 
 
 if __name__ == "__main__":

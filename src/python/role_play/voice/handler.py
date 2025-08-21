@@ -1,9 +1,32 @@
-"""Direct ADK integration voice handler - radically simplified."""
+"""Direct ADK integration voice handler - radically simplified.
+
+Architecture Flow:
+    Client (WebSocket) 
+        ↓↑
+    VoiceChatHandler (Direct ADK integration)
+        ↓↑
+    ADK Runner (run_live streaming)
+        ↓↑
+    Gemini Live API
+
+Design Principles:
+- No intermediate wrappers or abstractions
+- Sessions stored directly in handler.active_sessions dict
+- ADK events processed directly without transformation
+- Uses ADK's native is_final flags for transcript finalization
+- Minimal models: VoiceRequest/VoiceMessage with flexible fields
+
+Security Features:
+- JWT authentication for WebSocket connections
+- Input validation with size limits (100KB audio, 10KB text)
+- Session limits per user (max 5 concurrent)
+- Proper error handling and resource cleanup
+"""
 
 import asyncio
 import logging
 import base64
-from typing import Optional, Dict, Any, Tuple
+from typing import Optional, Dict, Any, Tuple, Protocol
 from fastapi import WebSocket, WebSocketDisconnect, Query, HTTPException, APIRouter
 from google.adk.runners import Runner
 from google.adk.agents import LiveRequestQueue
@@ -21,8 +44,19 @@ from ..dev_agents.roleplay_agent.agent import get_production_agent
 from google.adk.sessions import InMemorySessionService
 
 from .models import VoiceRequest, VoiceMessage
+from .config import VoiceConfig
 
 logger = logging.getLogger(__name__)
+
+
+class ADKEvent(Protocol):
+    """Protocol for ADK live event types."""
+    turn_complete: Optional[bool]
+    interrupted: Optional[bool]
+    input_transcription: Optional[Any]
+    output_transcription: Optional[Any]
+    content: Optional[Any]
+
 
 class VoiceChatHandler(BaseHandler):
     """Direct ADK integration for voice chat."""
@@ -47,7 +81,7 @@ class VoiceChatHandler(BaseHandler):
         await websocket.accept()
         token = websocket.query_params.get("token")
         if not token:
-            await websocket.close(code=1008, reason="Missing token parameter")
+            await websocket.close(code=VoiceConfig.WS_MISSING_TOKEN, reason="Missing token parameter")
             return
         await self.handle_voice_session(websocket, session_id, token)
 
@@ -60,7 +94,12 @@ class VoiceChatHandler(BaseHandler):
             # Validate user and session
             user = await self._validate_jwt_token(token)
             if not user:
-                await websocket.close(code=1008, reason="Invalid authentication token")
+                await websocket.close(code=VoiceConfig.WS_INVALID_TOKEN, reason="Invalid authentication token")
+                return
+
+            # Check session limits per user
+            if not self._check_session_limit(user.id):
+                await websocket.close(code=VoiceConfig.WS_INVALID_TOKEN, reason="Maximum sessions per user exceeded")
                 return
 
             storage = get_storage_backend()
@@ -69,7 +108,7 @@ class VoiceChatHandler(BaseHandler):
             
             adk_session = await self._validate_session(session_id, user.id, adk_session_service, chat_logger)
             if not adk_session:
-                await websocket.close(code=1008, reason="Session not found or access denied")
+                await websocket.close(code=VoiceConfig.WS_SESSION_NOT_FOUND, reason="Session not found or access denied")
                 return
 
             # Send initial status
@@ -86,10 +125,10 @@ class VoiceChatHandler(BaseHandler):
             # Send configuration
             await websocket.send_json({
                 "type": "config",
-                "audio_format": "pcm",
-                "sample_rate": 16000,
-                "channels": 1,
-                "bit_depth": 16,
+                "audio_format": VoiceConfig.AUDIO_FORMAT,
+                "sample_rate": VoiceConfig.AUDIO_SAMPLE_RATE,
+                "channels": VoiceConfig.AUDIO_CHANNELS,
+                "bit_depth": VoiceConfig.AUDIO_BIT_DEPTH,
                 "language": getattr(user, 'preferred_language', 'en')
             })
             
@@ -109,8 +148,13 @@ class VoiceChatHandler(BaseHandler):
 
         except WebSocketDisconnect:
             logger.info(f"WebSocket disconnected for session {session_id}")
+            await self._handle_connection_error(session_id)
+        except ConnectionError as e:
+            logger.error(f"Connection error for session {session_id}: {e}")
+            await self._handle_connection_error(session_id)
         except Exception as e:
-            logger.error(f"Voice session error: {e}", exc_info=True)
+            logger.error(f"Unexpected error for session {session_id}: {e}", exc_info=True)
+            await self._handle_connection_error(session_id)
             try:
                 await websocket.send_json({
                     "type": "error",
@@ -118,9 +162,9 @@ class VoiceChatHandler(BaseHandler):
                     "timestamp": utc_now_isoformat()
                 })
             except:
-                pass
+                pass  # Connection might be closed
         finally:
-            if adk_components:
+            if adk_components and session_id in self.active_sessions:
                 stats = await self._cleanup_adk(adk_components)
                 if user:
                     storage = get_storage_backend()
@@ -183,23 +227,44 @@ class VoiceChatHandler(BaseHandler):
 
     async def _receive_from_client(self, websocket: WebSocket, adk: Dict[str, Any]):
         """Receive from client and send directly to ADK."""
-        while adk["active"]:
-            data = await websocket.receive_text()
-            request = VoiceRequest.model_validate_json(data)
-            
-            if request.end_session:
-                adk["active"] = False
-                adk["live_request_queue"].close()
-                break
-            
-            # Send directly to ADK
-            if request.mime_type == "audio/pcm":
-                blob = Blob(mime_type=request.mime_type, data=request.decode_data())
-                await adk["live_request_queue"].send_realtime(blob)
-                adk["stats"]["audio_chunks_sent"] += 1
-            elif request.mime_type == "text/plain":
-                content = Content(parts=[Part(text=request.decode_data())])
-                await adk["live_request_queue"].send_content(content)
+        try:
+            while adk["active"]:
+                data = await websocket.receive_text()
+                
+                try:
+                    request = VoiceRequest.model_validate_json(data)
+                except ValueError as e:
+                    logger.warning(f"Invalid request data: {e}")
+                    adk["stats"]["errors"] += 1
+                    continue
+                
+                if request.end_session:
+                    adk["active"] = False
+                    adk["live_request_queue"].close()
+                    break
+                
+                try:
+                    # Send directly to ADK
+                    if request.mime_type == "audio/pcm":
+                        blob = Blob(mime_type=request.mime_type, data=request.decode_data())
+                        await adk["live_request_queue"].send_realtime(blob)
+                        adk["stats"]["audio_chunks_sent"] += 1
+                    elif request.mime_type == "text/plain":
+                        content = Content(parts=[Part(text=request.decode_data())])
+                        await adk["live_request_queue"].send_content(content)
+                except ValueError as e:
+                    logger.warning(f"Data validation error: {e}")
+                    adk["stats"]["errors"] += 1
+                except Exception as e:
+                    logger.error(f"Error sending to ADK: {e}")
+                    adk["stats"]["errors"] += 1
+                    
+        except WebSocketDisconnect:
+            logger.info(f"Client disconnected from session {adk['session_id']}")
+            adk["active"] = False
+        except Exception as e:
+            logger.error(f"Error receiving from client: {e}")
+            adk["active"] = False
 
     async def _send_to_client(self, websocket: WebSocket, adk: Dict[str, Any], chat_logger: ChatLogger, user_id: str):
         """Process ADK events directly and send to client."""
@@ -231,16 +296,22 @@ class VoiceChatHandler(BaseHandler):
                     
         except asyncio.CancelledError:
             logger.info(f"Event processing cancelled for session {adk['session_id']}")
-        except Exception as e:
-            logger.error(f"Error processing events: {e}")
+        except ConnectionError as e:
+            logger.error(f"Connection error during event processing: {e}")
             adk["stats"]["errors"] += 1
-            await websocket.send_json({
-                "type": "error",
-                "error": str(e),
-                "timestamp": utc_now_isoformat()
-            })
+        except Exception as e:
+            logger.error(f"Unexpected error processing events: {e}", exc_info=True)
+            adk["stats"]["errors"] += 1
+            try:
+                await websocket.send_json({
+                    "type": "error",
+                    "error": str(e),
+                    "timestamp": utc_now_isoformat()
+                })
+            except:
+                pass  # Connection might be closed
 
-    def _process_adk_event(self, event: Any, stats: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    def _process_adk_event(self, event: ADKEvent, stats: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Process a single ADK event directly."""
         stats["transcripts_processed"] += 1
         
@@ -325,3 +396,20 @@ class VoiceChatHandler(BaseHandler):
             return None
         logger.warning(f"Session {session_id} not found for user {user_id}")
         return None
+
+    def _check_session_limit(self, user_id: str) -> bool:
+        """Check if user hasn't exceeded session limit."""
+        user_sessions = sum(1 for session in self.active_sessions.values() 
+                           if session.get("user_id") == user_id)
+        return user_sessions < VoiceConfig.MAX_SESSIONS_PER_USER
+
+    async def _handle_connection_error(self, session_id: str):
+        """Clean up resources on connection error."""
+        if session_id in self.active_sessions:
+            try:
+                await self._cleanup_adk(self.active_sessions[session_id])
+            except Exception as e:
+                logger.error(f"Error during cleanup for {session_id}: {e}")
+            finally:
+                del self.active_sessions[session_id]
+                logger.info(f"Cleaned up session {session_id} after connection error")
