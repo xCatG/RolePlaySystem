@@ -11,10 +11,11 @@ Architecture Flow:
 
 Design Principles:
 - No intermediate wrappers or abstractions
-- Sessions stored directly in handler.active_sessions dict
+- Stateless handler design (no session tracking in handler instance)
 - ADK events processed directly without transformation
 - Uses ADK's native is_final flags for transcript finalization
 - Minimal models: VoiceRequest/VoiceMessage with flexible fields
+- WebSocket-scoped ADK components (created per connection)
 
 Security Features:
 - JWT authentication for WebSocket connections
@@ -39,6 +40,7 @@ from ..server.dependencies import (
 )
 from ..common.models import User
 from ..common.time_utils import utc_now_isoformat
+from ..common.storage import StorageBackend
 from ..chat.chat_logger import ChatLogger
 from ..dev_agents.roleplay_agent.agent import get_production_agent
 from google.adk.sessions import InMemorySessionService
@@ -63,8 +65,6 @@ class VoiceChatHandler(BaseHandler):
 
     def __init__(self):
         super().__init__()
-        # Store active ADK components directly
-        self.active_sessions: Dict[str, Dict[str, Any]] = {}
 
     @property
     def router(self) -> APIRouter:
@@ -97,14 +97,14 @@ class VoiceChatHandler(BaseHandler):
                 await websocket.close(code=VoiceConfig.WS_INVALID_TOKEN, reason="Invalid authentication token")
                 return
 
-            # Check session limits per user
-            if not self._check_session_limit(user.id):
-                await websocket.close(code=VoiceConfig.WS_INVALID_TOKEN, reason="Maximum sessions per user exceeded")
-                return
-
             storage = get_storage_backend()
             chat_logger = get_chat_logger(storage)
             adk_session_service = get_adk_session_service()
+            
+            # Check session limits per user
+            if not await self._check_session_limit(user.id, storage):
+                await websocket.close(code=VoiceConfig.WS_INVALID_TOKEN, reason="Maximum sessions per user exceeded")
+                return
             
             adk_session = await self._validate_session(session_id, user.id, adk_session_service, chat_logger)
             if not adk_session:
@@ -119,8 +119,7 @@ class VoiceChatHandler(BaseHandler):
             })
             
             # Initialize ADK components directly
-            adk_components = await self._initialize_adk(session_id, user, adk_session)
-            self.active_sessions[session_id] = adk_components
+            adk_components = await self._initialize_adk(session_id, user, adk_session, adk_session_service)
 
             # Send configuration
             await websocket.send_json({
@@ -148,13 +147,13 @@ class VoiceChatHandler(BaseHandler):
 
         except WebSocketDisconnect:
             logger.info(f"WebSocket disconnected for session {session_id}")
-            await self._handle_connection_error(session_id)
+            await self._handle_connection_error(session_id, adk_components)
         except ConnectionError as e:
             logger.error(f"Connection error for session {session_id}: {e}")
-            await self._handle_connection_error(session_id)
+            await self._handle_connection_error(session_id, adk_components)
         except Exception as e:
             logger.error(f"Unexpected error for session {session_id}: {e}", exc_info=True)
-            await self._handle_connection_error(session_id)
+            await self._handle_connection_error(session_id, adk_components)
             try:
                 await websocket.send_json({
                     "type": "error",
@@ -164,16 +163,15 @@ class VoiceChatHandler(BaseHandler):
             except:
                 pass  # Connection might be closed
         finally:
-            if adk_components and session_id in self.active_sessions:
+            if adk_components:
                 stats = await self._cleanup_adk(adk_components)
                 if user:
                     storage = get_storage_backend()
                     chat_logger = get_chat_logger(storage)
                     await chat_logger.log_voice_session_end(user.id, session_id, voice_stats=stats)
-                self.active_sessions.pop(session_id, None)
                 logger.info(f"Voice session {session_id} cleanup completed")
 
-    async def _initialize_adk(self, session_id: str, user: User, adk_session: Any) -> Dict[str, Any]:
+    async def _initialize_adk(self, session_id: str, user: User, adk_session: Any, adk_session_service: InMemorySessionService) -> Dict[str, Any]:
         """Initialize ADK components directly."""
         # Create agent
         agent = await get_production_agent(
@@ -186,7 +184,7 @@ class VoiceChatHandler(BaseHandler):
             raise ValueError("Failed to create roleplay agent")
 
         # Create runner and start live streaming
-        runner = Runner(app_name="roleplay_voice", agent=agent)
+        runner = Runner(app_name="roleplay_voice", agent=agent, session_service=adk_session_service)
         run_config = RunConfig(
             response_modalities=["AUDIO"],
             output_audio_transcription=AudioTranscriptionConfig(),
@@ -388,7 +386,9 @@ class VoiceChatHandler(BaseHandler):
 
     async def _validate_session(self, session_id: str, user_id: str, adk_session_service: InMemorySessionService, chat_logger: ChatLogger) -> Optional[Any]:
         """Validate that a chat session exists and belongs to the user."""
-        adk_session = await adk_session_service.get_session("roleplay_chat", user_id, session_id)
+        adk_session = await adk_session_service.get_session(
+            app_name="roleplay_chat", user_id=user_id, session_id=session_id
+        )
         if adk_session:
             return adk_session
         if await chat_logger.get_session_end_info(user_id, session_id):
@@ -397,19 +397,33 @@ class VoiceChatHandler(BaseHandler):
         logger.warning(f"Session {session_id} not found for user {user_id}")
         return None
 
-    def _check_session_limit(self, user_id: str) -> bool:
-        """Check if user hasn't exceeded session limit."""
-        user_sessions = sum(1 for session in self.active_sessions.values() 
-                           if session.get("user_id") == user_id)
-        return user_sessions < VoiceConfig.MAX_SESSIONS_PER_USER
+    async def _check_session_limit(self, user_id: str, storage: StorageBackend) -> bool:
+        """Check if user hasn't exceeded session limit.
+        
+        TODO: Implement distributed session tracking via storage backend
+        For now, always return True (no limit enforcement).
+        
+        Future implementation:
+        - Store active sessions in storage: voice_sessions/{user_id}/active/{session_id}
+        - Include server_id, started_at timestamp
+        - Clean up stale sessions (>1 hour old)
+        - Count active sessions across all servers
+        - Enforce MAX_SESSIONS_PER_USER limit
+        
+        Example:
+            active_sessions = await storage.list_keys(f"voice_sessions/{user_id}/active/")
+            # Filter stale sessions older than 1 hour
+            # Return len(active_sessions) < VoiceConfig.MAX_SESSIONS_PER_USER
+        """
+        # For now, no limit enforcement in distributed environment
+        return True
 
-    async def _handle_connection_error(self, session_id: str):
+    async def _handle_connection_error(self, session_id: str, adk_components: Optional[Dict] = None):
         """Clean up resources on connection error."""
-        if session_id in self.active_sessions:
+        if adk_components:
             try:
-                await self._cleanup_adk(self.active_sessions[session_id])
+                await self._cleanup_adk(adk_components)
             except Exception as e:
                 logger.error(f"Error during cleanup for {session_id}: {e}")
             finally:
-                del self.active_sessions[session_id]
                 logger.info(f"Cleaned up session {session_id} after connection error")

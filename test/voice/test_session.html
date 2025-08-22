@@ -1,0 +1,673 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Voice Backend Test - Medical Patient Interview with Sarah - Chronic Pain Patient</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 { 
+            color: #333; 
+            margin-top: 0;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .info-box {
+            background: #e3f2fd;
+            border-left: 4px solid #2196f3;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin: 20px 0;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        button {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 4px;
+            background: #007bff;
+            color: white;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.2s;
+        }
+        button:hover { background: #0056b3; }
+        button:disabled { 
+            background: #ccc; 
+            cursor: not-allowed;
+            opacity: 0.6;
+        }
+        button.recording {
+            background: #dc3545;
+            animation: pulse 1.5s infinite;
+        }
+        button.danger {
+            background: #dc3545;
+        }
+        button.danger:hover {
+            background: #c82333;
+        }
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.7; }
+            100% { opacity: 1; }
+        }
+        .status {
+            padding: 12px;
+            margin: 10px 0;
+            border-radius: 4px;
+            background: #f0f0f0;
+            font-weight: 500;
+        }
+        .status.connected { 
+            background: #d4edda; 
+            color: #155724; 
+        }
+        .status.error { 
+            background: #f8d7da; 
+            color: #721c24; 
+        }
+        .status.processing {
+            background: #fff3cd;
+            color: #856404;
+        }
+        .transcript {
+            max-height: 500px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 15px;
+            margin-top: 20px;
+            background: #fafafa;
+        }
+        .message {
+            margin: 12px 0;
+            padding: 10px 15px;
+            border-radius: 8px;
+            max-width: 80%;
+        }
+        .message.user {
+            background: #e3f2fd;
+            margin-left: auto;
+            text-align: right;
+            border-bottom-right-radius: 4px;
+        }
+        .message.assistant {
+            background: #f5f5f5;
+            margin-right: auto;
+            border-bottom-left-radius: 4px;
+        }
+        .message.partial {
+            opacity: 0.7;
+            font-style: italic;
+            border: 1px dashed #ccc;
+        }
+        .text-input {
+            display: flex;
+            gap: 10px;
+            margin: 20px 0;
+        }
+        .text-input input {
+            flex: 1;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        .config-display {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 15px 0;
+            font-size: 14px;
+            border: 1px solid #e9ecef;
+        }
+        .debug-panel {
+            background: #2d3748;
+            color: #e2e8f0;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 20px 0;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 12px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .debug-panel h3 {
+            margin-top: 0;
+            color: #90cdf4;
+        }
+        .debug-message {
+            margin: 5px 0;
+            padding: 5px;
+            border-radius: 3px;
+        }
+        .debug-sent {
+            background: rgba(72, 187, 120, 0.2);
+        }
+        .debug-received {
+            background: rgba(99, 179, 237, 0.2);
+        }
+        .debug-error {
+            background: rgba(245, 101, 101, 0.2);
+        }
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 10px;
+            margin: 15px 0;
+        }
+        .stat-item {
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 4px;
+            text-align: center;
+            border: 1px solid #e9ecef;
+        }
+        .stat-value {
+            font-size: 18px;
+            font-weight: bold;
+            color: #007bff;
+        }
+        .stat-label {
+            font-size: 12px;
+            color: #6c757d;
+            margin-top: 5px;
+        }
+        .warning {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            color: #856404;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>
+            🎙️ Voice Backend Test
+            <div style="margin-left: auto; font-size: 14px; color: #666;">
+                Real-time WebSocket Testing
+            </div>
+        </h1>
+        
+        <div class="info-box">
+            <strong>📖 Scenario:</strong> Medical Patient Interview<br>
+            <strong>👤 Character:</strong> Sarah - Chronic Pain Patient<br>
+            <strong>🔗 Session ID:</strong> <code>1dc7a4fe-2038-4044-9a15-d9d63f201b7b</code><br>
+            <strong>🎯 Purpose:</strong> Test voice backend without full frontend
+        </div>
+
+        <div class="warning" id="browserWarning" style="display: none;">
+            ⚠️ <strong>Browser Compatibility:</strong> This page requires microphone access and modern WebSocket support.
+        </div>
+
+        <div class="config-display" id="configDisplay" style="display: none;">
+            <strong>🔊 Audio Config:</strong> <span id="audioInfo">-</span><br>
+            <strong>🌍 Language:</strong> <span id="languageInfo">-</span><br>
+            <strong>🎤 Microphone:</strong> <span id="microphoneStatus">Not initialized</span>
+        </div>
+
+        <div class="status" id="status">Ready to connect</div>
+
+        <div class="controls">
+            <button id="connectBtn" onclick="connect()">🔗 Connect to Voice</button>
+            <button id="pushToTalkBtn" onmousedown="startRecording()" onmouseup="stopRecording()" onmouseleave="stopRecording()" disabled>
+                🎤 Push to Talk
+            </button>
+            <button id="disconnectBtn" onclick="disconnect()" class="danger" disabled>🔌 Disconnect</button>
+            <span id="recordingInfo" style="margin-left: 15px; color: #666; font-weight: 500;"></span>
+        </div>
+
+        <div class="text-input">
+            <input type="text" id="textInput" placeholder="Type a message to send as text..." disabled onkeypress="handleKeyPress(event)">
+            <button id="sendTextBtn" onclick="sendText()" disabled>📝 Send Text</button>
+        </div>
+
+        <div class="stats">
+            <div class="stat-item">
+                <div class="stat-value" id="messagesSent">0</div>
+                <div class="stat-label">Messages Sent</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value" id="messagesReceived">0</div>
+                <div class="stat-label">Messages Received</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value" id="audioChunks">0</div>
+                <div class="stat-label">Audio Chunks</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value" id="connectionTime">0s</div>
+                <div class="stat-label">Connected Time</div>
+            </div>
+        </div>
+
+        <div class="transcript" id="transcript">
+            <div style="text-align: center; color: #999; padding: 20px;">
+                💬 Conversation transcript will appear here...<br>
+                <small>Try sending a text message or using push-to-talk</small>
+            </div>
+        </div>
+
+        <div class="debug-panel">
+            <h3>🔍 WebSocket Debug Log</h3>
+            <div id="debugLog">
+                <div style="color: #a0aec0;">Debug messages will appear here...</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Pre-filled credentials from setup script
+        const JWT_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiODVjYTA1NmItNGZmNi00ZWQzLTkzOTQtZmFjNmI3Zjc5Y2ZlIiwidXNlcm5hbWUiOiJ0ZXN0Iiwicm9sZSI6InVzZXIiLCJleHAiOjE3NTU5Njc2ODR9.HyFaOAhPT4drOyTQGqZWoHromhcnGuyCMrxGONWqlHw";
+        const SESSION_ID = "1dc7a4fe-2038-4044-9a15-d9d63f201b7b";
+        const WS_URL = `ws://localhost:8000/api/voice/ws/${SESSION_ID}?token=${JWT_TOKEN}`;
+        
+        // State management
+        let ws = null;
+        let audioContext = null;
+        let recorder = null;
+        let isRecording = false;
+        let connectionStartTime = null;
+        let stats = {
+            messagesSent: 0,
+            messagesReceived: 0,
+            audioChunks: 0
+        };
+
+        // Initialize
+        console.log("🎙️ Voice Test Configuration:");
+        console.log("JWT Token:", JWT_TOKEN.substring(0, 50) + "...");
+        console.log("Session ID:", SESSION_ID);
+        console.log("WebSocket URL:", WS_URL);
+
+        // Check browser compatibility
+        if (!navigator.mediaDevices || !window.WebSocket) {
+            document.getElementById('browserWarning').style.display = 'block';
+        }
+
+        async function connect() {
+            try {
+                updateStatus("Connecting to voice backend...", "processing");
+                debugLog("🔗 Attempting WebSocket connection", "sent");
+                
+                ws = new WebSocket(WS_URL);
+                connectionStartTime = Date.now();
+
+                ws.onopen = () => {
+                    console.log("✅ WebSocket connected");
+                    debugLog("✅ WebSocket connection established", "received");
+                    updateStatus("Connected - waiting for configuration...", "connected");
+                    
+                    document.getElementById("connectBtn").disabled = true;
+                    document.getElementById("pushToTalkBtn").disabled = false;
+                    document.getElementById("textInput").disabled = false;
+                    document.getElementById("sendTextBtn").disabled = false;
+                    document.getElementById("disconnectBtn").disabled = false;
+                    
+                    startConnectionTimer();
+                };
+
+                ws.onmessage = (event) => {
+                    const message = JSON.parse(event.data);
+                    stats.messagesReceived++;
+                    updateStats();
+                    
+                    console.log("📨 Received:", message);
+                    debugLog(`📨 ${message.type}: ${JSON.stringify(message).substring(0, 100)}...`, "received");
+                    
+                    handleMessage(message);
+                };
+
+                ws.onerror = (error) => {
+                    console.error("❌ WebSocket error:", error);
+                    debugLog("❌ WebSocket error occurred", "error");
+                    updateStatus("Connection error - check server status", "error");
+                };
+
+                ws.onclose = (event) => {
+                    console.log("🔌 WebSocket closed:", event.code, event.reason);
+                    debugLog(`🔌 Connection closed: ${event.code} ${event.reason}`, "error");
+                    updateStatus(`Disconnected: ${event.reason || "Connection closed"}`, "error");
+                    resetUI();
+                };
+            } catch (error) {
+                console.error("❌ Connection failed:", error);
+                debugLog(`❌ Connection failed: ${error.message}`, "error");
+                updateStatus("Connection failed - is server running?", "error");
+            }
+        }
+
+        function handleMessage(message) {
+            switch (message.type) {
+                case "config":
+                    displayConfig(message);
+                    updateStatus("Voice session ready!", "connected");
+                    break;
+                    
+                case "status":
+                    const statusMsg = `${message.status}: ${message.message || ""}`;
+                    updateStatus(statusMsg, message.status === "ready" ? "connected" : "processing");
+                    break;
+                    
+                case "transcript_partial":
+                    showPartialTranscript(message.text, message.role);
+                    break;
+                    
+                case "transcript_final":
+                    addTranscript(message.text, message.role);
+                    clearPartialTranscript();
+                    break;
+                    
+                case "audio":
+                    stats.audioChunks++;
+                    updateStats();
+                    console.log(`🔊 Received audio chunk: ${message.data.length} chars (base64)`);
+                    // Note: Audio playback could be implemented here
+                    break;
+                    
+                case "turn_status":
+                    if (message.turn_complete) {
+                        console.log("🏁 Turn completed");
+                        document.getElementById("recordingInfo").textContent = "";
+                    }
+                    if (message.interrupted) {
+                        console.log("⚡ Turn interrupted");
+                    }
+                    break;
+                    
+                case "error":
+                    updateStatus(`❌ Server error: ${message.error}`, "error");
+                    debugLog(`❌ Server error: ${message.error}`, "error");
+                    break;
+                    
+                default:
+                    console.log("❓ Unknown message type:", message);
+                    debugLog(`❓ Unknown type: ${message.type}`, "received");
+            }
+        }
+
+        function displayConfig(config) {
+            document.getElementById("configDisplay").style.display = "block";
+            document.getElementById("audioInfo").textContent = 
+                `${config.audio_format} @ ${config.sample_rate}Hz, ${config.channels}ch, ${config.bit_depth}bit`;
+            document.getElementById("languageInfo").textContent = config.language;
+        }
+
+        async function initAudio() {
+            try {
+                document.getElementById("microphoneStatus").textContent = "Initializing...";
+                
+                audioContext = new (window.AudioContext || window.webkitAudioContext)({ 
+                    sampleRate: 16000 
+                });
+                
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    audio: {
+                        sampleRate: 16000,
+                        channelCount: 1,
+                        echoCancellation: true,
+                        noiseSuppression: true
+                    }
+                });
+                
+                const source = audioContext.createMediaStreamSource(stream);
+                const processor = audioContext.createScriptProcessor(4096, 1, 1);
+
+                processor.onaudioprocess = (e) => {
+                    if (!isRecording || !ws || ws.readyState !== WebSocket.OPEN) return;
+                    
+                    const inputData = e.inputBuffer.getChannelData(0);
+                    const int16Data = new Int16Array(inputData.length);
+                    
+                    // Convert float32 to int16
+                    for (let i = 0; i < inputData.length; i++) {
+                        int16Data[i] = Math.max(-32768, Math.min(32767, Math.floor(inputData[i] * 32768)));
+                    }
+                    
+                    // Send as base64 encoded PCM data
+                    const base64Audio = btoa(String.fromCharCode(...new Uint8Array(int16Data.buffer)));
+                    const message = {
+                        mime_type: "audio/pcm",
+                        data: base64Audio,
+                        end_session: false
+                    };
+                    
+                    sendMessage(message);
+                };
+
+                source.connect(processor);
+                processor.connect(audioContext.destination);
+                
+                recorder = { source, processor, stream };
+                document.getElementById("microphoneStatus").textContent = "Ready";
+                debugLog("🎤 Microphone initialized successfully", "received");
+                return true;
+                
+            } catch (error) {
+                console.error("🎤 Audio initialization failed:", error);
+                debugLog(`🎤 Microphone error: ${error.message}`, "error");
+                document.getElementById("microphoneStatus").textContent = "Failed";
+                updateStatus(`Microphone error: ${error.message}`, "error");
+                return false;
+            }
+        }
+
+        async function startRecording() {
+            if (!recorder && !(await initAudio())) return;
+            
+            isRecording = true;
+            document.getElementById("pushToTalkBtn").classList.add("recording");
+            document.getElementById("recordingInfo").textContent = "🔴 Recording audio...";
+            debugLog("🎤 Started recording", "sent");
+        }
+
+        function stopRecording() {
+            isRecording = false;
+            document.getElementById("pushToTalkBtn").classList.remove("recording");
+            document.getElementById("recordingInfo").textContent = "⏹️ Processing...";
+            debugLog("🎤 Stopped recording", "sent");
+        }
+
+        function sendText() {
+            const input = document.getElementById("textInput");
+            const text = input.value.trim();
+            if (!text || !ws || ws.readyState !== WebSocket.OPEN) return;
+
+            const message = {
+                mime_type: "text/plain",
+                data: btoa(unescape(encodeURIComponent(text))),
+                end_session: false
+            };
+            
+            sendMessage(message);
+            addTranscript(text, "user");
+            input.value = "";
+            
+            document.getElementById("recordingInfo").textContent = "⏳ Waiting for response...";
+        }
+
+        function sendMessage(message) {
+            if (!ws || ws.readyState !== WebSocket.OPEN) return;
+            
+            ws.send(JSON.stringify(message));
+            stats.messagesSent++;
+            updateStats();
+            
+            const type = message.mime_type === "audio/pcm" ? "audio" : "text";
+            debugLog(`📤 Sent ${type} message`, "sent");
+        }
+
+        function handleKeyPress(event) {
+            if (event.key === "Enter") sendText();
+        }
+
+        function disconnect() {
+            if (ws) {
+                // Send graceful disconnect message
+                const endMsg = {
+                    mime_type: "text/plain", 
+                    data: "",
+                    end_session: true
+                };
+                sendMessage(endMsg);
+                
+                setTimeout(() => {
+                    ws.close();
+                }, 100);
+            }
+            resetUI();
+        }
+
+        function resetUI() {
+            document.getElementById("connectBtn").disabled = false;
+            document.getElementById("pushToTalkBtn").disabled = true;
+            document.getElementById("textInput").disabled = true;
+            document.getElementById("sendTextBtn").disabled = true;
+            document.getElementById("disconnectBtn").disabled = true;
+            document.getElementById("recordingInfo").textContent = "";
+            document.getElementById("configDisplay").style.display = "none";
+            document.getElementById("microphoneStatus").textContent = "Not initialized";
+            
+            if (recorder && recorder.stream) {
+                recorder.stream.getTracks().forEach(track => track.stop());
+                recorder = null;
+            }
+            if (audioContext && audioContext.state !== 'closed') {
+                audioContext.close();
+                audioContext = null;
+            }
+            
+            connectionStartTime = null;
+        }
+
+        function updateStatus(message, type = "") {
+            const statusEl = document.getElementById("status");
+            statusEl.textContent = message;
+            statusEl.className = "status " + type;
+        }
+
+        function addTranscript(text, role) {
+            const transcriptEl = document.getElementById("transcript");
+            
+            // Clear initial message
+            if (transcriptEl.querySelector('div[style*="text-align: center"]')) {
+                transcriptEl.innerHTML = "";
+            }
+
+            const messageEl = document.createElement("div");
+            messageEl.className = `message ${role}`;
+            messageEl.innerHTML = `
+                <div style="font-size: 11px; color: #666; margin-bottom: 5px;">
+                    ${role === 'user' ? '👤 You' : '🤖 Assistant'} • ${new Date().toLocaleTimeString()}
+                </div>
+                ${text}
+            `;
+            transcriptEl.appendChild(messageEl);
+            transcriptEl.scrollTop = transcriptEl.scrollHeight;
+        }
+
+        let partialElement = null;
+        function showPartialTranscript(text, role) {
+            const transcriptEl = document.getElementById("transcript");
+            
+            // Clear initial message if present
+            if (transcriptEl.querySelector('div[style*="text-align: center"]')) {
+                transcriptEl.innerHTML = "";
+            }
+            
+            if (!partialElement || partialElement.dataset.role !== role) {
+                clearPartialTranscript();
+                partialElement = document.createElement("div");
+                partialElement.className = `message ${role} partial`;
+                partialElement.dataset.role = role;
+                partialElement.innerHTML = `
+                    <div style="font-size: 11px; color: #666; margin-bottom: 5px;">
+                        ${role === 'user' ? '👤 You' : '🤖 Assistant'} • typing...
+                    </div>
+                    <div class="partial-text"></div>
+                `;
+                transcriptEl.appendChild(partialElement);
+            }
+            
+            partialElement.querySelector('.partial-text').textContent = text + " ...";
+            transcriptEl.scrollTop = transcriptEl.scrollHeight;
+        }
+
+        function clearPartialTranscript() {
+            if (partialElement) {
+                partialElement.remove();
+                partialElement = null;
+            }
+        }
+
+        function updateStats() {
+            document.getElementById("messagesSent").textContent = stats.messagesSent;
+            document.getElementById("messagesReceived").textContent = stats.messagesReceived;
+            document.getElementById("audioChunks").textContent = stats.audioChunks;
+        }
+
+        function startConnectionTimer() {
+            setInterval(() => {
+                if (connectionStartTime) {
+                    const seconds = Math.floor((Date.now() - connectionStartTime) / 1000);
+                    document.getElementById("connectionTime").textContent = seconds + "s";
+                }
+            }, 1000);
+        }
+
+        function debugLog(message, type = "") {
+            const debugEl = document.getElementById("debugLog");
+            const timestamp = new Date().toLocaleTimeString();
+            
+            const logEl = document.createElement("div");
+            logEl.className = `debug-message debug-${type}`;
+            logEl.innerHTML = `<span style="color: #a0aec0;">[${timestamp}]</span> ${message}`;
+            
+            debugEl.appendChild(logEl);
+            debugEl.scrollTop = debugEl.scrollHeight;
+            
+            // Keep only last 50 messages
+            while (debugEl.children.length > 50) {
+                debugEl.removeChild(debugEl.firstChild);
+            }
+        }
+
+        // Cleanup on page unload
+        window.addEventListener("beforeunload", () => {
+            if (ws) ws.close();
+            if (recorder && recorder.stream) {
+                recorder.stream.getTracks().forEach(track => track.stop());
+            }
+            if (audioContext && audioContext.state !== 'closed') {
+                audioContext.close();
+            }
+        });
+
+        // Initialize debug log
+        debugLog("🚀 Voice test page loaded", "received");
+    </script>
+</body>
+</html>
