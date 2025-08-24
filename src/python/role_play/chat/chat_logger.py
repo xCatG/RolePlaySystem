@@ -514,6 +514,36 @@ class ChatLogger:
             logger.error(f"Error logging message to {storage_path}: {e}")
             raise
 
+    async def log_pcm_audio(
+        self,
+        user_id: str,
+        session_id: str,
+        audio_data: bytes
+    ) -> None:
+        """
+        Logs a raw PCM audio chunk to storage.
+
+        This is intended for debugging in non-production environments.
+
+        Args:
+            user_id: The user ID who owns the session.
+            session_id: The application session ID.
+            audio_data: The raw PCM audio data as bytes.
+        """
+        # Sanitize timestamp for filenames
+        safe_timestamp = utc_now_isoformat().replace(":", "-").replace("+", "_")
+        storage_path = f"users/{user_id}/voice_logs/{session_id}/audio_in_{safe_timestamp}.pcm"
+
+        try:
+            # We don't need a lock for writing a new, unique file.
+            await self.storage.write_bytes(storage_path, audio_data)
+            logger.debug(f"Logged {len(audio_data)} bytes of PCM audio to {storage_path}")
+        except Exception as e:
+            logger.error(f"Error logging PCM audio to {storage_path}: {e}")
+            # We don't re-raise the exception here because audio logging is a
+            # non-critical operation for debugging and shouldn't crash the main flow.
+            pass
+
     async def log_voice_session_start(self, user_id:str, session_id:str, voice_config:Dict[str, str]):
         storage_path = self._get_chat_log_path(user_id, session_id)
 

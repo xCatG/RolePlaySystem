@@ -1,23 +1,21 @@
 import asyncio
 import base64
 import logging
-from typing import Optional, Dict, Any, Protocol
+from typing import Optional, Dict, Any, Protocol, Annotated
 
-from fastapi import WebSocket, HTTPException, APIRouter
+from fastapi import WebSocket, HTTPException, APIRouter, Depends
 from google.adk import Runner
 from google.adk.agents import RunConfig, LiveRequestQueue
-from google.adk.events import Event
-from google.adk.sessions import Session, BaseSessionService
+from google.adk.sessions import BaseSessionService
 from google.genai import types
 from google.genai.types import AudioTranscriptionConfig, Blob, Part, Content
-from sqlalchemy.sql.functions import user
 from starlette.websockets import WebSocketDisconnect
 
 from .models import VoiceRequest
 from .voice_config import VoiceConfig
 from ..chat.chat_logger import ChatLogger
 from ..common.exceptions import TokenExpiredError, AuthenticationError
-from ..common.models import User
+from ..common.models import User, EnvironmentInfo
 from ..common.storage import StorageBackend
 from ..common.time_utils import utc_now_isoformat
 from ..dev_agents.roleplay_agent.agent import get_production_agent
@@ -25,9 +23,8 @@ from ..server.base_handler import BaseHandler
 from ..server.dependencies import (
     get_chat_logger,
     get_adk_session_service,
-    get_storage_backend, get_auth_manager,
+    get_storage_backend, get_auth_manager, get_environment_info,
 )
-
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +60,7 @@ class VoiceHandler(BaseHandler):
             async def voice_websocket_endpoint(
                     websocket: WebSocket,
                     session_id: str,
+                    environment_info: Annotated[EnvironmentInfo, Depends(get_environment_info)]
             ):
                 # Accept the WebSocket connection first
                 await websocket.accept()
@@ -73,7 +71,7 @@ class VoiceHandler(BaseHandler):
                     await websocket.close(code=VoiceConfig.WS_MISSING_TOKEN, reason="Missing token parameter")
                     return
 
-                await self.handle_voice_session(websocket, session_id, token)
+                await self.handle_voice_session(websocket, session_id, token, environment_info)
 
         return self._router
 
@@ -86,6 +84,7 @@ class VoiceHandler(BaseHandler):
         websocket: WebSocket,
         session_id: str,
         token: str,
+        env_info: EnvironmentInfo,
     ):
         user, adk_components = None, None
         try:
@@ -144,7 +143,7 @@ class VoiceHandler(BaseHandler):
             })
 
             # Handle bidirectional streaming
-            await self._handle_streaming(websocket, adk_components, chat_logger, user.id)
+            await self._handle_streaming(websocket, adk_components, chat_logger, user.id, env_info)
 
         except WebSocketDisconnect:
             logger.info(f"WebSocket disconnected for session {session_id}")
@@ -174,16 +173,17 @@ class VoiceHandler(BaseHandler):
                     await chat_logger.log_voice_session_end(user.id, session_id, voice_stats=stats)
                 logger.info(f"Voice session {session_id} cleanup completed")
 
-    async def _handle_streaming(self, websocket: WebSocket, adk: Dict[str, Any], chat_logger: ChatLogger, user_id: str):
+    async def _handle_streaming(self, websocket: WebSocket, adk: Dict[str, Any], chat_logger: ChatLogger, user_id: str,
+                                env_info):
         """Handle bidirectional streaming with direct ADK integration."""
-        receive_task = asyncio.create_task(self._receive_from_client(websocket, adk, chat_logger))
-        send_task = asyncio.create_task(self._send_to_client(websocket, adk, chat_logger, user_id))
+        receive_task = asyncio.create_task(self._receive_from_client(websocket, adk, chat_logger, env_info))
+        send_task = asyncio.create_task(self._send_to_client(websocket, adk, chat_logger, user_id, env_info))
 
         done, pending = await asyncio.wait([receive_task, send_task], return_when=asyncio.FIRST_COMPLETED)
         for task in pending:
             task.cancel()
 
-    async def _receive_from_client(self, websocket: WebSocket, adk: Dict[str, Any], chat_logger):
+    async def _receive_from_client(self, websocket: WebSocket, adk: Dict[str, Any], chat_logger, env_info):
         """Receive from client and send directly to ADK."""
 
         try:
@@ -210,6 +210,20 @@ class VoiceHandler(BaseHandler):
                                 logger.warning("Audio decode returned None")
                                 adk["stats"]["errors"] += 1
                                 continue
+                            
+                            # In dev/beta environments, log the incoming PCM audio for debugging.
+                            if not env_info.is_production:
+                                try:
+                                    # This assumes a new method `log_pcm_audio` exists in ChatLogger
+                                    await chat_logger.log_pcm_audio(
+                                        user_id=adk["user_id"],
+                                        session_id=adk["session_id"],
+                                        audio_data=audio_data
+                                    )
+                                except AttributeError:
+                                    logger.warning("chat_logger.log_pcm_audio not implemented, skipping audio logging.")
+                                except Exception as e:
+                                    logger.error(f"Failed to log PCM audio for session {adk['session_id']}: {e}")
                             
                             blob = Blob(mime_type=request.mime_type, data=audio_data)
                             adk["live_request_queue"].send_realtime(blob)
@@ -262,7 +276,8 @@ class VoiceHandler(BaseHandler):
             logger.error(f"Error receiving from client: {e}")
             adk["active"] = False
 
-    async def _send_to_client(self, websocket: WebSocket, adk: Dict[str, Any], chat_logger: ChatLogger, user_id: str):
+    async def _send_to_client(self, websocket: WebSocket, adk: Dict[str, Any], chat_logger: ChatLogger, user_id: str,
+                              env_info):
         """Process ADK events directly and send to client."""
         message_counter = 0
         try:
