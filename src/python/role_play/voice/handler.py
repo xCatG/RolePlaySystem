@@ -42,6 +42,11 @@ class VoiceHandler(BaseHandler):
     /voice/ws needs a valid session_id to work; call /chat/session to create a new session
     and use its session_id for voice chat
 
+    Security Considerations:
+    - JWT authentication via WebSocket query parameters (moderate risk for token exposure)
+    - Session limit enforcement (TODO: critical for DoS protection in production) 
+    - PCM audio logging only in non-production environments
+    - Role-based authorization (TODO: consider implementing for resource-intensive operations)
     """
 
     def __init__(self):
@@ -66,6 +71,8 @@ class VoiceHandler(BaseHandler):
                 await websocket.accept()
 
                 # Extract token from query parameters
+                # SECURITY NOTE: JWT in query params has moderate risk (logs, history, network appliances)
+                # TODO: Consider ticket-based auth for production (short-lived single-use tokens)
                 token = websocket.query_params.get("token")
                 if not token:
                     await websocket.close(code=VoiceConfig.WS_MISSING_TOKEN, reason="Missing token parameter")
@@ -474,6 +481,10 @@ class VoiceHandler(BaseHandler):
         """
         Check if user hasn't exceeded session limit.
 
+        SECURITY WARNING: This is currently a DoS vulnerability!
+        Always returns True, allowing unlimited resource-intensive WebSocket connections.
+        Acceptable for beta deployment but CRITICAL for production scaling.
+
         TODO: Implement distributed session tracking via storage backend
         For now, always return True (no limit enforcement).
 
@@ -482,7 +493,7 @@ class VoiceHandler(BaseHandler):
         - Include server_id, started_at timestamp
         - Clean up stale sessions (>1 hour old)
         - Count active sessions across all servers
-        - Enforce MAX_SESSIONS_PER_USER limit
+        - Enforce MAX_SESSIONS_PER_USER limit (suggested: 3-5 concurrent sessions)
 
         Example:
             active_sessions = await storage.list_keys(f"voice_sessions/{user_id}/active/")

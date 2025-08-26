@@ -1,5 +1,6 @@
 """Service for logging chat sessions to JSONL files using storage backend."""
 import json
+import os
 import uuid
 from typing import Dict, List, Tuple, Any, Optional
 import logging
@@ -524,12 +525,21 @@ class ChatLogger:
         Logs a raw PCM audio chunk to storage.
 
         This is intended for debugging in non-production environments.
+        As a defensive measure, this method is a no-op in production
+        to prevent accidental data collection.
 
         Args:
             user_id: The user ID who owns the session.
             session_id: The application session ID.
             audio_data: The raw PCM audio data as bytes.
         """
+        # Security: Defensive check to ensure no PCM logging in production
+        # even if environment checks are bypassed elsewhere
+        env = os.environ.get("ENV", "dev").lower()
+        if env == "prod" or env == "production":
+            logger.debug("PCM audio logging disabled in production environment")
+            return
+        
         # Sanitize timestamp for filenames
         safe_timestamp = utc_now_isoformat().replace(":", "-").replace("+", "_")
         storage_path = f"users/{user_id}/voice_logs/{session_id}/audio_in_{safe_timestamp}.pcm"
