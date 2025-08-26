@@ -231,6 +231,7 @@ make test-specific TEST_PATH="test/python/unit/chat/test_chat_logger.py"
 - [x] `make test` - Full test suite with coverage reporting and 25% minimum threshold
 - [x] `make test-quiet` - Quiet mode execution for faster feedback
 - [x] `make test-chat` - Chat module specific testing with dedicated coverage
+- [x] `make test-voice` - Voice module specific testing with dedicated coverage
 - [x] `make test-unit` - Unit tests only for focused testing
 - [x] `make test-integration` - Integration tests for service interactions
 - [x] `make test-coverage-html` - HTML coverage reports for detailed analysis
@@ -269,6 +270,9 @@ make test-specific TEST_PATH="test/python/unit/chat/test_chat_logger.py"
   - `play <session_dir>` - Playback reassembled audio for debugging
 - [x] **Audio Format Support**: 16-bit PCM, 16kHz, mono format matching Gemini Live API requirements
 - [x] **Testing Infrastructure**: Comprehensive voice backend testing suite with WebSocket simulation
+- [x] **Unit Tests**: Comprehensive test coverage for voice handler methods, PCM logging, audio processing
+- [x] **Integration Tests**: WebSocket connection testing, mixed text/audio sessions, PCM file verification
+- [x] **Debug Utility Tests**: Complete test suite for audio reassembly and WAV generation functions
 - [x] **Documentation**: Complete README.md with usage examples and troubleshooting guides
 
 
