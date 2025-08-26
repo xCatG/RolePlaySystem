@@ -17,6 +17,7 @@ The voice testing suite provides three approaches to testing:
 | `setup_voice_test.py` | Creates test session and HTML page | Interactive testing |
 | `test_voice_backend.py` | Automated test suite | CI/CD and validation |
 | `voice_test_template.html` | HTML template for interactive testing | Browser-based testing |
+| `debug_audio.py` | PCM audio debugging utility | Debug recorded audio |
 | `README.md` | This documentation | Reference |
 
 ## 🚀 Quick Start
@@ -313,6 +314,64 @@ asyncio.run(create_user())
    - Check network connectivity to Gemini API
    - Monitor server logs for errors
    - Verify adequate system resources
+
+## 🎧 Audio Debugging Utility
+
+The `debug_audio.py` utility helps debug voice chat by reassembling and analyzing PCM audio chunks recorded during voice sessions (when running in dev/beta environments).
+
+### Usage
+
+```bash
+# Show information about recorded audio chunks
+python test/scripts/voice/debug_audio.py info <session_dir>
+
+# Reassemble PCM chunks into a playable WAV file
+python test/scripts/voice/debug_audio.py reassemble <session_dir>
+
+# Play reassembled audio (requires simpleaudio: pip install simpleaudio)
+python test/scripts/voice/debug_audio.py play <session_dir>
+```
+
+### Example
+
+```bash
+# Find a voice session with PCM files
+find data/dev_data/users -name "*.pcm" -type f | head -1
+# Example output: data/dev_data/users/user123/voice_logs/session456/audio_in_*.pcm
+
+# Get session info
+python test/scripts/voice/debug_audio.py info data/dev_data/users/user123/voice_logs/session456/
+# Output:
+# 📊 Session Audio Information
+#    Directory: data/dev_data/users/user123/voice_logs/session456
+#    Total chunks: 92
+#    Total size: 753,664 bytes
+#    Total duration: 23.55 seconds
+#    Chunk size: 8192 bytes (uniform)
+
+# Create playable WAV file
+python test/scripts/voice/debug_audio.py reassemble data/dev_data/users/user123/voice_logs/session456/
+# Output:
+# ✅ Created WAV file: data/.../reassembled_audio.wav
+#    Duration: 23.55 seconds
+#    Format: 16000Hz, 16-bit, mono
+
+# Play the audio (optional)
+python test/scripts/voice/debug_audio.py play data/dev_data/users/user123/voice_logs/session456/
+```
+
+### Audio Format Details
+
+- **Input PCM**: 16-bit signed, 16kHz, mono, little-endian
+- **Chunk Size**: 8192 bytes (4096 samples = 256ms @ 16kHz)
+- **Output WAV**: Standard WAV with RIFF headers, playable in any audio player
+
+### Notes
+
+- PCM files are only recorded in dev/beta environments (not production)
+- Files are stored at: `users/{user_id}/voice_logs/{session_id}/audio_in_{timestamp}.pcm`
+- The utility sorts chunks by timestamp for correct playback order
+- Reassembled WAV files can be opened in audio editors for further analysis
 
 ## 🔍 Debug Tips
 

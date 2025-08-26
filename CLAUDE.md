@@ -259,6 +259,18 @@ make test-specific TEST_PATH="test/python/unit/chat/test_chat_logger.py"
 - [x] **Impact**: ~300 lines duplicate code eliminated, better maintainability, all 241 tests passing
 - [x] **Critical Fix**: Resolved frontend data loading issues in Phase 3 refactoring (API response handling bugs)
 
+### Voice Chat & Audio Debugging (Completed)
+- [x] **WebSocket Voice Handler**: Real-time bidirectional audio streaming with ADK integration
+- [x] **PCM Audio Logging**: Environment-based audio recording for debugging (dev/beta only)
+- [x] **Binary Data Fix**: Corrected PCM audio storage from `write()` to `write_bytes()` for proper binary handling
+- [x] **Audio Debug Utility**: `debug_audio.py` script for reassembling and analyzing recorded PCM chunks:
+  - `info <session_dir>` - Show audio session statistics and timing
+  - `reassemble <session_dir>` - Combine PCM chunks into playable WAV files
+  - `play <session_dir>` - Playback reassembled audio for debugging
+- [x] **Audio Format Support**: 16-bit PCM, 16kHz, mono format matching Gemini Live API requirements
+- [x] **Testing Infrastructure**: Comprehensive voice backend testing suite with WebSocket simulation
+- [x] **Documentation**: Complete README.md with usage examples and troubleshooting guides
+
 
 ## Implementation Phases
 1. Core Infrastructure → 2. Authentication → 3. Handlers → 4. WebSocket/Audio → 5. Polish
@@ -270,6 +282,7 @@ make test-specific TEST_PATH="test/python/unit/chat/test_chat_logger.py"
 - **Server**: FastAPI with stateless handlers, JWT auth, CORS, environment configs
 - **Auth**: RoleChecker pattern (replaced decorators), role hierarchy, proper HTTP codes, language preferences
 - **Chat**: ADK integration, JSONL logging, singleton services, POC endpoints, language-aware content, refactored for maintainability, centralized agent configuration
+- **Voice Chat**: WebSocket-based real-time audio streaming with Gemini Live API integration, PCM audio debugging utilities
 - **Evaluation**: AI agent evaluation system with persistent storage, comprehensive error handling, session validation, and resource cleanup
 - **Testing**: 260+ tests, language functionality coverage (ContentLoader, auth, models), evaluation module unit tests, ResourceLoader version validation tests, comprehensive Makefile targets
 - **Frontend**: Vue.js auth UI, i18n with Traditional Chinese, language switcher, reusable composables, dual-flow session creation
