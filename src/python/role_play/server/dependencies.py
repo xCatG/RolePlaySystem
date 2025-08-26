@@ -11,7 +11,7 @@ from google.adk.sessions import InMemorySessionService
 from ..common.auth import AuthManager
 from ..common.storage import StorageBackend, FileStorage, FileStorageConfig, LockConfig
 from ..common.storage_factory import create_storage_backend
-from ..common.models import User, UserRole, Environment
+from ..common.models import User, UserRole, Environment, EnvironmentInfo
 from ..common.exceptions import AuthenticationError, TokenExpiredError
 from .config_loader import get_config, ServerConfig
 from ..chat.chat_logger import ChatLogger
@@ -19,6 +19,26 @@ from ..common.resource_loader import ResourceLoader
 
 import logging
 logger = logging.getLogger(__name__)
+
+
+@lru_cache(maxsize=None)
+def get_environment_info() -> EnvironmentInfo:
+    """Provides detailed information about the current deployment environment."""
+    env_str = os.getenv("ENV", "dev")
+    try:
+        env_enum = Environment(env_str)
+    except ValueError:
+        logger.warning(f"Unknown environment '{env_str}', defaulting to DEV")
+        env_enum = Environment.DEV
+    
+    is_prod = (env_enum == Environment.PROD)
+    is_dev = (env_enum == Environment.DEV)
+
+    return EnvironmentInfo(
+        name=env_enum,
+        is_production=is_prod,
+        is_development=is_dev
+    )
 
 
 @lru_cache(maxsize=None)

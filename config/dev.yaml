@@ -61,6 +61,7 @@ enabled_handlers:
   evaluation: "role_play.evaluation.handler.EvaluationHandler"
   # Add more handlers as they're implemented:
   # scripter: "role_play.scripter.handler.ScripterHandler"
+  voice: "role_play.voice.handler.VoiceHandler"
 
 # Language configuration
 supported_languages:

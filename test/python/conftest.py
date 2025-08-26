@@ -6,6 +6,7 @@ import shutil
 from datetime import datetime
 from pathlib import Path
 from typing import AsyncGenerator, Generator
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 import pytest_asyncio
@@ -14,8 +15,9 @@ import pytest_asyncio
 import sys
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src" / "python"))
 
-from role_play.common.storage import FileStorage, FileStorageConfig
+from role_play.common.storage import FileStorage, FileStorageConfig, StorageBackend
 from role_play.common.auth import AuthManager
+from role_play.chat.chat_logger import ChatLogger
 
 
 @pytest.fixture(scope="session")
@@ -111,3 +113,26 @@ def sample_session_data():
         "last_activity": datetime(2024, 1, 1, 13, 0, 0),
         "metadata": {"ip": "127.0.0.1", "user_agent": "test"}
     }
+
+
+@pytest.fixture
+def mock_storage() -> AsyncMock:
+    """Creates a mock storage backend for testing."""
+    mock = AsyncMock(spec=StorageBackend)
+    mock.exists = AsyncMock(return_value=True)
+    mock.append = AsyncMock()
+    mock.write_bytes = AsyncMock()
+    # Mock the lock method to return an async context manager
+    async_context_manager = AsyncMock()
+    async_context_manager.__aenter__ = AsyncMock(return_value=None)
+    async_context_manager.__aexit__ = AsyncMock(return_value=None)
+    mock.lock = MagicMock(return_value=async_context_manager)
+    return mock
+
+
+@pytest.fixture
+def chat_logger(mock_storage: AsyncMock) -> ChatLogger:
+    """Creates a ChatLogger instance with a mock storage backend."""
+    return ChatLogger(storage_backend=mock_storage)
+
+

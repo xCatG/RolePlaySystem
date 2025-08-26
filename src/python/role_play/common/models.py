@@ -130,3 +130,10 @@ class Environment(str, Enum):
     DEV = "dev"
     BETA = "beta"
     PROD = "prod"
+
+
+class EnvironmentInfo(BaseModel):
+    """Provides detailed information about the current deployment environment."""
+    name: Environment
+    is_production: bool = Field(description="True if the environment is production, False otherwise.")
+    is_development: bool = Field(description="True if the environment is development, False otherwise.")

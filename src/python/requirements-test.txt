@@ -4,3 +4,5 @@ pytest-asyncio
 pytest-cov
 httpx
 factory_boy
+httpx
+websockets

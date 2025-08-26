@@ -71,6 +71,8 @@ class CharacterInfo(BaseModel):
     id: str
     name: str = Field(description="The name of the character.")
     description: str = Field(description="The description of the character. Could contain age, gender, character traits or brief bio")
+    # TODO: make this change to the json, also think about how to do mapping between different services
+    voice_id: Optional[str] = Field(default=None, description="Optional voice ID, only used in voice sessions")
 
 class CharacterListResponse(BaseResponse):
     """Response containing list of characters."""

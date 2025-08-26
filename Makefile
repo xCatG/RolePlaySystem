@@ -484,6 +484,11 @@ test-no-coverage:
 	@echo "Running tests without coverage (faster)..."
 	@bash -c "source venv/bin/activate && python -m pytest test/python/ -v"
 
+.PHONY: test-voice
+test-voice:
+	@echo "Running voice-related tests with coverage..."
+	@bash -c "source venv/bin/activate && python -m pytest test/python/ -k 'voice' --cov=src/python/role_play/voice --cov-report=term-missing --cov-fail-under=0"
+
 .PHONY: test-specific
 test-specific:
 ifndef TEST_PATH
