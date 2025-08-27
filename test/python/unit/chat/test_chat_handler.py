@@ -69,21 +69,20 @@ class TestChatHandlerSystemPrompt:
         mock_resource_loader.get_character_by_id.return_value = sample_english_character
         mock_resource_loader.get_scenario_by_id.return_value = sample_scenario
         
-        with patch('role_play.dev_agents.roleplay_agent.agent.resource_loader', mock_resource_loader):
-            from role_play.dev_agents.roleplay_agent.agent import get_production_agent
-            agent = await get_production_agent("patient_en", "medical_interview", "en")
-            
-            # Check that agent was created
-            assert agent is not None
-            assert agent.name == "roleplay_patient_en_medical_interview"
-            
-            # Check system prompt contains English language instruction
-            instruction = agent.instruction
-            assert "You are Sarah, a 65-year-old woman with chronic back pain" in instruction
-            assert "Practice taking medical history from a patient" in instruction
-            assert "Respond in English language" in instruction
-            assert "Stay fully in character" in instruction
-            assert "Do NOT break character" in instruction
+        from role_play.dev_agents.roleplay_agent.agent import get_production_agent
+        agent = await get_production_agent("patient_en", "medical_interview", "en", resource_loader=mock_resource_loader)
+        
+        # Check that agent was created
+        assert agent is not None
+        assert agent.name == "roleplay_patient_en_medical_interview"
+        
+        # Check system prompt contains English language instruction
+        instruction = agent.instruction
+        assert "You are Sarah, a 65-year-old woman with chronic back pain" in instruction
+        assert "Practice taking medical history from a patient" in instruction
+        assert "Respond in English language" in instruction
+        assert "Stay fully in character" in instruction
+        assert "Do NOT break character" in instruction
 
     @pytest.mark.asyncio
     async def test_system_prompt_chinese_character(self, sample_chinese_character, sample_scenario, mock_resource_loader):
@@ -92,20 +91,19 @@ class TestChatHandlerSystemPrompt:
         mock_resource_loader.get_character_by_id.return_value = sample_chinese_character
         mock_resource_loader.get_scenario_by_id.return_value = sample_scenario
         
-        with patch('role_play.dev_agents.roleplay_agent.agent.resource_loader', mock_resource_loader):
-            from role_play.dev_agents.roleplay_agent.agent import get_production_agent
-            agent = await get_production_agent("patient_zh_tw", "medical_interview", "zh-TW")
+        from role_play.dev_agents.roleplay_agent.agent import get_production_agent
+        agent = await get_production_agent("patient_zh_tw", "medical_interview", "zh-TW", resource_loader=mock_resource_loader)
+        
+        # Check that agent was created
+        assert agent is not None
+        assert agent.name == "roleplay_patient_zh_tw_medical_interview"
             
-            # Check that agent was created
-            assert agent is not None
-            assert agent.name == "roleplay_patient_zh_tw_medical_interview"
-            
-            # Check system prompt contains Traditional Chinese language instruction
-            instruction = agent.instruction
-            assert "你是李小姐，一位65歲患有慢性背痛的女性" in instruction
-            assert "Practice taking medical history from a patient" in instruction
-            assert "Respond in Traditional Chinese language" in instruction
-            assert "Stay fully in character" in instruction
+        # Check system prompt contains Traditional Chinese language instruction
+        instruction = agent.instruction
+        assert "你是李小姐，一位65歲患有慢性背痛的女性" in instruction
+        assert "Practice taking medical history from a patient" in instruction
+        assert "Respond in Traditional Chinese language" in instruction
+        assert "Stay fully in character" in instruction
 
     @pytest.mark.asyncio
     async def test_system_prompt_japanese_character(self, sample_japanese_character, sample_scenario, mock_resource_loader):
@@ -114,20 +112,19 @@ class TestChatHandlerSystemPrompt:
         mock_resource_loader.get_character_by_id.return_value = sample_japanese_character
         mock_resource_loader.get_scenario_by_id.return_value = sample_scenario
         
-        with patch('role_play.dev_agents.roleplay_agent.agent.resource_loader', mock_resource_loader):
-            from role_play.dev_agents.roleplay_agent.agent import get_production_agent
-            agent = await get_production_agent("patient_ja", "medical_interview", "ja")
+        from role_play.dev_agents.roleplay_agent.agent import get_production_agent
+        agent = await get_production_agent("patient_ja", "medical_interview", "ja", resource_loader=mock_resource_loader)
+        
+        # Check that agent was created
+        assert agent is not None
+        assert agent.name == "roleplay_patient_ja_medical_interview"
             
-            # Check that agent was created
-            assert agent is not None
-            assert agent.name == "roleplay_patient_ja_medical_interview"
-            
-            # Check system prompt contains Japanese language instruction
-            instruction = agent.instruction
-            assert "あなたは田中さん、65歳の慢性的な腰痛を持つ女性です" in instruction
-            assert "Practice taking medical history from a patient" in instruction
-            assert "Respond in Japanese language" in instruction
-            assert "Stay fully in character" in instruction
+        # Check system prompt contains Japanese language instruction
+        instruction = agent.instruction
+        assert "あなたは田中さん、65歳の慢性的な腰痛を持つ女性です" in instruction
+        assert "Practice taking medical history from a patient" in instruction
+        assert "Respond in Japanese language" in instruction
+        assert "Stay fully in character" in instruction
 
     @pytest.mark.asyncio
     async def test_system_prompt_character_without_language_defaults_to_english(self, sample_scenario, mock_resource_loader):
@@ -143,17 +140,16 @@ class TestChatHandlerSystemPrompt:
         mock_resource_loader.get_character_by_id.return_value = character_no_lang
         mock_resource_loader.get_scenario_by_id.return_value = sample_scenario
         
-        with patch('role_play.dev_agents.roleplay_agent.agent.resource_loader', mock_resource_loader):
-            from role_play.dev_agents.roleplay_agent.agent import get_production_agent
-            agent = await get_production_agent("patient_no_lang", "medical_interview", "en")
+        from role_play.dev_agents.roleplay_agent.agent import get_production_agent
+        agent = await get_production_agent("patient_no_lang", "medical_interview", "en", resource_loader=mock_resource_loader)
+        
+        # Check that agent was created
+        assert agent is not None
             
-            # Check that agent was created
-            assert agent is not None
-            
-            # Check system prompt defaults to English
-            instruction = agent.instruction
-            assert "You are a test patient." in instruction
-            assert "Respond in English language" in instruction
+        # Check system prompt defaults to English
+        instruction = agent.instruction
+        assert "You are a test patient." in instruction
+        assert "Respond in English language" in instruction
 
     @pytest.mark.asyncio
     async def test_system_prompt_unsupported_language_defaults_to_english(self, sample_scenario, mock_resource_loader):
@@ -170,17 +166,16 @@ class TestChatHandlerSystemPrompt:
         mock_resource_loader.get_character_by_id.return_value = character_unsupported
         mock_resource_loader.get_scenario_by_id.return_value = sample_scenario
         
-        with patch('role_play.dev_agents.roleplay_agent.agent.resource_loader', mock_resource_loader):
-            from role_play.dev_agents.roleplay_agent.agent import get_production_agent
-            agent = await get_production_agent("patient_fr", "medical_interview", "fr")
+        from role_play.dev_agents.roleplay_agent.agent import get_production_agent
+        agent = await get_production_agent("patient_fr", "medical_interview", "fr", resource_loader=mock_resource_loader)
+        
+        # Check that agent was created
+        assert agent is not None
             
-            # Check that agent was created
-            assert agent is not None
-            
-            # Check system prompt defaults to English for unsupported language
-            instruction = agent.instruction
-            assert "Vous êtes un patient français." in instruction
-            assert "Respond in English language" in instruction  # Should default to English
+        # Check system prompt defaults to English for unsupported language
+        instruction = agent.instruction
+        assert "Vous êtes un patient français." in instruction
+        assert "Respond in English language" in instruction  # Should default to English
 
     @pytest.mark.asyncio
     async def test_system_prompt_with_script(self, sample_english_character, sample_scenario, mock_resource_loader):
@@ -189,16 +184,15 @@ class TestChatHandlerSystemPrompt:
         mock_resource_loader.get_character_by_id.return_value = sample_english_character
         mock_resource_loader.get_scenario_by_id.return_value = sample_scenario
         
-        with patch('role_play.dev_agents.roleplay_agent.agent.resource_loader', mock_resource_loader):
-            from role_play.dev_agents.roleplay_agent.agent import get_production_agent
-            agent = await get_production_agent("patient_en", "medical_interview", "en", scripted=True)
+        from role_play.dev_agents.roleplay_agent.agent import get_production_agent
+        agent = await get_production_agent("patient_en", "medical_interview", "en", scripted=True, resource_loader=mock_resource_loader)
+        
+        # Check that agent was created
+        assert agent is not None
             
-            # Check that agent was created
-            assert agent is not None
-            
-            # Check system prompt contains scripted prompt
-            instruction = agent.instruction
-            assert 'You are improvising based on "character" part of the script below' in instruction
+        # Check system prompt contains scripted prompt
+        instruction = agent.instruction
+        assert 'You are improvising based on "character" part of the script below' in instruction
 
     @pytest.mark.asyncio
     async def test_system_prompt_without_script(self, sample_english_character, sample_scenario, mock_resource_loader):
@@ -207,16 +201,15 @@ class TestChatHandlerSystemPrompt:
         mock_resource_loader.get_character_by_id.return_value = sample_english_character
         mock_resource_loader.get_scenario_by_id.return_value = sample_scenario
         
-        with patch('role_play.dev_agents.roleplay_agent.agent.resource_loader', mock_resource_loader):
-            from role_play.dev_agents.roleplay_agent.agent import get_production_agent
-            agent = await get_production_agent("patient_en", "medical_interview", "en", scripted=False)
+        from role_play.dev_agents.roleplay_agent.agent import get_production_agent
+        agent = await get_production_agent("patient_en", "medical_interview", "en", scripted=False, resource_loader=mock_resource_loader)
+        
+        # Check that agent was created
+        assert agent is not None
             
-            # Check that agent was created
-            assert agent is not None
-            
-            # Check system prompt does not contain scripted prompt
-            instruction = agent.instruction
-            assert 'You are improvising based on "character" part of the script below' not in instruction
+        # Check system prompt does not contain scripted prompt
+        instruction = agent.instruction
+        assert 'You are improvising based on "character" part of the script below' not in instruction
 
     @pytest.mark.asyncio
     async def test_system_prompt_with_script(self, sample_english_character, sample_scenario, mock_resource_loader):
@@ -225,16 +218,15 @@ class TestChatHandlerSystemPrompt:
         mock_resource_loader.get_character_by_id.return_value = sample_english_character
         mock_resource_loader.get_scenario_by_id.return_value = sample_scenario
         
-        with patch('role_play.dev_agents.roleplay_agent.agent.resource_loader', mock_resource_loader):
-            from role_play.dev_agents.roleplay_agent.agent import get_production_agent
-            agent = await get_production_agent("patient_en", "medical_interview", "en", scripted=True)
+        from role_play.dev_agents.roleplay_agent.agent import get_production_agent
+        agent = await get_production_agent("patient_en", "medical_interview", "en", scripted=True, resource_loader=mock_resource_loader)
+        
+        # Check that agent was created
+        assert agent is not None
             
-            # Check that agent was created
-            assert agent is not None
-            
-            # Check system prompt contains scripted prompt
-            instruction = agent.instruction
-            assert 'You are improvising based on "character" part of the script below' in instruction
+        # Check system prompt contains scripted prompt
+        instruction = agent.instruction
+        assert 'You are improvising based on "character" part of the script below' in instruction
 
     @pytest.mark.asyncio
     async def test_system_prompt_without_script(self, sample_english_character, sample_scenario, mock_resource_loader):
@@ -243,16 +235,15 @@ class TestChatHandlerSystemPrompt:
         mock_resource_loader.get_character_by_id.return_value = sample_english_character
         mock_resource_loader.get_scenario_by_id.return_value = sample_scenario
         
-        with patch('role_play.dev_agents.roleplay_agent.agent.resource_loader', mock_resource_loader):
-            from role_play.dev_agents.roleplay_agent.agent import get_production_agent
-            agent = await get_production_agent("patient_en", "medical_interview", "en", scripted=False)
+        from role_play.dev_agents.roleplay_agent.agent import get_production_agent
+        agent = await get_production_agent("patient_en", "medical_interview", "en", scripted=False, resource_loader=mock_resource_loader)
+        
+        # Check that agent was created
+        assert agent is not None
             
-            # Check that agent was created
-            assert agent is not None
-            
-            # Check system prompt does not contain scripted prompt
-            instruction = agent.instruction
-            assert 'You are improvising based on "character" part of the script below' not in instruction
+        # Check system prompt does not contain scripted prompt
+        instruction = agent.instruction
+        assert 'You are improvising based on "character" part of the script below' not in instruction
 
     @pytest.mark.asyncio
     async def test_system_prompt_structure(self, sample_english_character, sample_scenario, mock_resource_loader):
@@ -261,21 +252,20 @@ class TestChatHandlerSystemPrompt:
         mock_resource_loader.get_character_by_id.return_value = sample_english_character
         mock_resource_loader.get_scenario_by_id.return_value = sample_scenario
         
-        with patch('role_play.dev_agents.roleplay_agent.agent.resource_loader', mock_resource_loader):
-            from role_play.dev_agents.roleplay_agent.agent import get_production_agent
-            agent = await get_production_agent("patient_en", "medical_interview", "en")
-            instruction = agent.instruction
+        from role_play.dev_agents.roleplay_agent.agent import get_production_agent
+        agent = await get_production_agent("patient_en", "medical_interview", "en", resource_loader=mock_resource_loader)
+        instruction = agent.instruction
             
-            # Check that all required sections are present
-            assert "**Current Scenario:**" in instruction
-            assert "**Roleplay Instructions:**" in instruction
+        # Check that all required sections are present
+        assert "**Current Scenario:**" in instruction
+        assert "**Roleplay Instructions:**" in instruction
             
-            # Check all roleplay instructions are present
-            assert "Stay fully in character" in instruction
-            assert "Do NOT break character or mention you are an AI" in instruction
-            assert "Respond naturally based on your character's personality" in instruction
-            assert "IMPORTANT: Respond in" in instruction  # Language instruction
-            assert "Engage with the user's messages within the roleplay context" in instruction
+        # Check all roleplay instructions are present
+        assert "Stay fully in character" in instruction
+        assert "Do NOT break character or mention you are an AI" in instruction
+        assert "Respond naturally based on your character's personality" in instruction
+        assert "IMPORTANT: Respond in" in instruction  # Language instruction
+        assert "Engage with the user's messages within the roleplay context" in instruction
 
     @pytest.mark.asyncio
     async def test_system_prompt_with_missing_fields(self, mock_resource_loader):
@@ -287,16 +277,15 @@ class TestChatHandlerSystemPrompt:
         mock_resource_loader.get_character_by_id.return_value = minimal_character
         mock_resource_loader.get_scenario_by_id.return_value = minimal_scenario
         
-        with patch('role_play.dev_agents.roleplay_agent.agent.resource_loader', mock_resource_loader):
-            from role_play.dev_agents.roleplay_agent.agent import get_production_agent
-            agent = await get_production_agent("min_char", "min_scenario", "en")
+        from role_play.dev_agents.roleplay_agent.agent import get_production_agent
+        agent = await get_production_agent("min_char", "min_scenario", "en", resource_loader=mock_resource_loader)
             
-            # Should handle missing fields gracefully
-            assert agent is not None
-            instruction = agent.instruction
-            assert "You are a helpful assistant." in instruction  # Default system prompt
-            assert "No specific scenario description." in instruction  # Default scenario description
-            assert "Respond in English language" in instruction  # Default language
+        # Should handle missing fields gracefully
+        assert agent is not None
+        instruction = agent.instruction
+        assert "You are a helpful assistant." in instruction  # Default system prompt
+        assert "No specific scenario description." in instruction  # Default scenario description
+        assert "Respond in English language" in instruction  # Default language
 
 
 class TestChatHandlerReadOnlySession:
