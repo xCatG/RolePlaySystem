@@ -66,7 +66,9 @@ def get_storage_backend() -> StorageBackend:
     
     # Use storage configuration
     if config.storage:
-        return create_storage_backend(config.storage, env_enum)
+        backend = create_storage_backend(config.storage, env_enum)
+        logger.info(f"Storage backend: {type(backend).__name__} for {environment}")
+        return backend
     else:
         raise ValueError("Storage configuration is required")
 

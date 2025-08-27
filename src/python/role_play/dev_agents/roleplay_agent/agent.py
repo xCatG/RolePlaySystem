@@ -3,6 +3,7 @@ Development agent for adk web and configuration export for production.
 """
 import os
 import sys
+import logging
 from pathlib import Path
 from typing import Dict, Optional
 from google.adk.agents import Agent
@@ -13,7 +14,9 @@ sys.path.insert(0, str(PROJECT_ROOT / "src" / "python"))
 DEFAULT_MODEL = "gemini-2.5-flash" # Set a reasonable default
 AGENT_MODEL = os.getenv("ADK_MODEL", DEFAULT_MODEL) # <-- Read from env
 
-from .tools import dev_tools, resource_loader
+logger = logging.getLogger(__name__)
+
+from .tools import dev_tools
 
 # --- Development Agent for adk web ---
 
@@ -46,7 +49,7 @@ agent = root_agent
 
 # --- Configuration Export for Production ---
 
-async def get_production_agent(character_id: str, scenario_id: str, language: str = "en", scripted: bool = False, agent_model: str = AGENT_MODEL) -> Optional[Agent]:
+async def get_production_agent(character_id: str, scenario_id: str, language: str = "en", scripted: bool = False, agent_model: str = AGENT_MODEL, resource_loader=None) -> Optional[Agent]:
     """
     Creates a production-ready RolePlayAgent for a specific
     character, scenario, and language.
@@ -57,10 +60,26 @@ async def get_production_agent(character_id: str, scenario_id: str, language: st
         language: The language code (e.g., "en", "zh-TW", "ja")
         scripted: whether the session is scripted or not
         agent_model: id of the llm model to use
+        resource_loader: ResourceLoader instance (injected from handler)
     
     Returns:
         A configured RolePlayAgent instance or None if character/scenario not found
     """
+    # Use the injected resource_loader or create a fallback one
+    if resource_loader is None:
+        # Try to get from dependency injection system first
+        try:
+            from ...server.dependencies import get_resource_loader
+            resource_loader = get_resource_loader()
+            logger.info(f"Using dependency-injected ResourceLoader from server")
+        except ImportError:
+            # Last resort: Use the fallback FileStorage ResourceLoader 
+            from .tools import resource_loader as fallback_loader
+            resource_loader = fallback_loader
+            logger.warning(f"Using fallback FileStorage ResourceLoader (dev only)")
+    else:
+        logger.info(f"Creating agent with {type(resource_loader).__name__}")
+    
     # Use await since resource_loader methods are async
     character = await resource_loader.get_character_by_id(character_id, language)
     scenario = await resource_loader.get_scenario_by_id(scenario_id, language)

@@ -139,9 +139,9 @@ class ChatHandler(BaseHandler):
             raise HTTPException(status_code=500, detail="Failed to load session character/scenario configuration.")
         return character_dict, scenario_dict
 
-    async def _generate_character_response(self, adk_session: Any, message: str, user_id: str,
-                                          session_id: str, character_dict: Dict, scenario_dict: Dict,
-                                          adk_session_service: InMemorySessionService) -> str:
+    async def _generate_character_response(self, adk_session: Any, message: str, user_id: str, session_id: str,
+                                           character_dict: Dict, scenario_dict: Dict,
+                                           adk_session_service: InMemorySessionService, resource_loader) -> str:
         """Generate character response using ADK Runner."""
         # Get character, scenario IDs and language from session state
         character_id = adk_session.state.get("character_id")
@@ -149,8 +149,8 @@ class ChatHandler(BaseHandler):
         script_id = adk_session.state.get("script_id")
         language = adk_session.state.get("language", "en")
         
-        # Use get_production_agent from roleplay_agent module
-        agent = await get_production_agent(character_id, scenario_id, language, scripted=(bool(script_id) or (script_id is not None)))
+        # Use get_production_agent from roleplay_agent module with injected resource_loader
+        agent = await get_production_agent(character_id, scenario_id, language, scripted=(bool(script_id) or (script_id is not None)), resource_loader=resource_loader)
         if not agent:
             raise HTTPException(status_code=500, detail="Failed to create roleplay agent")
             
@@ -487,10 +487,9 @@ class ChatHandler(BaseHandler):
             character_dict, scenario_dict = await self._load_session_content(adk_session, resource_loader)
             
             # Generate character response
-            response_text = await self._generate_character_response(
-                adk_session, request.message, current_user.id, session_id, 
-                character_dict, scenario_dict, adk_session_service
-            )
+            response_text = await self._generate_character_response(adk_session, request.message, current_user.id,
+                                                                    session_id, character_dict, scenario_dict,
+                                                                    adk_session_service, resource_loader)
             
             # Log character response
             await self._log_character_message(
