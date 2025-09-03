@@ -6,8 +6,8 @@ build-backend = "setuptools.build_meta"
 name = "role_play_system"
 version = "0.1.0"
 description = "A core backend for building and running AI-powered role-playing simulations"
-readme = {file = "README.md", content-type = "text/markdown"}
-license = {file = "LICENSE"}
+readme = {file = "../../../README.md", content-type = "text/markdown"}
+license = {file = "../../../LICENSE"}
 authors = [
     {name = "CatTail Software", email = "info@cattail-sw.com"}
 ]

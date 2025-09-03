@@ -259,11 +259,31 @@ This repository is set up to be distributed as a Python package.
 
 To build the package locally:
 
-1.  Navigate to the `src/python` directory.
-2.  Ensure you have the latest build tools: `pip install --upgrade setuptools wheel build`.
-3.  Run the build script: `./build.sh`.
+```bash
+# Using Make (recommended)
+make test-package-build
+
+# Or manually
+cd src/python/role_play
+pip install --upgrade setuptools wheel build
+python -m build
+```
 
 The distributable files (`.tar.gz` and `.whl`) will be located in `src/python/role_play/dist/`.
+
+### Package Testing
+
+Comprehensive testing suite for package validation:
+
+```bash
+make test-package-all      # Run all package tests
+make test-package-build    # Test build process
+make test-package-install  # Test installation  
+make inspect-package       # Inspect package contents
+make test-gcp-upload      # Test GCP upload (interactive)
+```
+
+See [PACKAGE_TESTING.md](./PACKAGE_TESTING.md) for detailed testing documentation.
 
 ### Automated Publishing to GCP Artifact Registry
 
