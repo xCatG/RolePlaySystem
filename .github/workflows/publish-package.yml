@@ -1,4 +1,4 @@
-name: Publish Python Package
+name: Publish Python Package to GCP Artifact Registry
 
 on:
   push:
@@ -7,7 +7,7 @@ on:
 
 jobs:
   build-and-publish:
-    name: Build and publish Python package to PyPI
+    name: Build and publish Python package to GCP Artifact Registry
     runs-on: ubuntu-latest
 
     steps:
@@ -23,10 +23,14 @@ jobs:
       run: |
         cd src/python
         ./build.sh
-      
-    - name: Publish package to PyPI
-      uses: pypa/gh-action-pypi-publish@release/v1
+
+    - id: 'auth'
+      uses: 'google-github-actions/auth@v2'
       with:
-        user: __token__
-        password: ${{ secrets.PYPI_API_TOKEN }}
-        packages_dir: src/python/role_play/dist/
+        credentials_json: '${{ secrets.GCP_SA_KEY }}'
+
+    - name: Publish to Artifact Registry
+      run: |
+        pip install twine
+        twine upload --repository-url https://${{ secrets.GCP_REGION }}-python.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.GCP_ARTIFACT_REGISTRY_REPO }}/ dist/*
+      working-directory: src/python/role_play

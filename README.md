@@ -215,33 +215,9 @@ GET  /api/eval/session/{id}/all_reports    # Historical evaluations
 
 ---
 
-## Deployment Guide
-
 ---
 
-## 📦 Packaging and Publishing
-
-This repository is set up to be distributed as a Python package.
-
-### Manual Build
-
-To build the package locally:
-
-1.  Navigate to the `src/python` directory.
-2.  Ensure you have the latest build tools: `pip install --upgrade setuptools wheel`.
-3.  Run the build script: `./build.sh`.
-
-The distributable files (`.tar.gz` and `.whl`) will be located in `src/python/role_play/dist/`.
-
-### Automated Publishing
-
-The package is automatically published to PyPI via a GitHub Action. To publish a new version:
-
-1.  Ensure the `version` in `src/python/role_play/setup.py` has been updated.
-2.  Create and push a new git tag that starts with `v` (e.g., `git tag v0.1.0` and `git push origin v0.1.0`).
-
-The `publish-package.yml` workflow will handle the rest.
-
+## Deploying the Application
 
 ### **Cloud Deployment (Production)**
 
@@ -272,3 +248,35 @@ ENV=prod GCS_BUCKET=prod-bucket JWT_SECRET_KEY=secure-key python run_server.py
 ```
 
 ** See [DEPLOYMENT.md](./DEPLOYMENT.md) for detailed instructions**
+
+--- 
+
+## 📦 Publishing the Library
+
+This repository is set up to be distributed as a Python package.
+
+### Manual Build
+
+To build the package locally:
+
+1.  Navigate to the `src/python` directory.
+2.  Ensure you have the latest build tools: `pip install --upgrade setuptools wheel`.
+3.  Run the build script: `./build.sh`.
+
+The distributable files (`.tar.gz` and `.whl`) will be located in `src/python/role_play/dist/`.
+
+### Automated Publishing
+
+The package is automatically published to a private GCP Artifact Registry via a GitHub Action. To publish a new version:
+
+1.  Ensure the `version` in `src/python/role_play/setup.py` has been updated.
+2.  Create and push a new git tag that starts with `v` (e.g., `git tag v0.1.0` and `git push origin v0.1.0`).
+
+The `publish-package.yml` workflow will handle the rest.
+
+**Note**: Before this action can work, you must create a GCP service account with permissions to write to Artifact Registry and add the following secrets to your GitHub repository:
+* `GCP_PROJECT_ID`: Your GCP project ID.
+* `GCP_SA_KEY`: The JSON key for your service account.
+* `GCP_REGION`: The GCP region for your Artifact Registry (e.g., `us-central1`).
+* `GCP_ARTIFACT_REGISTRY_REPO`: The name of your Artifact Registry repository for Python packages.
+
