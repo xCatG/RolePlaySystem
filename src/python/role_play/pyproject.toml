@@ -6,8 +6,8 @@ build-backend = "setuptools.build_meta"
 name = "role_play_system"
 version = "0.1.0"
 description = "A core backend for building and running AI-powered role-playing simulations"
-readme = {file = "../../../README.md", content-type = "text/markdown"}
-license = {file = "../../../LICENSE"}
+readme = {file = "README.md", content-type = "text/markdown"}
+license = {file = "LICENSE"}
 authors = [
     {name = "CatTail Software", email = "info@cattail-sw.com"}
 ]
@@ -71,7 +71,12 @@ test = [
 ]
 
 [tool.setuptools]
-packages = ["chat", "common", "dev_agents", "evaluation", "scripter", "server", "voice"]
+
+# Discover all Python packages under the local directory that start with
+# the top-level package name `role_play` (e.g., role_play, role_play.chat, ...)
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["role_play*"]
 
 [tool.setuptools.package-data]
 "*" = ["*.yaml", "*.yml", "*.json", "*.md"]

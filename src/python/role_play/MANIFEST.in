@@ -1,24 +1,20 @@
-# Include the README and other documentation files
-include ../../../README.md
-include ../../../LICENSE*
-include ../../../CHANGELOG*
-
-# Include requirements files
-include ../requirements*.txt
+# Include the README and license from this package directory
+include README.md
+include LICENSE*
 
 # Include configuration files
 include **/*.yaml
 include **/*.yml
 include **/*.json
 
-# Include any data files within packages
-recursive-include chat *.py *.yaml *.yml *.json
-recursive-include common *.py *.yaml *.yml *.json
-recursive-include dev_agents *.py *.yaml *.yml *.json
-recursive-include evaluation *.py *.yaml *.yml *.json
-recursive-include scripter *.py *.yaml *.yml *.json
-recursive-include server *.py *.yaml *.yml *.json
-recursive-include voice *.py *.yaml *.yml *.json
+# Include any data files within packages (properly scoped under role_play/)
+recursive-include role_play/chat *.py *.yaml *.yml *.json
+recursive-include role_play/common *.py *.yaml *.yml *.json
+recursive-include role_play/dev_agents *.py *.yaml *.yml *.json
+recursive-include role_play/evaluation *.py *.yaml *.yml *.json
+recursive-include role_play/scripter *.py *.yaml *.yml *.json
+recursive-include role_play/server *.py *.yaml *.yml *.json
+recursive-include role_play/voice *.py *.yaml *.yml *.json
 
 # Exclude test files and development artifacts
 recursive-exclude * __pycache__
