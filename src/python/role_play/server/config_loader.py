@@ -10,19 +10,13 @@ This module provides environment-aware configuration loading with:
 
 import os
 import yaml
-from enum import Enum
 from pathlib import Path
 from typing import Dict, Any, Optional
 from dotenv import load_dotenv
 
 from .config import ServerConfig, DevelopmentConfig, ProductionConfig
-
-
-class Environment(Enum):
-    """Supported environments."""
-    DEV = "dev"
-    BETA = "beta"
-    PROD = "prod"
+from ..common.models import Environment
+from ..common.environment import resolve_environment
 
 
 class ConfigLoader:
@@ -190,26 +184,12 @@ class ConfigLoader:
         # Load environment variables first
         self.load_environment_variables()
         
-        # Determine and validate environment
+        # Determine and validate environment using unified resolver
         if environment is None:
-            # Check CONFIG_FILE first, then ENV, then ENVIRONMENT, then default to dev
-            config_file = os.getenv("CONFIG_FILE")
-            if config_file:
-                # Extract environment from config file path (e.g., /app/config/beta.yaml -> beta)
-                import re
-                match = re.search(r'/(\w+)\.yaml$', config_file)
-                if match:
-                    environment = match.group(1)
-                else:
-                    environment = "dev"
-            else:
-                environment = os.getenv("ENV", os.getenv("ENVIRONMENT", "dev"))
-        
-        try:
+            env_enum = resolve_environment()
+        else:
             env_enum = Environment(environment)
-        except ValueError:
-            supported_envs = [e.value for e in Environment]
-            raise ValueError(f"Unsupported environment '{environment}'. Supported environments: {supported_envs}")
+
         
         # Load YAML config
         yaml_config = self.load_yaml_config(env_enum)
