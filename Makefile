@@ -380,11 +380,48 @@ dev-setup: load-env-mk
 	@echo ""
 	@echo "Or use PyCharm to run src/python/run_server.py"
 
+# --- Package Testing ---
+.PHONY: test-package-build
+test-package-build: ## Test local package build process
+	@echo "Running package build test..."
+	@cd src/python && ./test-build.sh
+
+.PHONY: test-package-install
+test-package-install: ## Test package installation in clean environment
+	@echo "Running package installation test..."
+	@cd src/python && ./test-install.sh
+
+.PHONY: inspect-package
+inspect-package: ## Inspect package contents and structure
+	@echo "Inspecting package contents..."
+	@cd src/python && ./inspect-package.sh
+
+.PHONY: test-gcp-upload
+test-gcp-upload: ## Test GCP Artifact Registry upload (interactive)
+	@echo "Running GCP upload test..."
+	@cd src/python && ./test-gcp-upload.sh
+
+.PHONY: test-package-all
+test-package-all: test-package-build inspect-package test-package-install ## Run all package tests (except GCP)
+	@echo "All package tests completed successfully!"
+
+.PHONY: build-package
+build-package: ## Build the Python package
+	@echo "Building Python package..."
+	@cd src/python && ./build.sh
+
+.PHONY: test-package-venv
+test-package-venv: ## Activate venv and run package tests (alternative command)
+	@echo "Activating virtual environment and running package tests..."
+	@source venv/bin/activate && $(MAKE) test-package-all
+
 # --- Release Management ---
 .PHONY: release
 release:
 	@echo "To create a new release, create and push a new git tag."
 	@echo "Example: git tag v0.1.0 && git push origin v0.1.0"
+	@echo ""
+	@echo "Before releasing, run: make test-package-all"
 
 # --- GCP Setup ---
 .PHONY: setup-gcp-infra

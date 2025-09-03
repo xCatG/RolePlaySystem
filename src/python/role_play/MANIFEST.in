@@ -1,0 +1,36 @@
+# Include the README and other documentation files
+include ../../../README.md
+include ../../../LICENSE*
+include ../../../CHANGELOG*
+
+# Include requirements files
+include ../requirements*.txt
+
+# Include configuration files
+include **/*.yaml
+include **/*.yml
+include **/*.json
+
+# Include any data files within packages
+recursive-include chat *.py *.yaml *.yml *.json
+recursive-include common *.py *.yaml *.yml *.json
+recursive-include dev_agents *.py *.yaml *.yml *.json
+recursive-include evaluation *.py *.yaml *.yml *.json
+recursive-include scripter *.py *.yaml *.yml *.json
+recursive-include server *.py *.yaml *.yml *.json
+recursive-include voice *.py *.yaml *.yml *.json
+
+# Exclude test files and development artifacts
+recursive-exclude * __pycache__
+recursive-exclude * *.py[co]
+recursive-exclude * *.orig
+recursive-exclude * *.rej
+recursive-exclude * .git*
+recursive-exclude * .tox*
+recursive-exclude * .coverage*
+recursive-exclude * .pytest_cache*
+recursive-exclude * *.egg-info*
+
+# Include package metadata
+include setup.py
+include pyproject.toml
