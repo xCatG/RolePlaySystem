@@ -32,5 +32,5 @@ jobs:
     - name: Publish to Artifact Registry
       run: |
         pip install twine
+        cd src/python/role_play
         twine upload --repository-url https://${{ secrets.GCP_REGION }}-python.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.GCP_ARTIFACT_REGISTRY_REPO }}/ dist/*
-      working-directory: src/python/role_play

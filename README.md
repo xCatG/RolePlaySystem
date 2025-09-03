@@ -260,7 +260,7 @@ This repository is set up to be distributed as a Python package.
 To build the package locally:
 
 1.  Navigate to the `src/python` directory.
-2.  Ensure you have the latest build tools: `pip install --upgrade setuptools wheel`.
+2.  Ensure you have the latest build tools: `pip install --upgrade setuptools wheel build`.
 3.  Run the build script: `./build.sh`.
 
 The distributable files (`.tar.gz` and `.whl`) will be located in `src/python/role_play/dist/`.
