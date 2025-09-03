@@ -381,18 +381,10 @@ dev-setup: load-env-mk
 	@echo "Or use PyCharm to run src/python/run_server.py"
 
 # --- Release Management ---
-.PHONY: tag-git-release
-tag-git-release: # Expects NEW_GIT_TAG to be set, e.g., make tag-git-release NEW_GIT_TAG=v1.0.0
-ifndef NEW_GIT_TAG
-	$(error NEW_GIT_TAG is not set. Usage: make tag-git-release NEW_GIT_TAG=vX.Y.Z)
-endif
-	@echo "Creating Git tag: $(NEW_GIT_TAG)"
-	@read -p "Enter commit message for tag $(NEW_GIT_TAG) (Press Enter for default: 'Release $(NEW_GIT_TAG)'): " msg; \
-	COMMIT_MSG=$${msg:-Release $(NEW_GIT_TAG)}; \
-	git tag -a "$(NEW_GIT_TAG)" -m "$$COMMIT_MSG"
-	@echo "Pushing Git tag $(NEW_GIT_TAG) to origin..."
-	@git push origin "$(NEW_GIT_TAG)"
-	@echo "Git tag $(NEW_GIT_TAG) created and pushed."
+.PHONY: release
+release:
+	@echo "To create a new release, create and push a new git tag."
+	@echo "Example: git tag v0.1.0 && git push origin v0.1.0"
 
 # --- GCP Setup ---
 .PHONY: setup-gcp-infra

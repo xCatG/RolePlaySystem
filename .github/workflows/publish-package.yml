@@ -1,0 +1,32 @@
+name: Publish Python Package
+
+on:
+  push:
+    tags:
+      - 'v*' # Trigger on tags like v0.1.0, v1.2.3, etc.
+
+jobs:
+  build-and-publish:
+    name: Build and publish Python package to PyPI
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Install dependencies and build package
+      run: |
+        cd src/python
+        ./build.sh
+      
+    - name: Publish package to PyPI
+      uses: pypa/gh-action-pypi-publish@release/v1
+      with:
+        user: __token__
+        password: ${{ secrets.PYPI_API_TOKEN }}
+        packages_dir: src/python/role_play/dist/

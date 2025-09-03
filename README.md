@@ -217,6 +217,32 @@ GET  /api/eval/session/{id}/all_reports    # Historical evaluations
 
 ## Deployment Guide
 
+---
+
+## 📦 Packaging and Publishing
+
+This repository is set up to be distributed as a Python package.
+
+### Manual Build
+
+To build the package locally:
+
+1.  Navigate to the `src/python` directory.
+2.  Ensure you have the latest build tools: `pip install --upgrade setuptools wheel`.
+3.  Run the build script: `./build.sh`.
+
+The distributable files (`.tar.gz` and `.whl`) will be located in `src/python/role_play/dist/`.
+
+### Automated Publishing
+
+The package is automatically published to PyPI via a GitHub Action. To publish a new version:
+
+1.  Ensure the `version` in `src/python/role_play/setup.py` has been updated.
+2.  Create and push a new git tag that starts with `v` (e.g., `git tag v0.1.0` and `git push origin v0.1.0`).
+
+The `publish-package.yml` workflow will handle the rest.
+
+
 ### **Cloud Deployment (Production)**
 
 ```bash
