@@ -535,8 +535,10 @@ class ChatLogger:
         """
         # Security: Defensive check to ensure no PCM logging in production
         # even if environment checks are bypassed elsewhere
-        env = os.environ.get("ENV", "dev").lower()
-        if env == "prod" or env == "production":
+        from role_play.common.environment import resolve_environment
+        from role_play.common.models import Environment
+        env = resolve_environment()
+        if env == Environment.PROD:
             logger.debug("PCM audio logging disabled in production environment")
             return
         

@@ -12,6 +12,7 @@ from ..common.auth import AuthManager
 from ..common.storage import StorageBackend, FileStorage, FileStorageConfig, LockConfig
 from ..common.storage_factory import create_storage_backend
 from ..common.models import User, UserRole, Environment, EnvironmentInfo
+from ..common.environment import resolve_environment, get_environment_info as resolved_env_info
 from ..common.exceptions import AuthenticationError, TokenExpiredError
 from .config_loader import get_config, ServerConfig
 from ..chat.chat_logger import ChatLogger
@@ -24,21 +25,7 @@ logger = logging.getLogger(__name__)
 @lru_cache(maxsize=None)
 def get_environment_info() -> EnvironmentInfo:
     """Provides detailed information about the current deployment environment."""
-    env_str = os.getenv("ENV", "dev")
-    try:
-        env_enum = Environment(env_str)
-    except ValueError:
-        logger.warning(f"Unknown environment '{env_str}', defaulting to DEV")
-        env_enum = Environment.DEV
-    
-    is_prod = (env_enum == Environment.PROD)
-    is_dev = (env_enum == Environment.DEV)
-
-    return EnvironmentInfo(
-        name=env_enum,
-        is_production=is_prod,
-        is_development=is_dev
-    )
+    return resolved_env_info()
 
 
 @lru_cache(maxsize=None)
@@ -55,19 +42,13 @@ def get_storage_backend() -> StorageBackend:
     """
     config = get_server_config()
     
-    # Determine environment
-    environment = os.getenv("ENVIRONMENT", "dev")
-    try:
-        env_enum = Environment(environment)
-    except ValueError:
-        # Default to dev for unknown environments
-        env_enum = Environment.DEV
-        logger.warning(f"Unknown environment '{environment}', defaulting to DEV")
+    # Determine environment via unified resolver
+    env_enum = resolve_environment()
     
     # Use storage configuration
     if config.storage:
         backend = create_storage_backend(config.storage, env_enum)
-        logger.info(f"Storage backend: {type(backend).__name__} for {environment}")
+        logger.info(f"Storage backend: {type(backend).__name__} for {env_enum.value}")
         return backend
     else:
         raise ValueError("Storage configuration is required")
