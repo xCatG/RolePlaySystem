@@ -35,8 +35,7 @@ make test-package-venv
 Tests the package build process and validates artifacts:
 
 ```bash
-cd src/python
-./test-build.sh
+./test/python/packaging/test-build.sh
 ```
 
 **What it tests:**
@@ -51,8 +50,7 @@ cd src/python
 Tests package installation in a clean environment:
 
 ```bash
-cd src/python
-./test-install.sh
+./test/python/packaging/test-install.sh
 ```
 
 **What it tests:**
@@ -68,8 +66,7 @@ cd src/python
 Detailed inspection of package contents:
 
 ```bash
-cd src/python
-./inspect-package.sh
+./test/python/packaging/inspect-package.sh
 ```
 
 **What it shows:**
@@ -85,8 +82,7 @@ cd src/python
 Interactive GCP Artifact Registry testing:
 
 ```bash
-cd src/python
-./test-gcp-upload.sh
+./test/python/packaging/test-gcp-upload.sh
 ```
 
 **What it tests:**

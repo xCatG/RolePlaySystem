@@ -384,22 +384,22 @@ dev-setup: load-env-mk
 .PHONY: test-package-build
 test-package-build: ## Test local package build process
 	@echo "Running package build test..."
-	@cd src/python && ./test-build.sh
+	@./test/python/packaging/test-build.sh
 
 .PHONY: test-package-install
 test-package-install: ## Test package installation in clean environment
 	@echo "Running package installation test..."
-	@cd src/python && ./test-install.sh
+	@./test/python/packaging/test-install.sh
 
 .PHONY: inspect-package
 inspect-package: ## Inspect package contents and structure
 	@echo "Inspecting package contents..."
-	@cd src/python && ./inspect-package.sh
+	@./test/python/packaging/inspect-package.sh
 
 .PHONY: test-gcp-upload
 test-gcp-upload: ## Test GCP Artifact Registry upload (interactive)
 	@echo "Running GCP upload test..."
-	@cd src/python && ./test-gcp-upload.sh
+	@./test/python/packaging/test-gcp-upload.sh
 
 .PHONY: test-package-all
 test-package-all: test-package-build inspect-package test-package-install ## Run all package tests (except GCP)

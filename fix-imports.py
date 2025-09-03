@@ -86,4 +86,4 @@ if __name__ == "__main__":
     print()
     print("Note: After fixing imports, you should:")
     print("1. Rebuild the package: cd src/python && ./build.sh")
-    print("2. Test the installation: ./test-install.sh")
+    print("2. Test the installation: ./test/python/packaging/test-install.sh")

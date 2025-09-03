@@ -12,12 +12,16 @@ echo -e "${BLUE}=== Package Build Testing Script ===${NC}"
 echo "Testing the role_play_system package build process..."
 echo ""
 
-# Change to the script directory
+# Change to the script directory and find project root
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$SCRIPT_DIR"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+PYTHON_SRC_DIR="$PROJECT_ROOT/src/python"
 
-# Activate virtual environment if it exists
-VENV_PATH="../../venv"
+# Change to python source directory for build operations
+cd "$PYTHON_SRC_DIR"
+
+# Activate virtual environment if it exists  
+VENV_PATH="$PROJECT_ROOT/venv"
 if [ -d "$VENV_PATH" ]; then
     echo "Activating virtual environment..."
     source "$VENV_PATH/bin/activate"
@@ -126,7 +130,7 @@ echo -e "${BLUE}=== Build Test Summary ===${NC}"
 echo -e "${GREEN}Build test completed successfully!${NC}"
 echo ""
 echo "Next steps:"
-echo "1. Run installation test: ./test-install.sh"
-echo "2. Test GCP upload: ./test-gcp-upload.sh"
+echo "1. Run installation test: ./test/python/packaging/test-install.sh"
+echo "2. Test GCP upload: ./test/python/packaging/test-gcp-upload.sh"
 echo "3. Create version tag when ready: git tag v0.1.0 && git push origin v0.1.0"
 echo ""

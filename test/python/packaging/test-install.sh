@@ -12,21 +12,22 @@ echo -e "${BLUE}=== Package Installation Testing Script ===${NC}"
 echo "Testing local installation of the role_play_system package..."
 echo ""
 
-# Change to the script directory
+# Change to the script directory and find project root
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$SCRIPT_DIR"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+PYTHON_SRC_DIR="$PROJECT_ROOT/src/python"
 
 # Note: This script creates its own test environment and doesn't use the main venv
 
 # Check if build artifacts exist
-if [ ! -d "role_play/dist" ]; then
-    echo -e "${RED}❌ FAIL: No dist directory found. Run ./build.sh first.${NC}"
+if [ ! -d "$PYTHON_SRC_DIR/role_play/dist" ]; then
+    echo -e "${RED}❌ FAIL: No dist directory found. Run build first.${NC}"
     exit 1
 fi
 
-WHEEL_FILE=$(find role_play/dist -name "*.whl" -type f | head -1)
+WHEEL_FILE=$(find "$PYTHON_SRC_DIR/role_play/dist" -name "*.whl" -type f | head -1)
 if [ -z "$WHEEL_FILE" ]; then
-    echo -e "${RED}❌ FAIL: No .whl file found. Run ./build.sh first.${NC}"
+    echo -e "${RED}❌ FAIL: No .whl file found. Run build first.${NC}"
     exit 1
 fi
 
@@ -160,7 +161,7 @@ echo ""
 echo "The package can be installed and imported without issues."
 echo ""
 echo "Next steps:"
-echo "1. Test GCP upload: ./test-gcp-upload.sh"
+echo "1. Test GCP upload: ./test/python/packaging/test-gcp-upload.sh"
 echo "2. Run full end-to-end test with test repository"
 echo "3. Create version tag when ready: git tag v0.1.0 && git push origin v0.1.0"
 echo ""

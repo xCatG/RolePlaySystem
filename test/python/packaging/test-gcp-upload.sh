@@ -18,12 +18,13 @@ DEFAULT_REGION="us-central1"
 DEFAULT_REPO="python-packages"
 TEST_REPO="python-test"
 
-# Change to the script directory
+# Change to the script directory and find project root
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$SCRIPT_DIR"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+PYTHON_SRC_DIR="$PROJECT_ROOT/src/python"
 
 # Activate virtual environment if it exists (for twine and auth tools)
-VENV_PATH="../../venv"
+VENV_PATH="$PROJECT_ROOT/venv"
 if [ -d "$VENV_PATH" ]; then
     echo "Activating virtual environment..."
     source "$VENV_PATH/bin/activate"
@@ -118,13 +119,13 @@ fi
 
 # Test 6: Check build artifacts
 echo -e "${YELLOW}6. Checking build artifacts...${NC}"
-if [ ! -d "role_play/dist" ]; then
-    echo -e "${RED}❌ FAIL: No dist directory found. Run ./build.sh first.${NC}"
+if [ ! -d "$PYTHON_SRC_DIR/role_play/dist" ]; then
+    echo -e "${RED}❌ FAIL: No dist directory found. Run build first.${NC}"
     exit 1
 fi
 
-WHEEL_FILE=$(find role_play/dist -name "*.whl" -type f | head -1)
-TARBALL_FILE=$(find role_play/dist -name "*.tar.gz" -type f | head -1)
+WHEEL_FILE=$(find "$PYTHON_SRC_DIR/role_play/dist" -name "*.whl" -type f | head -1)
+TARBALL_FILE=$(find "$PYTHON_SRC_DIR/role_play/dist" -name "*.tar.gz" -type f | head -1)
 
 if [ -z "$WHEEL_FILE" ] || [ -z "$TARBALL_FILE" ]; then
     echo -e "${RED}❌ FAIL: Build artifacts not found. Run ./build.sh first.${NC}"
@@ -151,7 +152,7 @@ echo -e "${GREEN}✅ PASS: Twine and auth tools installed${NC}"
 
 # Test 8: Test twine check
 echo -e "${YELLOW}8. Running twine check...${NC}"
-cd role_play
+cd "$PYTHON_SRC_DIR/role_play"
 if twine check dist/*; then
     echo -e "${GREEN}✅ PASS: Package validation successful${NC}"
 else
@@ -174,7 +175,7 @@ read -r CONFIRM
 
 if [[ $CONFIRM =~ ^[Yy]$ ]]; then
     echo -e "${YELLOW}10. Performing test upload...${NC}"
-    cd role_play
+    cd "$PYTHON_SRC_DIR/role_play"
     
     if twine upload --repository-url "$REPO_URL" dist/* --verbose; then
         echo -e "${GREEN}✅ PASS: Test upload successful!${NC}"
