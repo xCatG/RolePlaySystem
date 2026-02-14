@@ -1,4 +1,4 @@
-google-adk
+google-adk==1.25.0
 openai
 pydantic[email]
 langchain
