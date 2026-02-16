@@ -1,0 +1,36 @@
+name: Publish Python Package to GCP Artifact Registry
+
+on:
+  push:
+    tags:
+      - 'v*' # Trigger on tags like v0.1.0, v1.2.3, etc.
+
+jobs:
+  build-and-publish:
+    name: Build and publish Python package to GCP Artifact Registry
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Install dependencies and build package
+      run: |
+        cd src/python
+        ./build.sh
+
+    - id: 'auth'
+      uses: 'google-github-actions/auth@v2'
+      with:
+        credentials_json: '${{ secrets.GCP_SA_KEY }}'
+
+    - name: Publish to Artifact Registry
+      run: |
+        pip install twine
+        cd src/python/role_play
+        twine upload --repository-url https://${{ secrets.GCP_REGION }}-python.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.GCP_ARTIFACT_REGISTRY_REPO }}/ dist/*

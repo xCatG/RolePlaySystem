@@ -1,0 +1,32 @@
+# Include the README and license from this package directory
+include README.md
+include LICENSE*
+
+# Include configuration files
+include **/*.yaml
+include **/*.yml
+include **/*.json
+
+# Include any data files within packages (properly scoped under role_play/)
+recursive-include role_play/chat *.py *.yaml *.yml *.json
+recursive-include role_play/common *.py *.yaml *.yml *.json
+recursive-include role_play/dev_agents *.py *.yaml *.yml *.json
+recursive-include role_play/evaluation *.py *.yaml *.yml *.json
+recursive-include role_play/scripter *.py *.yaml *.yml *.json
+recursive-include role_play/server *.py *.yaml *.yml *.json
+recursive-include role_play/voice *.py *.yaml *.yml *.json
+
+# Exclude test files and development artifacts
+recursive-exclude * __pycache__
+recursive-exclude * *.py[co]
+recursive-exclude * *.orig
+recursive-exclude * *.rej
+recursive-exclude * .git*
+recursive-exclude * .tox*
+recursive-exclude * .coverage*
+recursive-exclude * .pytest_cache*
+recursive-exclude * *.egg-info*
+
+# Include package metadata
+include setup.py
+include pyproject.toml
