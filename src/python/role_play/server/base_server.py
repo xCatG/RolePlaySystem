@@ -71,9 +71,10 @@ class BaseServer:
         @self.app.get("/health", tags=["Health"], include_in_schema=False)
         async def health_check():
             """Health check endpoint for monitoring and Cloud Run."""
+            from role_play.common.environment import environment_name
             return {
                 "status": "healthy",
-                "environment": os.getenv("ENV", "unknown"),
+                "environment": environment_name(),
                 "version": os.getenv("GIT_VERSION", "unknown"),
                 "service": os.getenv("SERVICE_NAME", "rps")
             }
@@ -156,7 +157,9 @@ class BaseServer:
                 return FileResponse(index_html_path)
             else:
                 # In development, the frontend might not be built yet
-                if os.getenv("ENV", "dev") == "dev":
+                from role_play.common.environment import resolve_environment
+                from role_play.common.models import Environment
+                if resolve_environment() == Environment.DEV:
                     return {
                         "message": "Frontend not found. In development, use 'npm run dev' for the frontend.",
                         "static_dir": static_files_dir
