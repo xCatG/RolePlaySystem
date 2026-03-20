@@ -54,10 +54,13 @@ class VoiceSessionState:
     session_timeout: int               # per-session, from query param or default
     warning_seconds: int               # per-session, from query param or default
     chat_logger: ChatLogger             # injected alongside storage
+    transcript_buffer: List[Dict]       # accumulated transcripts for evaluation
     stats: Dict[str, int]               # numeric counters only (audio_chunks_sent, etc.)
 ```
 
 `chat_logger` is obtained once via `get_chat_logger(self._storage)` in `handle_voice_session` and passed into the state, not fetched per-call.
+
+`transcript_buffer` accumulates all transcript entries (both partial and final, with role and timestamp) during the session. `_send_to_client` appends to it when routing transcript events. `_cleanup_session` can access it for evaluation data. Initialized as an empty list.
 
 `stats` contains only numeric counters (`audio_chunks_sent`, `audio_chunks_received`, `text_chunks_sent`, `transcripts_processed`, `errors`). Non-numeric session data like `termination_reason` lives on dedicated `VoiceSessionState` fields.
 
@@ -133,6 +136,9 @@ _handle_streaming (orchestrator)
 | `_send_to_client` | Detects AI sentinel or `stop_event` | Yes — `AI_CONCLUDED` or `AI_EARLY_TERMINATION` |
 | `_session_timer` | Clock hits T=0 | Yes — `TIME_LIMIT` |
 | `_heartbeat` | `stop_event` is set | No — just exits |
+| `_heartbeat` | `ConnectionError` on send | Yes — `DISCONNECTED` (before re-raising) |
+
+**Heartbeat disconnection:** If `_heartbeat` catches a `ConnectionError` when sending, it calls `_handle_termination(state, "DISCONNECTED")` before re-raising the exception. This ensures `termination_reason` is set correctly rather than relying on the orchestrator's fallback path (which would set `stop_event` but not the reason).
 
 **Key difference from v1:** `_receive_from_client` ending due to silence does NOT kill `_send_to_client`. The receive coroutine only terminates the session on explicit `end_session` or disconnect.
 
@@ -152,7 +158,7 @@ Routing table in `_send_to_client`, based on `EventClassification.kind`:
 ### 5.1 AI Termination Detection (Hybrid)
 
 **Primary — sentinel text scanning:**
-`_classify_adk_event` checks transcript text for `[SESSION_COMPLETE]` or `[END_EARLY:reason]`. If found:
+`_classify_adk_event` checks transcript text for `[RPS_SESSION_COMPLETE]` or `[RPS_END_EARLY:reason]`. If found:
 - `is_terminal = True`
 - `terminal_reason` = `AI_CONCLUDED` or `AI_EARLY_TERMINATION`
 - Sentinel is stripped from `data` before storage
@@ -204,8 +210,8 @@ This uses the same `wait_for(stop_event.wait(), timeout=...)` pattern as `_heart
 
 `_inject_time_warning` fires both approaches to test which the Live API responds to:
 
-1. **State update:** `state.adk_session.state["time_warning"] = True`
-2. **Content injection:** `state.live_request_queue.send_content(Content(parts=[Part(text="[SYSTEM] 5 minutes remaining. Begin wrapping up the interview.")]))`
+1. **State update (likely won't work, here for discovery):** `state.adk_session.state["time_warning"] = True` — ADK session state mutation via direct dict access may not propagate to the live agent mid-session. The runner likely only reads state at turn boundaries, not mid-stream. Included to confirm this hypothesis; content injection is the real approach.
+2. **Content injection (primary):** `state.live_request_queue.send_content(Content(parts=[Part(text="[SYSTEM] 5 minutes remaining. Begin wrapping up the interview.")]))`
 
 Both fire. Each is wrapped in try/except — failures are logged as valuable spike data, not propagated to the timer coroutine. Spike logging will reveal which (or both) triggers observable agent behavior.
 
@@ -241,7 +247,7 @@ Single convergence point for all exit paths:
 1. **Guard:** Check-and-set `stop_event` atomically (no `await` between check and set). Since all coroutines run on a single event loop, `if not stop_event.is_set(): stop_event.set()` is safe — there are no await points between the check and set to create a race. If `stop_event` is already set, return immediately.
 2. Set `state.termination_reason = reason`
 3. (stop_event already set in step 1)
-4. Send frontend message (if WebSocket still open): `{"type": "session_ended", "reason": reason, "detail": detail, "timestamp": "..."}`
+4. Send frontend message, guarded by try/except `ConnectionError`/`WebSocketDisconnect` (for `DISCONNECTED` the socket is already dead, so the send silently fails): `{"type": "session_ended", "reason": reason, "detail": detail, "timestamp": "..."}`
 5. Close `live_request_queue` — **unless** reason is `DISCONNECTED` (keep alive for resume)
 6. Log termination with full context
 
@@ -302,7 +308,7 @@ Set unconditionally on every `RunConfig`, not just reconnections.
 1. Check `google.adk.agents.RunConfig` for a `context_window_compression` field
 2. Check `google.genai.types` for a `ContextWindowCompressionConfig` class
 3. If neither exists, check for `SlidingWindowConfig`, `ContextCompressionConfig`, or similar
-4. If no compression config exists in the current SDK version, log a TODO and skip — this is a spike
+4. If no compression config exists in the current SDK version, log a WARNING and skip — the spike should still run without it. A 45-minute session during testing won't hit the context limit, so the spike remains valid
 
 **Expected usage (pending verification):**
 
