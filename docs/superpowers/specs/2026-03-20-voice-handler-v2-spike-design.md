@@ -341,13 +341,15 @@ async def _heartbeat(self, websocket, state):
             break  # stop_event was set
         except asyncio.TimeoutError:
             pass  # interval elapsed, send heartbeat
-        await websocket.send_json({
-            "type": "heartbeat",
-            "timestamp": utc_now_isoformat()
-        })
+        try:
+            await websocket.send_json({
+                "type": "heartbeat",
+                "timestamp": utc_now_isoformat()
+            })
+        except (ConnectionError, WebSocketDisconnect):
+            await self._handle_termination(state, "DISCONNECTED")
+            raise
 ```
-
-If sending fails (`ConnectionError`), the coroutine raises, orchestrator detects disconnection.
 
 ## 10. Method Inventory
 
