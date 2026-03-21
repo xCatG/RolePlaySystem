@@ -743,3 +743,33 @@ class TestCleanupSession:
         handler._storage.write.assert_called()
         key = handler._storage.write.call_args[0][0]
         assert "session_meta" in key
+
+
+class TestHandleVoiceSession:
+    @pytest.fixture
+    def handler(self):
+        storage = AsyncMock()
+        storage.exists = AsyncMock(return_value=False)
+        return VoiceHandlerV2(storage)
+
+    @pytest.mark.asyncio
+    async def test_missing_token_closes_websocket(self, handler):
+        ws = AsyncMock()
+        ws.query_params = {}
+        env_info = MagicMock()
+
+        await handler.handle_voice_session(ws, "sess-1", env_info)
+        ws.close.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_invalid_token_closes_websocket(self, handler):
+        ws = AsyncMock()
+        ws.query_params = {"token": "bad", "timeout": "60", "warning": "10"}
+
+        with patch.object(
+            VoiceHandlerV2, "_validate_jwt_token",
+            new_callable=AsyncMock, return_value=None,
+        ):
+            env_info = MagicMock()
+            await handler.handle_voice_session(ws, "sess-1", env_info)
+            ws.close.assert_called_once()

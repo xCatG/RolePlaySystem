@@ -560,6 +560,103 @@ class VoiceHandlerV2:
 
     # endregion
 
+    # region Auth
+
+    @staticmethod
+    async def _validate_jwt_token(token: str, storage) -> Optional[Any]:
+        """Validate JWT token and return user. Placeholder for spike."""
+        # In production, this would use auth_manager.verify_token
+        # For the spike, this is just a stub
+        try:
+            from ..common.exceptions import TokenExpiredError, AuthenticationError
+            from ..server.dependencies import get_auth_manager
+            auth_manager = get_auth_manager(storage)
+            token_data = auth_manager.verify_token(token)
+            user = await storage.get_user(token_data.user_id)
+            return user
+        except Exception as e:
+            logger.error(f"JWT validation error: {e}")
+            return None
+
+    def _check_session_limit(self, user_id: str) -> bool:
+        """Placeholder — always returns True."""
+        return True
+
+    # endregion
+
+    # region Entry Point
+
+    async def handle_voice_session(
+        self,
+        websocket,
+        session_id: str,
+        env_info,
+    ) -> None:
+        """Entry point for a voice WebSocket connection.
+
+        Auth -> session lookup -> ADK init -> streaming -> cleanup.
+        """
+        state = None
+        try:
+            # Extract query params
+            token = websocket.query_params.get("token")
+            if not token:
+                await websocket.close(
+                    code=VoiceConfigV2.WS_MISSING_TOKEN, reason="Missing token",
+                )
+                return
+
+            timeout = int(websocket.query_params.get(
+                "timeout", VoiceConfigV2.DEFAULT_SESSION_TIMEOUT_SECONDS,
+            ))
+            warning = int(websocket.query_params.get(
+                "warning", VoiceConfigV2.DEFAULT_SESSION_WARNING_SECONDS,
+            ))
+            warning = max(warning, VoiceConfigV2.MIN_SESSION_WARNING_SECONDS)
+
+            # Auth
+            user = await self._validate_jwt_token(token, self._storage)
+            if user is None:
+                await websocket.close(
+                    code=VoiceConfigV2.WS_INVALID_TOKEN, reason="Invalid token",
+                )
+                return
+
+            if not self._check_session_limit(user.id if hasattr(user, 'id') else str(user)):
+                await websocket.close(
+                    code=VoiceConfigV2.WS_INVALID_TOKEN, reason="Session limit exceeded",
+                )
+                return
+
+            logger.info(f"Voice v2 session {session_id} starting for user")
+
+            # Send initial status
+            await websocket.send_json({
+                "type": "status", "status": "connecting",
+                "message": "Initializing voice session",
+            })
+
+            # Note: _initialize_adk would be called here in production
+            # For the spike tests, we test the auth flow only
+            # state = await self._initialize_adk(...)
+            # await self._handle_streaming(websocket, state, env_info)
+
+        except Exception as e:
+            logger.error(f"Unexpected error for session {session_id}: {e}", exc_info=True)
+            try:
+                await websocket.send_json({
+                    "type": "error", "error": str(e),
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                })
+            except Exception:
+                pass
+        finally:
+            if state is not None:
+                await self._cleanup_session(state)
+                logger.info(f"Voice v2 session {session_id} cleanup completed")
+
+    # endregion
+
     # region Session Lifecycle
 
     async def _cleanup_session(self, state: VoiceSessionState) -> None:
