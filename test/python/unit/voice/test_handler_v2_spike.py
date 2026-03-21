@@ -255,7 +255,7 @@ def _make_state(**overrides) -> VoiceSessionState:
         stop_event=asyncio.Event(), termination_reason=None,
         started_at=datetime.now(timezone.utc),
         session_timeout=60, warning_seconds=10,
-        chat_logger=MagicMock(), transcript_buffer=[], stats={},
+        chat_logger=AsyncMock(), transcript_buffer=[], stats={},
     )
     defaults.update(overrides)
     return VoiceSessionState(**defaults)
@@ -455,3 +455,139 @@ class TestHeartbeat:
         handler._handle_termination.assert_called_once_with(
             ws, state, VoiceConfigV2.REASON_DISCONNECTED
         )
+
+
+class TestSendToClient:
+    @pytest.fixture
+    def handler(self):
+        storage = AsyncMock()
+        storage.write = AsyncMock()
+        return VoiceHandlerV2(storage)
+
+    def _make_live_events(self, events):
+        """Create an async generator from a list of events."""
+        async def gen():
+            for e in events:
+                yield e
+        return gen()
+
+    @pytest.mark.asyncio
+    async def test_audio_sent_to_frontend(self, handler):
+        ws = AsyncMock()
+        part = MagicMock()
+        del part.text
+        part.inline_data = MagicMock(data=b"\x01\x02", mime_type="audio/pcm")
+        event = MagicMock()
+        event.content = MagicMock(parts=[part])
+        for attr in ["turn_complete", "interrupted", "session_resumption_update", "go_away"]:
+            if hasattr(event, attr):
+                delattr(event, attr)
+
+        state = _make_state(live_events=self._make_live_events([event]))
+        handler._handle_termination = AsyncMock()
+
+        await handler._send_to_client(ws, state)
+        assert ws.send_json.call_count == 1
+        msg = ws.send_json.call_args[0][0]
+        assert msg["type"] == "audio"
+
+    @pytest.mark.asyncio
+    async def test_transcript_not_sent_to_frontend(self, handler):
+        ws = AsyncMock()
+        part = MagicMock()
+        part.text = "Hello"
+        part.inline_data = None
+        event = MagicMock()
+        event.content = MagicMock(parts=[part], role="model")
+        event.partial = False
+        for attr in ["turn_complete", "interrupted", "session_resumption_update", "go_away"]:
+            if hasattr(event, attr):
+                delattr(event, attr)
+
+        chat_logger = AsyncMock()
+        state = _make_state(
+            live_events=self._make_live_events([event]),
+            chat_logger=chat_logger,
+        )
+        handler._handle_termination = AsyncMock()
+
+        await handler._send_to_client(ws, state)
+        # Transcript must NOT be sent to frontend
+        ws.send_json.assert_not_called()
+        # But must be logged
+        chat_logger.log_voice_message.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_transcript_appended_to_buffer(self, handler):
+        ws = AsyncMock()
+        part = MagicMock()
+        part.text = "Test transcript"
+        part.inline_data = None
+        event = MagicMock()
+        event.content = MagicMock(parts=[part], role="model")
+        event.partial = False
+        for attr in ["turn_complete", "interrupted", "session_resumption_update", "go_away"]:
+            if hasattr(event, attr):
+                delattr(event, attr)
+
+        state = _make_state(live_events=self._make_live_events([event]))
+        handler._handle_termination = AsyncMock()
+
+        await handler._send_to_client(ws, state)
+        assert len(state.transcript_buffer) == 1
+        assert state.transcript_buffer[0]["text"] == "Test transcript"
+
+    @pytest.mark.asyncio
+    async def test_session_resumption_writes_to_storage(self, handler):
+        ws = AsyncMock()
+        event = MagicMock(spec=[])
+        event.session_resumption_update = "handle-xyz"
+        event.content = None
+
+        state = _make_state(live_events=self._make_live_events([event]))
+        handler._handle_termination = AsyncMock()
+
+        await handler._send_to_client(ws, state)
+        handler._storage.write.assert_called_once()
+        key = handler._storage.write.call_args[0][0]
+        assert "gemini_handle" in key
+
+    @pytest.mark.asyncio
+    async def test_terminal_event_triggers_termination(self, handler):
+        ws = AsyncMock()
+        part = MagicMock()
+        part.text = "Goodbye [RPS_SESSION_COMPLETE]"
+        part.inline_data = None
+        event = MagicMock()
+        event.content = MagicMock(parts=[part], role="model")
+        event.partial = False
+        for attr in ["turn_complete", "interrupted", "session_resumption_update", "go_away"]:
+            if hasattr(event, attr):
+                delattr(event, attr)
+
+        state = _make_state(live_events=self._make_live_events([event]))
+        handler._handle_termination = AsyncMock()
+
+        await handler._send_to_client(ws, state)
+        handler._handle_termination.assert_called_once()
+        call_args = handler._handle_termination.call_args
+        assert call_args[0][2] == VoiceConfigV2.REASON_AI_CONCLUDED
+
+    @pytest.mark.asyncio
+    async def test_turn_status_sent_to_frontend(self, handler):
+        ws = AsyncMock()
+        event = MagicMock()
+        event.content = None
+        event.turn_complete = True
+        event.interrupted = False
+        for attr in ["session_resumption_update", "go_away"]:
+            if hasattr(event, attr):
+                delattr(event, attr)
+
+        state = _make_state(live_events=self._make_live_events([event]))
+        handler._handle_termination = AsyncMock()
+
+        await handler._send_to_client(ws, state)
+        ws.send_json.assert_called_once()
+        msg = ws.send_json.call_args[0][0]
+        assert msg["type"] == "turn_status"

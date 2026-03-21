@@ -317,4 +317,99 @@ class VoiceHandlerV2:
 
     # endregion
 
+    # region Event Routing
+
+    async def _send_to_client(
+        self, websocket, state: VoiceSessionState,
+    ) -> None:
+        """Route ADK events to frontend, storage, or logs.
+
+        Uses classify_adk_event (sync) for classification, then routes async.
+        Transcripts are logged but NOT sent to frontend (REQ-7).
+        """
+        try:
+            async for event in state.live_events:
+                if state.stop_event.is_set():
+                    break
+
+                classification = classify_adk_event(event)
+
+                if classification.kind == "audio":
+                    audio_data = classification.data["audio_data"]
+                    state.stats["audio_chunks_received"] = state.stats.get("audio_chunks_received", 0) + 1
+                    await websocket.send_json({
+                        "type": "audio",
+                        "data": base64.b64encode(audio_data).decode("utf-8"),
+                        "mime_type": classification.data["mime_type"],
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                    })
+
+                elif classification.kind == "transcript":
+                    # REQ-7: log but do NOT send to frontend
+                    state.stats["transcripts_processed"] = state.stats.get("transcripts_processed", 0) + 1
+                    entry = {
+                        "text": classification.data,
+                        "role": classification.role,
+                        "is_partial": classification.is_partial,
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                    }
+                    state.transcript_buffer.append(entry)
+
+                    if not classification.is_partial:
+                        await state.chat_logger.log_voice_message(
+                            user_id=state.user_id,
+                            session_id=state.session_id,
+                            role=classification.role,
+                            transcript_text=classification.data,
+                            duration_ms=0,
+                            message_number=-1,
+                            confidence=1.0,
+                            voice_metadata=entry,
+                        )
+
+                    # Check for AI termination sentinel
+                    if classification.is_terminal:
+                        logger.info(
+                            f"Session {state.session_id}: AI terminal signal "
+                            f"reason={classification.terminal_reason}"
+                        )
+                        await self._handle_termination(
+                            websocket, state, classification.terminal_reason,
+                        )
+                        return
+
+                elif classification.kind == "turn_status":
+                    await websocket.send_json({
+                        "type": "turn_status",
+                        **classification.data,
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                    })
+
+                elif classification.kind == "session_resumption":
+                    handle_key = VoiceConfigV2.HANDLE_KEY_TEMPLATE.format(
+                        user_id=state.user_id, session_id=state.session_id,
+                    )
+                    await self._storage.write(handle_key, classification.data)
+                    logger.info(f"Session {state.session_id}: persisted resumption handle")
+
+                elif classification.kind == "go_away":
+                    logger.warning(f"Session {state.session_id}: GoAway received (suppressed)")
+
+                else:  # unknown
+                    logger.debug(f"Session {state.session_id}: unknown event: {classification.data}")
+
+        except asyncio.CancelledError:
+            logger.info(f"Event processing cancelled for session {state.session_id}")
+        except (ConnectionError, Exception) as e:
+            if isinstance(e, ConnectionError):
+                logger.error(f"Connection error in _send_to_client: {e}")
+                await self._handle_termination(
+                    websocket, state, VoiceConfigV2.REASON_DISCONNECTED,
+                )
+            else:
+                logger.error(f"Unexpected error in _send_to_client: {e}", exc_info=True)
+                state.stats["errors"] = state.stats.get("errors", 0) + 1
+
+    # endregion
+
 # endregion
