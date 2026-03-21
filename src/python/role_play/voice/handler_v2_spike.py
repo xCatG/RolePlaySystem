@@ -154,3 +154,61 @@ def classify_adk_event(event: Any) -> EventClassification:
     return EventClassification(kind="unknown", data={"type": event_type, "attrs": event_attrs})
 
 # endregion
+
+
+# region Handler
+
+class VoiceHandlerV2:
+    """Voice handler v2 spike for 45-minute behavioral interviews.
+
+    Not registered via standard handler registration.
+    Uses /voice-v2 prefix to avoid conflicts with v1.
+    Storage injected at construction.
+    """
+
+    def __init__(self, storage):
+        self._storage = storage
+        self._router = None
+
+    @property
+    def prefix(self) -> str:
+        return "/voice-v2"
+
+    # region Termination
+
+    async def _handle_termination(
+        self,
+        websocket,
+        state: VoiceSessionState,
+        reason: str,
+        detail: Optional[str] = None,
+    ) -> None:
+        """Single convergence point for all session exit paths."""
+        # Guard: prevent double-fire
+        if state.stop_event.is_set():
+            return
+        state.stop_event.set()
+        state.termination_reason = reason
+
+        # Notify frontend
+        try:
+            await websocket.send_json({
+                "type": "session_ended",
+                "reason": reason,
+                "detail": detail,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            })
+        except (ConnectionError, Exception):
+            pass  # Socket may already be closed
+
+        # Close queue unless resumable
+        if reason != VoiceConfigV2.REASON_DISCONNECTED:
+            state.live_request_queue.close()
+
+        logger.info(
+            f"Session {state.session_id} terminated: reason={reason}, detail={detail}"
+        )
+
+    # endregion
+
+# endregion

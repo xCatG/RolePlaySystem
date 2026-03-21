@@ -11,6 +11,7 @@ from role_play.voice.handler_v2_spike import (
     VoiceSessionState,
     EventClassification,
     classify_adk_event,
+    VoiceHandlerV2,
 )
 from role_play.voice.voice_config_v2 import VoiceConfigV2
 
@@ -243,3 +244,84 @@ class TestClassifyAdkEvent:
         event = self._make_event(content=None, turn_complete=True)
         result = classify_adk_event(event)
         assert result.kind == "turn_status"
+
+
+def _make_state(**overrides) -> VoiceSessionState:
+    """Factory for VoiceSessionState with sensible defaults."""
+    defaults = dict(
+        session_id="sess-1", user_id="user-1",
+        runner=MagicMock(), live_events=MagicMock(),
+        live_request_queue=MagicMock(), adk_session=MagicMock(),
+        stop_event=asyncio.Event(), termination_reason=None,
+        started_at=datetime.now(timezone.utc),
+        session_timeout=60, warning_seconds=10,
+        chat_logger=MagicMock(), transcript_buffer=[], stats={},
+    )
+    defaults.update(overrides)
+    return VoiceSessionState(**defaults)
+
+
+class TestHandleTermination:
+    @pytest.fixture
+    def handler(self):
+        storage = AsyncMock()
+        return VoiceHandlerV2(storage)
+
+    @pytest.mark.asyncio
+    async def test_sets_reason_and_stop_event(self, handler):
+        ws = AsyncMock()
+        state = _make_state()
+        await handler._handle_termination(ws, state, "USER_ENDED")
+        assert state.termination_reason == "USER_ENDED"
+        assert state.stop_event.is_set()
+
+    @pytest.mark.asyncio
+    async def test_sends_session_ended_to_frontend(self, handler):
+        ws = AsyncMock()
+        state = _make_state()
+        await handler._handle_termination(ws, state, "TIME_LIMIT")
+        ws.send_json.assert_called_once()
+        msg = ws.send_json.call_args[0][0]
+        assert msg["type"] == "session_ended"
+        assert msg["reason"] == "TIME_LIMIT"
+
+    @pytest.mark.asyncio
+    async def test_closes_queue_for_non_disconnect(self, handler):
+        queue = MagicMock()
+        state = _make_state(live_request_queue=queue)
+        await handler._handle_termination(AsyncMock(), state, "USER_ENDED")
+        queue.close.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_keeps_queue_open_for_disconnected(self, handler):
+        queue = MagicMock()
+        state = _make_state(live_request_queue=queue)
+        await handler._handle_termination(AsyncMock(), state, "DISCONNECTED")
+        queue.close.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_guard_prevents_double_fire(self, handler):
+        ws = AsyncMock()
+        state = _make_state()
+        state.stop_event.set()  # already set
+        state.termination_reason = "USER_ENDED"  # already has reason
+        await handler._handle_termination(ws, state, "TIME_LIMIT")
+        assert state.termination_reason == "USER_ENDED"
+        ws.send_json.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_handles_websocket_send_failure(self, handler):
+        ws = AsyncMock()
+        ws.send_json.side_effect = ConnectionError("closed")
+        state = _make_state()
+        await handler._handle_termination(ws, state, "DISCONNECTED")
+        assert state.termination_reason == "DISCONNECTED"
+        assert state.stop_event.is_set()
+
+    @pytest.mark.asyncio
+    async def test_detail_included_in_message(self, handler):
+        ws = AsyncMock()
+        state = _make_state()
+        await handler._handle_termination(ws, state, "AI_EARLY_TERMINATION", detail="off_topic")
+        msg = ws.send_json.call_args[0][0]
+        assert msg["detail"] == "off_topic"
