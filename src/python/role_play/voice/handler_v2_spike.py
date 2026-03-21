@@ -16,9 +16,20 @@ from typing import Optional, Dict, Any, AsyncGenerator, List
 
 from starlette.websockets import WebSocketDisconnect
 
+from fastapi import WebSocket, Depends, APIRouter
+from typing import Annotated
+
 from .models import VoiceRequest
 from .voice_config_v2 import VoiceConfigV2
+from ..common.models import EnvironmentInfo
 from ..common.time_utils import utc_now_isoformat
+from ..server.base_handler import BaseHandler
+from ..server.dependencies import (
+    get_storage_backend,
+    get_chat_logger,
+    get_adk_session_service,
+    get_environment_info,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -185,21 +196,105 @@ def classify_adk_event(event: Any) -> EventClassification:
 
 # region Handler
 
-class VoiceHandlerV2:
+class VoiceHandlerV2(BaseHandler):
     """Voice handler v2 spike for 45-minute behavioral interviews.
 
-    Not registered via standard handler registration.
     Uses /voice-v2 prefix to avoid conflicts with v1.
-    Storage injected at construction.
+    Storage injected at construction or resolved via get_storage_backend().
     """
 
-    def __init__(self, storage):
-        self._storage = storage
-        self._router = None
+    def __init__(self, storage=None):
+        super().__init__()
+        self._storage = storage or get_storage_backend()
 
     @property
     def prefix(self) -> str:
         return "/voice-v2"
+
+    @property
+    def router(self) -> APIRouter:
+        if self._router is None:
+            self._router = APIRouter()
+
+            @self._router.websocket("/ws/{session_id}")
+            async def voice_v2_websocket_endpoint(
+                websocket: WebSocket,
+                session_id: str,
+                environment_info: Annotated[EnvironmentInfo, Depends(get_environment_info)],
+            ):
+                await websocket.accept()
+                await self.handle_voice_session(websocket, session_id, environment_info)
+
+        return self._router
+
+    # region ADK Initialization
+
+    async def _initialize_adk(
+        self,
+        session_id: str,
+        user,
+        timeout: int,
+        warning: int,
+    ) -> VoiceSessionState:
+        """Initialize ADK components and return a VoiceSessionState."""
+        from google.adk import Runner
+        from google.adk.agents import RunConfig, LiveRequestQueue
+        from google.genai import types
+        from google.genai.types import AudioTranscriptionConfig
+
+        adk_session_service = get_adk_session_service()
+        adk_session = await adk_session_service.get_session(
+            app_name="roleplay_chat", user_id=user.id, session_id=session_id,
+        )
+        if not adk_session:
+            raise ValueError(f"Session {session_id} not found in ADK session service")
+
+        # Create agent
+        from ..dev_agents.roleplay_agent.agent import get_production_agent
+        agent = await get_production_agent(
+            character_id=adk_session.state.get("character_id"),
+            scenario_id=adk_session.state.get("scenario_id"),
+            language=getattr(user, "preferred_language", "en"),
+            scripted=bool(adk_session.state.get("script_data")),
+            agent_model="gemini-2.5-flash-native-audio-preview-12-2025",
+        )
+        if not agent:
+            raise ValueError("Failed to create roleplay agent")
+
+        runner = Runner(
+            app_name="roleplay_chat", agent=agent,
+            session_service=adk_session_service,
+        )
+        run_config = RunConfig(
+            response_modalities=[types.Modality.AUDIO],
+            output_audio_transcription=AudioTranscriptionConfig(),
+            input_audio_transcription=AudioTranscriptionConfig(),
+        )
+        live_request_queue = LiveRequestQueue()
+        live_events = runner.run_live(
+            session=adk_session,
+            live_request_queue=live_request_queue,
+            run_config=run_config,
+        )
+
+        chat_logger = get_chat_logger(get_storage_backend())
+
+        return VoiceSessionState(
+            session_id=session_id,
+            user_id=user.id,
+            runner=runner,
+            live_events=live_events,
+            live_request_queue=live_request_queue,
+            adk_session=adk_session,
+            stop_event=asyncio.Event(),
+            termination_reason=None,
+            started_at=datetime.now(timezone.utc),
+            session_timeout=timeout,
+            warning_seconds=warning,
+            chat_logger=chat_logger,
+        )
+
+    # endregion
 
     # region Termination
 
@@ -654,10 +749,36 @@ class VoiceHandlerV2:
                 "message": "Initializing voice session",
             })
 
-            # Note: _initialize_adk would be called here in production
-            # For the spike tests, we test the auth flow only
-            # state = await self._initialize_adk(...)
-            # await self._handle_streaming(websocket, state, env_info)
+            # Initialize ADK and start streaming
+            state = await self._initialize_adk(
+                session_id=session_id,
+                user=user,
+                timeout=timeout,
+                warning=warning,
+            )
+
+            user_lang = getattr(user, "preferred_language", "en")
+            await websocket.send_json({
+                "type": "config",
+                "audio_format": "pcm",
+                "sample_rate": 16000,
+                "channels": 1,
+                "bit_depth": 16,
+                "language": user_lang,
+                "session_timeout": timeout,
+                "warning_seconds": warning,
+            })
+
+            await state.chat_logger.log_voice_session_start(
+                user.id, session_id, voice_config={"language": user_lang},
+            )
+
+            await websocket.send_json({
+                "type": "status", "status": "ready",
+                "message": "Voice session ready",
+            })
+
+            await self._handle_streaming(websocket, state, env_info)
 
         except Exception as e:
             logger.error(f"Unexpected error for session {session_id}: {e}", exc_info=True)
