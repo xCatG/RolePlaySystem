@@ -325,3 +325,85 @@ class TestHandleTermination:
         await handler._handle_termination(ws, state, "AI_EARLY_TERMINATION", detail="off_topic")
         msg = ws.send_json.call_args[0][0]
         assert msg["detail"] == "off_topic"
+
+
+class TestSessionTimer:
+    @pytest.fixture
+    def handler(self):
+        return VoiceHandlerV2(AsyncMock())
+
+    @pytest.mark.asyncio
+    async def test_timer_fires_termination_after_timeout(self, handler):
+        state = _make_state(session_timeout=1, warning_seconds=0)
+        handler._inject_time_warning = AsyncMock()
+        handler._handle_termination = AsyncMock()
+        ws = AsyncMock()
+
+        await handler._session_timer(ws, state)
+        handler._handle_termination.assert_called_once_with(
+            ws, state, VoiceConfigV2.REASON_TIME_LIMIT
+        )
+
+    @pytest.mark.asyncio
+    async def test_timer_exits_early_when_stop_event_set(self, handler):
+        state = _make_state(session_timeout=10, warning_seconds=2)
+        handler._inject_time_warning = AsyncMock()
+        handler._handle_termination = AsyncMock()
+        ws = AsyncMock()
+
+        async def set_stop():
+            await asyncio.sleep(0.05)
+            state.stop_event.set()
+        asyncio.create_task(set_stop())
+
+        await handler._session_timer(ws, state)
+        handler._handle_termination.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_timer_calls_inject_warning(self, handler):
+        state = _make_state(session_timeout=1, warning_seconds=0)
+        handler._inject_time_warning = AsyncMock()
+        handler._handle_termination = AsyncMock()
+        ws = AsyncMock()
+
+        await handler._session_timer(ws, state)
+        handler._inject_time_warning.assert_called_once_with(state)
+
+
+class TestInjectTimeWarning:
+    @pytest.fixture
+    def handler(self):
+        return VoiceHandlerV2(AsyncMock())
+
+    @pytest.mark.asyncio
+    async def test_injects_content_into_queue(self, handler):
+        queue = MagicMock()
+        session = MagicMock()
+        session.state = {}
+        state = _make_state(live_request_queue=queue, adk_session=session)
+
+        await handler._inject_time_warning(state)
+        queue.send_content.assert_called_once()
+        content_arg = queue.send_content.call_args[0][0]
+        assert "5 minutes remaining" in content_arg.parts[0].text
+
+    @pytest.mark.asyncio
+    async def test_sets_session_state_time_warning(self, handler):
+        queue = MagicMock()
+        session = MagicMock()
+        session.state = {}
+        state = _make_state(live_request_queue=queue, adk_session=session)
+
+        await handler._inject_time_warning(state)
+        assert session.state.get("time_warning") is True
+
+    @pytest.mark.asyncio
+    async def test_survives_queue_failure(self, handler):
+        queue = MagicMock()
+        queue.send_content.side_effect = RuntimeError("queue closed")
+        session = MagicMock()
+        session.state = {}
+        state = _make_state(live_request_queue=queue, adk_session=session)
+
+        # Should not raise
+        await handler._inject_time_warning(state)

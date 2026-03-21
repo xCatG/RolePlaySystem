@@ -211,4 +211,74 @@ class VoiceHandlerV2:
 
     # endregion
 
+    # region Timer
+
+    async def _session_timer(
+        self, websocket, state: VoiceSessionState,
+    ) -> None:
+        """Wall clock timer with warning injection.
+
+        Two phases: sleep until warning, fire warning, sleep until termination.
+        Uses wait_for(stop_event.wait()) so it responds immediately to session end.
+        """
+        elapsed = (datetime.now(timezone.utc) - state.started_at).total_seconds()
+        warning_at = state.session_timeout - state.warning_seconds
+
+        # Phase 1: wait until warning
+        try:
+            await asyncio.wait_for(
+                state.stop_event.wait(),
+                timeout=max(0, warning_at - elapsed),
+            )
+            return  # stop_event set before warning
+        except asyncio.TimeoutError:
+            pass
+
+        await self._inject_time_warning(state)
+
+        # Phase 2: wait until termination
+        try:
+            await asyncio.wait_for(
+                state.stop_event.wait(),
+                timeout=state.warning_seconds,
+            )
+            return  # stop_event set during warning period
+        except asyncio.TimeoutError:
+            pass
+
+        await self._handle_termination(websocket, state, VoiceConfigV2.REASON_TIME_LIMIT)
+
+    async def _inject_time_warning(self, state: VoiceSessionState) -> None:
+        """Inject time warning into the live session.
+
+        Tries both approaches (state update + content injection).
+        Failures are logged, not propagated.
+        """
+        # Approach 1: State update (likely won't propagate mid-stream)
+        try:
+            state.adk_session.state["time_warning"] = True
+            logger.info(f"Session {state.session_id}: set time_warning=True in session state")
+        except Exception as e:
+            logger.warning(f"Session {state.session_id}: state update failed: {e}")
+
+        # Approach 2: Content injection (primary approach)
+        try:
+            # Create a simple content-like object for the warning
+            class _Part:
+                def __init__(self, text):
+                    self.text = text
+            class _Content:
+                def __init__(self, parts):
+                    self.parts = parts
+
+            warning_content = _Content(
+                parts=[_Part(text="[SYSTEM] 5 minutes remaining. Begin wrapping up the interview.")]
+            )
+            state.live_request_queue.send_content(warning_content)
+            logger.info(f"Session {state.session_id}: injected time warning content")
+        except Exception as e:
+            logger.warning(f"Session {state.session_id}: content injection failed: {e}")
+
+    # endregion
+
 # endregion
