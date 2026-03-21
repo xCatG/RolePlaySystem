@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 # Skip early if no API key
 # ---------------------------------------------------------------------------
 API_KEY = os.environ.get("GOOGLE_API_KEY", "")
-LIVE_MODEL = os.environ.get("GEMINI_LIVE_MODEL", "gemini-2.5-flash-live-preview")
+LIVE_MODEL = os.environ.get("GEMINI_LIVE_MODEL", "gemini-2.5-flash-native-audio-preview-12-2025")
 
 try:
     import pytest
