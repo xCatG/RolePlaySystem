@@ -591,3 +591,104 @@ class TestSendToClient:
         ws.send_json.assert_called_once()
         msg = ws.send_json.call_args[0][0]
         assert msg["type"] == "turn_status"
+
+
+class TestReceiveFromClient:
+    @pytest.fixture
+    def handler(self):
+        return VoiceHandlerV2(AsyncMock())
+
+    @pytest.mark.asyncio
+    async def test_end_session_triggers_user_ended(self, handler):
+        ws = AsyncMock()
+        request_json = '{"mime_type": "text/plain", "data": "dGVzdA==", "end_session": true}'
+        ws.receive_text = AsyncMock(return_value=request_json)
+        state = _make_state()
+        handler._handle_termination = AsyncMock()
+        env_info = MagicMock(is_production=True)
+
+        await handler._receive_from_client(ws, state, env_info)
+        handler._handle_termination.assert_called_once_with(
+            ws, state, VoiceConfigV2.REASON_USER_ENDED,
+        )
+
+    @pytest.mark.asyncio
+    async def test_audio_forwarded_to_adk(self, handler):
+        ws = AsyncMock()
+        audio_b64 = base64.b64encode(b"\x01\x02").decode()
+        request_json = f'{{"mime_type": "audio/pcm", "data": "{audio_b64}", "end_session": false}}'
+
+        call_count = 0
+        async def receive_then_stop(self_=None):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return request_json
+            raise WebSocketDisconnect(code=1000)
+
+        ws.receive_text = AsyncMock(side_effect=receive_then_stop)
+        queue = MagicMock()
+        state = _make_state(live_request_queue=queue)
+        handler._handle_termination = AsyncMock()
+        env_info = MagicMock(is_production=True)
+
+        await handler._receive_from_client(ws, state, env_info)
+        queue.send_realtime.assert_called_once()
+        assert state.stats.get("audio_chunks_sent", 0) == 1
+
+    @pytest.mark.asyncio
+    async def test_text_forwarded_to_adk(self, handler):
+        ws = AsyncMock()
+        text_b64 = base64.b64encode(b"Hello").decode()
+        request_json = f'{{"mime_type": "text/plain", "data": "{text_b64}", "end_session": false}}'
+
+        call_count = 0
+        async def receive_then_stop():
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return request_json
+            raise WebSocketDisconnect(code=1000)
+
+        ws.receive_text = AsyncMock(side_effect=receive_then_stop)
+        queue = MagicMock()
+        chat_logger = AsyncMock()
+        state = _make_state(live_request_queue=queue, chat_logger=chat_logger)
+        handler._handle_termination = AsyncMock()
+        env_info = MagicMock(is_production=True)
+
+        await handler._receive_from_client(ws, state, env_info)
+        queue.send_content.assert_called_once()
+        chat_logger.log_message.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_disconnect_triggers_disconnected(self, handler):
+        ws = AsyncMock()
+        ws.receive_text = AsyncMock(side_effect=WebSocketDisconnect(code=1000))
+        state = _make_state()
+        handler._handle_termination = AsyncMock()
+        env_info = MagicMock(is_production=True)
+
+        await handler._receive_from_client(ws, state, env_info)
+        handler._handle_termination.assert_called_once_with(
+            ws, state, VoiceConfigV2.REASON_DISCONNECTED,
+        )
+
+    @pytest.mark.asyncio
+    async def test_invalid_json_increments_errors(self, handler):
+        ws = AsyncMock()
+        call_count = 0
+        async def bad_then_disconnect():
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return "not valid json"
+            raise WebSocketDisconnect(code=1000)
+
+        ws.receive_text = AsyncMock(side_effect=bad_then_disconnect)
+        state = _make_state()
+        handler._handle_termination = AsyncMock()
+        env_info = MagicMock(is_production=True)
+
+        await handler._receive_from_client(ws, state, env_info)
+        assert state.stats.get("errors", 0) >= 1

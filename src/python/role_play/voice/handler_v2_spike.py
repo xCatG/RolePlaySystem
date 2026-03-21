@@ -14,6 +14,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any, AsyncGenerator, List
 
+from starlette.websockets import WebSocketDisconnect
+
 from .voice_config_v2 import VoiceConfigV2
 
 logger = logging.getLogger(__name__)
@@ -409,6 +411,100 @@ class VoiceHandlerV2:
             else:
                 logger.error(f"Unexpected error in _send_to_client: {e}", exc_info=True)
                 state.stats["errors"] = state.stats.get("errors", 0) + 1
+
+    # endregion
+
+    # region Client Input
+
+    async def _receive_from_client(
+        self,
+        websocket,
+        state: VoiceSessionState,
+        env_info,
+    ) -> None:
+        """Receive from client and forward to ADK."""
+        try:
+            while not state.stop_event.is_set():
+                data = await websocket.receive_text()
+
+                try:
+                    request = json.loads(data)
+                except (json.JSONDecodeError, ValueError) as e:
+                    logger.warning(f"Invalid JSON from client: {e}")
+                    state.stats["errors"] = state.stats.get("errors", 0) + 1
+                    continue
+
+                mime_type = request.get("mime_type", "")
+                raw_data = request.get("data", "")
+                end_session = request.get("end_session", False)
+
+                if end_session:
+                    await self._handle_termination(
+                        websocket, state, VoiceConfigV2.REASON_USER_ENDED,
+                    )
+                    return
+
+                try:
+                    decoded = base64.b64decode(raw_data)
+                except Exception:
+                    state.stats["errors"] = state.stats.get("errors", 0) + 1
+                    continue
+
+                try:
+                    if mime_type == "audio/pcm":
+                        # PCM logging in non-production
+                        if not getattr(env_info, "is_production", True):
+                            try:
+                                await state.chat_logger.log_pcm_audio(
+                                    user_id=state.user_id,
+                                    session_id=state.session_id,
+                                    audio_data=decoded,
+                                )
+                            except (AttributeError, Exception) as e:
+                                logger.debug(f"PCM logging skipped: {e}")
+
+                        # Create blob-like object
+                        class _Blob:
+                            def __init__(self, mime_type, data):
+                                self.mime_type = mime_type
+                                self.data = data
+                        blob = _Blob(mime_type=mime_type, data=decoded)
+                        state.live_request_queue.send_realtime(blob)
+                        state.stats["audio_chunks_sent"] = state.stats.get("audio_chunks_sent", 0) + 1
+
+                    elif mime_type == "text/plain":
+                        text_data = decoded.decode("utf-8")
+                        await state.chat_logger.log_message(
+                            user_id=state.user_id,
+                            session_id=state.session_id,
+                            role="user",
+                            content=text_data,
+                            message_number=-1,
+                        )
+                        class _Part:
+                            def __init__(self, text):
+                                self.text = text
+                        class _Content:
+                            def __init__(self, parts):
+                                self.parts = parts
+                        content = _Content(parts=[_Part(text=text_data)])
+                        state.live_request_queue.send_content(content)
+                        state.stats["text_chunks_sent"] = state.stats.get("text_chunks_sent", 0) + 1
+
+                except Exception as e:
+                    logger.error(f"Error processing client input: {e}")
+                    state.stats["errors"] = state.stats.get("errors", 0) + 1
+
+        except WebSocketDisconnect:
+            logger.info(f"Client disconnected from session {state.session_id}")
+            await self._handle_termination(
+                websocket, state, VoiceConfigV2.REASON_DISCONNECTED,
+            )
+        except Exception as e:
+            logger.error(f"Error in _receive_from_client: {e}")
+            await self._handle_termination(
+                websocket, state, VoiceConfigV2.REASON_DISCONNECTED,
+            )
 
     # endregion
 
