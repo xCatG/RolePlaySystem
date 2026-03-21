@@ -407,3 +407,51 @@ class TestInjectTimeWarning:
 
         # Should not raise
         await handler._inject_time_warning(state)
+
+
+class TestHeartbeat:
+    @pytest.fixture
+    def handler(self):
+        return VoiceHandlerV2(AsyncMock())
+
+    @pytest.mark.asyncio
+    async def test_heartbeat_exits_when_stop_event_set(self, handler):
+        ws = AsyncMock()
+        state = _make_state()
+        state.stop_event.set()
+
+        await handler._heartbeat(ws, state)
+        ws.send_json.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_heartbeat_sends_json(self, handler):
+        ws = AsyncMock()
+        state = _make_state()
+
+        async def stop_after_one():
+            await asyncio.sleep(0.05)
+            state.stop_event.set()
+
+        with patch.object(VoiceConfigV2, "HEARTBEAT_INTERVAL_SECONDS", 0.01):
+            asyncio.create_task(stop_after_one())
+            await handler._heartbeat(ws, state)
+
+        assert ws.send_json.call_count >= 1
+        msg = ws.send_json.call_args_list[0][0][0]
+        assert msg["type"] == "heartbeat"
+        assert "timestamp" in msg
+
+    @pytest.mark.asyncio
+    async def test_heartbeat_calls_termination_on_connection_error(self, handler):
+        ws = AsyncMock()
+        ws.send_json.side_effect = ConnectionError("closed")
+        state = _make_state()
+        handler._handle_termination = AsyncMock()
+
+        with patch.object(VoiceConfigV2, "HEARTBEAT_INTERVAL_SECONDS", 0.01):
+            with pytest.raises(ConnectionError):
+                await handler._heartbeat(ws, state)
+
+        handler._handle_termination.assert_called_once_with(
+            ws, state, VoiceConfigV2.REASON_DISCONNECTED
+        )

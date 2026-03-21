@@ -281,4 +281,40 @@ class VoiceHandlerV2:
 
     # endregion
 
+    # region Keepalive
+
+    async def _heartbeat(self, websocket, state: VoiceSessionState) -> None:
+        """Send periodic heartbeat JSON to keep the WebSocket alive.
+
+        Exits when stop_event is set. Calls _handle_termination(DISCONNECTED)
+        if the WebSocket send fails.
+        """
+        while not state.stop_event.is_set():
+            try:
+                await asyncio.wait_for(
+                    state.stop_event.wait(),
+                    timeout=VoiceConfigV2.HEARTBEAT_INTERVAL_SECONDS,
+                )
+                break  # stop_event was set
+            except asyncio.TimeoutError:
+                pass  # interval elapsed
+
+            if state.stop_event.is_set():
+                break
+
+            try:
+                await websocket.send_json({
+                    "type": "heartbeat",
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                })
+            except (ConnectionError, Exception) as e:
+                if isinstance(e, ConnectionError):
+                    await self._handle_termination(
+                        websocket, state, VoiceConfigV2.REASON_DISCONNECTED,
+                    )
+                    raise
+                raise
+
+    # endregion
+
 # endregion
