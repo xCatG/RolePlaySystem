@@ -28,6 +28,7 @@ logger = logging.getLogger(__name__)
 # Skip early if no API key
 # ---------------------------------------------------------------------------
 API_KEY = os.environ.get("GOOGLE_API_KEY", "")
+LIVE_MODEL = os.environ.get("GEMINI_LIVE_MODEL", "gemini-2.5-flash-live-preview")
 
 try:
     import pytest
@@ -122,7 +123,7 @@ async def _live_round_trip():
     # Set up a minimal agent
     agent = Agent(
         name="smoke_test_agent",
-        model="gemini-2.5-flash-preview-native-audio-dialog",
+        model=LIVE_MODEL,
         instruction="You are a test assistant. Respond briefly to confirm you received the message.",
     )
 
@@ -251,7 +252,7 @@ async def _check_resumption_handle():
 
     agent = Agent(
         name="handle_test_agent",
-        model="gemini-2.5-flash-preview-native-audio-dialog",
+        model=LIVE_MODEL,
         instruction="Respond briefly.",
     )
 
@@ -343,7 +344,7 @@ async def _classify_real():
 
     agent = Agent(
         name="classify_test_agent",
-        model="gemini-2.5-flash-preview-native-audio-dialog",
+        model=LIVE_MODEL,
         instruction="Say hello briefly.",
     )
 
