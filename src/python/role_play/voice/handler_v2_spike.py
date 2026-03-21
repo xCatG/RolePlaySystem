@@ -69,6 +69,29 @@ class VoiceSessionState:
 # endregion
 
 
+# region ADK Type Stubs (avoid importing google.genai in tests)
+
+class _Blob:
+    """Minimal Blob stub matching google.genai.types.Blob interface."""
+    def __init__(self, mime_type: str, data: bytes):
+        self.mime_type = mime_type
+        self.data = data
+
+
+class _Content:
+    """Minimal Content stub matching google.genai.types.Content interface."""
+    def __init__(self, parts: list):
+        self.parts = parts
+
+
+class _Part:
+    """Minimal Part stub matching google.genai.types.Part interface."""
+    def __init__(self, text: str):
+        self.text = text
+
+# endregion
+
+
 # region Event Classification
 
 def classify_adk_event(event: Any) -> EventClassification:
@@ -200,7 +223,7 @@ class VoiceHandlerV2:
                 "detail": detail,
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             })
-        except (ConnectionError, Exception):
+        except Exception:
             pass  # Socket may already be closed
 
         # Close queue unless resumable
@@ -265,14 +288,6 @@ class VoiceHandlerV2:
 
         # Approach 2: Content injection (primary approach)
         try:
-            # Create a simple content-like object for the warning
-            class _Part:
-                def __init__(self, text):
-                    self.text = text
-            class _Content:
-                def __init__(self, parts):
-                    self.parts = parts
-
             warning_content = _Content(
                 parts=[_Part(text="[SYSTEM] 5 minutes remaining. Begin wrapping up the interview.")]
             )
@@ -309,12 +324,10 @@ class VoiceHandlerV2:
                     "type": "heartbeat",
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                 })
-            except (ConnectionError, Exception) as e:
-                if isinstance(e, ConnectionError):
-                    await self._handle_termination(
-                        websocket, state, VoiceConfigV2.REASON_DISCONNECTED,
-                    )
-                    raise
+            except ConnectionError:
+                await self._handle_termination(
+                    websocket, state, VoiceConfigV2.REASON_DISCONNECTED,
+                )
                 raise
 
     # endregion
@@ -338,7 +351,8 @@ class VoiceHandlerV2:
 
                 if classification.kind == "audio":
                     audio_data = classification.data["audio_data"]
-                    state.stats["audio_chunks_received"] = state.stats.get("audio_chunks_received", 0) + 1
+                    state.stats.setdefault("audio_chunks_received", 0)
+                    state.stats["audio_chunks_received"] += 1
                     await websocket.send_json({
                         "type": "audio",
                         "data": base64.b64encode(audio_data).decode("utf-8"),
@@ -348,7 +362,8 @@ class VoiceHandlerV2:
 
                 elif classification.kind == "transcript":
                     # REQ-7: log but do NOT send to frontend
-                    state.stats["transcripts_processed"] = state.stats.get("transcripts_processed", 0) + 1
+                    state.stats.setdefault("transcripts_processed", 0)
+                    state.stats["transcripts_processed"] += 1
                     entry = {
                         "text": classification.data,
                         "role": classification.role,
@@ -402,15 +417,15 @@ class VoiceHandlerV2:
 
         except asyncio.CancelledError:
             logger.info(f"Event processing cancelled for session {state.session_id}")
-        except (ConnectionError, Exception) as e:
-            if isinstance(e, ConnectionError):
-                logger.error(f"Connection error in _send_to_client: {e}")
-                await self._handle_termination(
-                    websocket, state, VoiceConfigV2.REASON_DISCONNECTED,
-                )
-            else:
-                logger.error(f"Unexpected error in _send_to_client: {e}", exc_info=True)
-                state.stats["errors"] = state.stats.get("errors", 0) + 1
+        except ConnectionError as e:
+            logger.error(f"Connection error in _send_to_client: {e}")
+            await self._handle_termination(
+                websocket, state, VoiceConfigV2.REASON_DISCONNECTED,
+            )
+        except Exception as e:
+            logger.error(f"Unexpected error in _send_to_client: {e}", exc_info=True)
+            state.stats.setdefault("errors", 0)
+            state.stats["errors"] += 1
 
     # endregion
 
@@ -431,7 +446,8 @@ class VoiceHandlerV2:
                     request = json.loads(data)
                 except (json.JSONDecodeError, ValueError) as e:
                     logger.warning(f"Invalid JSON from client: {e}")
-                    state.stats["errors"] = state.stats.get("errors", 0) + 1
+                    state.stats.setdefault("errors", 0)
+                    state.stats["errors"] += 1
                     continue
 
                 mime_type = request.get("mime_type", "")
@@ -447,7 +463,8 @@ class VoiceHandlerV2:
                 try:
                     decoded = base64.b64decode(raw_data)
                 except Exception:
-                    state.stats["errors"] = state.stats.get("errors", 0) + 1
+                    state.stats.setdefault("errors", 0)
+                    state.stats["errors"] += 1
                     continue
 
                 try:
@@ -463,14 +480,10 @@ class VoiceHandlerV2:
                             except (AttributeError, Exception) as e:
                                 logger.debug(f"PCM logging skipped: {e}")
 
-                        # Create blob-like object
-                        class _Blob:
-                            def __init__(self, mime_type, data):
-                                self.mime_type = mime_type
-                                self.data = data
                         blob = _Blob(mime_type=mime_type, data=decoded)
                         state.live_request_queue.send_realtime(blob)
-                        state.stats["audio_chunks_sent"] = state.stats.get("audio_chunks_sent", 0) + 1
+                        state.stats.setdefault("audio_chunks_sent", 0)
+                        state.stats["audio_chunks_sent"] += 1
 
                     elif mime_type == "text/plain":
                         text_data = decoded.decode("utf-8")
@@ -481,19 +494,15 @@ class VoiceHandlerV2:
                             content=text_data,
                             message_number=-1,
                         )
-                        class _Part:
-                            def __init__(self, text):
-                                self.text = text
-                        class _Content:
-                            def __init__(self, parts):
-                                self.parts = parts
                         content = _Content(parts=[_Part(text=text_data)])
                         state.live_request_queue.send_content(content)
-                        state.stats["text_chunks_sent"] = state.stats.get("text_chunks_sent", 0) + 1
+                        state.stats.setdefault("text_chunks_sent", 0)
+                        state.stats["text_chunks_sent"] += 1
 
                 except Exception as e:
                     logger.error(f"Error processing client input: {e}")
-                    state.stats["errors"] = state.stats.get("errors", 0) + 1
+                    state.stats.setdefault("errors", 0)
+                    state.stats["errors"] += 1
 
         except WebSocketDisconnect:
             logger.info(f"Client disconnected from session {state.session_id}")

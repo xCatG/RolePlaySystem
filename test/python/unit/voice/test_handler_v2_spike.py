@@ -95,19 +95,20 @@ class TestEventClassification:
         assert ec.kind == "unknown"
 
 
+def _make_event(**kwargs):
+    """Build a mock ADK event with specified attributes."""
+    event = MagicMock()
+    for attr in ["content", "turn_complete", "interrupted", "partial",
+                  "session_resumption_update", "go_away"]:
+        if attr not in kwargs:
+            delattr(event, attr) if hasattr(event, attr) else None
+    for k, v in kwargs.items():
+        setattr(event, k, v)
+    return event
+
+
 class TestClassifyAdkEvent:
     """Tests for the sync event classifier."""
-
-    def _make_event(self, **kwargs):
-        """Build a mock ADK event with specified attributes."""
-        event = MagicMock()
-        for attr in ["content", "turn_complete", "interrupted", "partial",
-                      "session_resumption_update", "go_away"]:
-            if attr not in kwargs:
-                delattr(event, attr) if hasattr(event, attr) else None
-        for k, v in kwargs.items():
-            setattr(event, k, v)
-        return event
 
     def test_transcript_final_from_model(self):
         part = MagicMock()
@@ -116,7 +117,7 @@ class TestClassifyAdkEvent:
         content = MagicMock()
         content.parts = [part]
         content.role = "model"
-        event = self._make_event(content=content, partial=False)
+        event = _make_event(content=content, partial=False)
 
         result = classify_adk_event(event)
         assert result.kind == "transcript"
@@ -132,7 +133,7 @@ class TestClassifyAdkEvent:
         content = MagicMock()
         content.parts = [part]
         content.role = "model"
-        event = self._make_event(content=content, partial=True)
+        event = _make_event(content=content, partial=True)
 
         result = classify_adk_event(event)
         assert result.kind == "transcript"
@@ -145,7 +146,7 @@ class TestClassifyAdkEvent:
         content = MagicMock()
         content.parts = [part]
         content.role = "user"
-        event = self._make_event(content=content, partial=False)
+        event = _make_event(content=content, partial=False)
 
         result = classify_adk_event(event)
         assert result.role == "user"
@@ -156,7 +157,7 @@ class TestClassifyAdkEvent:
         part.inline_data = MagicMock(data=b"\x01\x02", mime_type="audio/pcm")
         content = MagicMock()
         content.parts = [part]
-        event = self._make_event(content=content)
+        event = _make_event(content=content)
 
         result = classify_adk_event(event)
         assert result.kind == "audio"
@@ -170,7 +171,7 @@ class TestClassifyAdkEvent:
         content = MagicMock()
         content.parts = [part]
         content.role = "model"
-        event = self._make_event(content=content, partial=False)
+        event = _make_event(content=content, partial=False)
 
         result = classify_adk_event(event)
         assert result.kind == "transcript"
@@ -185,14 +186,14 @@ class TestClassifyAdkEvent:
         content = MagicMock()
         content.parts = [part]
         content.role = "model"
-        event = self._make_event(content=content, partial=False)
+        event = _make_event(content=content, partial=False)
 
         result = classify_adk_event(event)
         assert result.is_terminal is True
         assert result.terminal_reason == VoiceConfigV2.REASON_AI_EARLY_TERMINATION
 
     def test_turn_status_complete(self):
-        event = self._make_event(turn_complete=True, interrupted=False)
+        event = _make_event(turn_complete=True, interrupted=False)
         if hasattr(event, "content"):
             event.content = None
 
@@ -201,7 +202,7 @@ class TestClassifyAdkEvent:
         assert result.data["turn_complete"] is True
 
     def test_turn_status_interrupted(self):
-        event = self._make_event(turn_complete=False, interrupted=True)
+        event = _make_event(turn_complete=False, interrupted=True)
         if hasattr(event, "content"):
             event.content = None
 
@@ -210,7 +211,7 @@ class TestClassifyAdkEvent:
         assert result.data["interrupted"] is True
 
     def test_session_resumption_event(self):
-        event = self._make_event(session_resumption_update="handle-abc-123")
+        event = _make_event(session_resumption_update="handle-abc-123")
         if hasattr(event, "content"):
             event.content = None
 
@@ -219,7 +220,7 @@ class TestClassifyAdkEvent:
         assert result.data == "handle-abc-123"
 
     def test_go_away_event(self):
-        event = self._make_event(go_away=MagicMock())
+        event = _make_event(go_away=MagicMock())
         if hasattr(event, "content"):
             event.content = None
 
@@ -235,13 +236,13 @@ class TestClassifyAdkEvent:
     def test_empty_content_parts(self):
         content = MagicMock()
         content.parts = []
-        event = self._make_event(content=content)
+        event = _make_event(content=content)
 
         result = classify_adk_event(event)
         assert result.kind in ("turn_status", "unknown")
 
     def test_none_content(self):
-        event = self._make_event(content=None, turn_complete=True)
+        event = _make_event(content=None, turn_complete=True)
         result = classify_adk_event(event)
         assert result.kind == "turn_status"
 
@@ -477,11 +478,7 @@ class TestSendToClient:
         part = MagicMock()
         del part.text
         part.inline_data = MagicMock(data=b"\x01\x02", mime_type="audio/pcm")
-        event = MagicMock()
-        event.content = MagicMock(parts=[part])
-        for attr in ["turn_complete", "interrupted", "session_resumption_update", "go_away"]:
-            if hasattr(event, attr):
-                delattr(event, attr)
+        event = _make_event(content=MagicMock(parts=[part]))
 
         state = _make_state(live_events=self._make_live_events([event]))
         handler._handle_termination = AsyncMock()
@@ -494,15 +491,8 @@ class TestSendToClient:
     @pytest.mark.asyncio
     async def test_transcript_not_sent_to_frontend(self, handler):
         ws = AsyncMock()
-        part = MagicMock()
-        part.text = "Hello"
-        part.inline_data = None
-        event = MagicMock()
-        event.content = MagicMock(parts=[part], role="model")
-        event.partial = False
-        for attr in ["turn_complete", "interrupted", "session_resumption_update", "go_away"]:
-            if hasattr(event, attr):
-                delattr(event, attr)
+        part = MagicMock(text="Hello", inline_data=None)
+        event = _make_event(content=MagicMock(parts=[part], role="model"), partial=False)
 
         chat_logger = AsyncMock()
         state = _make_state(
@@ -520,15 +510,8 @@ class TestSendToClient:
     @pytest.mark.asyncio
     async def test_transcript_appended_to_buffer(self, handler):
         ws = AsyncMock()
-        part = MagicMock()
-        part.text = "Test transcript"
-        part.inline_data = None
-        event = MagicMock()
-        event.content = MagicMock(parts=[part], role="model")
-        event.partial = False
-        for attr in ["turn_complete", "interrupted", "session_resumption_update", "go_away"]:
-            if hasattr(event, attr):
-                delattr(event, attr)
+        part = MagicMock(text="Test transcript", inline_data=None)
+        event = _make_event(content=MagicMock(parts=[part], role="model"), partial=False)
 
         state = _make_state(live_events=self._make_live_events([event]))
         handler._handle_termination = AsyncMock()
@@ -555,15 +538,8 @@ class TestSendToClient:
     @pytest.mark.asyncio
     async def test_terminal_event_triggers_termination(self, handler):
         ws = AsyncMock()
-        part = MagicMock()
-        part.text = "Goodbye [RPS_SESSION_COMPLETE]"
-        part.inline_data = None
-        event = MagicMock()
-        event.content = MagicMock(parts=[part], role="model")
-        event.partial = False
-        for attr in ["turn_complete", "interrupted", "session_resumption_update", "go_away"]:
-            if hasattr(event, attr):
-                delattr(event, attr)
+        part = MagicMock(text="Goodbye [RPS_SESSION_COMPLETE]", inline_data=None)
+        event = _make_event(content=MagicMock(parts=[part], role="model"), partial=False)
 
         state = _make_state(live_events=self._make_live_events([event]))
         handler._handle_termination = AsyncMock()
@@ -576,13 +552,7 @@ class TestSendToClient:
     @pytest.mark.asyncio
     async def test_turn_status_sent_to_frontend(self, handler):
         ws = AsyncMock()
-        event = MagicMock()
-        event.content = None
-        event.turn_complete = True
-        event.interrupted = False
-        for attr in ["session_resumption_update", "go_away"]:
-            if hasattr(event, attr):
-                delattr(event, attr)
+        event = _make_event(content=None, turn_complete=True, interrupted=False)
 
         state = _make_state(live_events=self._make_live_events([event]))
         handler._handle_termination = AsyncMock()
