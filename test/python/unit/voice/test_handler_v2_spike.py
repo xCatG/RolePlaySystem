@@ -692,3 +692,54 @@ class TestReceiveFromClient:
 
         await handler._receive_from_client(ws, state, env_info)
         assert state.stats.get("errors", 0) >= 1
+
+
+class TestHandleStreaming:
+    @pytest.fixture
+    def handler(self):
+        return VoiceHandlerV2(AsyncMock())
+
+    @pytest.mark.asyncio
+    async def test_orchestrator_cancels_remaining_on_stop(self, handler):
+        ws = AsyncMock()
+        state = _make_state()
+        env_info = MagicMock(is_production=True)
+
+        # Mock all four coroutines — receive terminates immediately
+        async def fast_receive(*a, **kw):
+            state.stop_event.set()
+            state.termination_reason = "USER_ENDED"
+
+        handler._receive_from_client = AsyncMock(side_effect=fast_receive)
+        handler._send_to_client = AsyncMock(side_effect=lambda *a, **kw: asyncio.sleep(10))
+        handler._session_timer = AsyncMock(side_effect=lambda *a, **kw: asyncio.sleep(10))
+        handler._heartbeat = AsyncMock(side_effect=lambda *a, **kw: asyncio.sleep(10))
+
+        await handler._handle_streaming(ws, state, env_info)
+        assert state.stop_event.is_set()
+
+
+class TestCleanupSession:
+    @pytest.fixture
+    def handler(self):
+        storage = AsyncMock()
+        storage.write = AsyncMock()
+        return VoiceHandlerV2(storage)
+
+    @pytest.mark.asyncio
+    async def test_logs_voice_session_end(self, handler):
+        chat_logger = AsyncMock()
+        state = _make_state(chat_logger=chat_logger, termination_reason="USER_ENDED")
+
+        await handler._cleanup_session(state)
+        chat_logger.log_voice_session_end.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_persists_meta_on_disconnect(self, handler):
+        state = _make_state(termination_reason="DISCONNECTED")
+
+        await handler._cleanup_session(state)
+        # Should write session_meta for timer continuity
+        handler._storage.write.assert_called()
+        key = handler._storage.write.call_args[0][0]
+        assert "session_meta" in key

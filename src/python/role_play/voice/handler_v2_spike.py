@@ -508,4 +508,94 @@ class VoiceHandlerV2:
 
     # endregion
 
+    # region Streaming Orchestrator
+
+    async def _handle_streaming(
+        self,
+        websocket,
+        state: VoiceSessionState,
+        env_info,
+    ) -> None:
+        """Orchestrate four concurrent coroutines with stop_event coordination."""
+        tasks = [
+            asyncio.create_task(
+                self._receive_from_client(websocket, state, env_info),
+                name="receive",
+            ),
+            asyncio.create_task(
+                self._send_to_client(websocket, state),
+                name="send",
+            ),
+            asyncio.create_task(
+                self._session_timer(websocket, state),
+                name="timer",
+            ),
+            asyncio.create_task(
+                self._heartbeat(websocket, state),
+                name="heartbeat",
+            ),
+        ]
+
+        try:
+            done, pending = await asyncio.wait(
+                tasks, return_when=asyncio.FIRST_COMPLETED,
+            )
+
+            # Check if stop_event was set by the completed task
+            if not state.stop_event.is_set():
+                for task in done:
+                    exc = task.exception()
+                    if exc:
+                        logger.warning(
+                            f"Task {task.get_name()} failed unexpectedly: {exc}"
+                        )
+                state.stop_event.set()
+
+        finally:
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
+            # Wait for cancellation to complete
+            await asyncio.gather(*tasks, return_exceptions=True)
+
+    # endregion
+
+    # region Session Lifecycle
+
+    async def _cleanup_session(self, state: VoiceSessionState) -> None:
+        """Clean up session resources and log final stats."""
+        duration = (datetime.now(timezone.utc) - state.started_at).total_seconds()
+        stats = {
+            **state.stats,
+            "duration_seconds": duration,
+            "termination_reason": state.termination_reason,
+            "ended_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+        logger.info(f"Session {state.session_id} final stats: {stats}")
+
+        try:
+            await state.chat_logger.log_voice_session_end(
+                state.user_id, state.session_id, voice_stats=stats,
+            )
+        except Exception as e:
+            logger.error(f"Failed to log session end: {e}")
+
+        # Persist meta for timer continuity on reconnect
+        if state.termination_reason == VoiceConfigV2.REASON_DISCONNECTED:
+            try:
+                meta_key = VoiceConfigV2.META_KEY_TEMPLATE.format(
+                    user_id=state.user_id, session_id=state.session_id,
+                )
+                meta_data = json.dumps({
+                    "started_at": state.started_at.isoformat(),
+                    "session_timeout": state.session_timeout,
+                    "warning_seconds": state.warning_seconds,
+                })
+                await self._storage.write(meta_key, meta_data)
+            except Exception as e:
+                logger.error(f"Failed to persist session meta: {e}")
+
+    # endregion
+
 # endregion
