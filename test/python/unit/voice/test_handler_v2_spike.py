@@ -334,6 +334,39 @@ class TestSessionTimer:
         return VoiceHandlerV2(AsyncMock())
 
     @pytest.mark.asyncio
+    async def test_timer_terminates_immediately_when_already_expired(self, handler):
+        """Reconnect to a session that's already past its deadline."""
+        from datetime import timedelta
+        past = datetime.now(timezone.utc) - timedelta(seconds=3600)
+        state = _make_state(session_timeout=60, warning_seconds=10, started_at=past)
+        handler._inject_time_warning = AsyncMock()
+        handler._handle_termination = AsyncMock()
+        ws = AsyncMock()
+
+        await handler._session_timer(ws, state)
+        handler._handle_termination.assert_called_once_with(
+            ws, state, VoiceConfigV2.REASON_TIME_LIMIT
+        )
+        handler._inject_time_warning.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_timer_fires_warning_immediately_when_past_warning_threshold(self, handler):
+        """Reconnect to a session that's past the warning point but not expired."""
+        from datetime import timedelta
+        # 55s into a 60s session with 10s warning — past the 50s warning point
+        past = datetime.now(timezone.utc) - timedelta(seconds=55)
+        state = _make_state(session_timeout=60, warning_seconds=10, started_at=past)
+        handler._inject_time_warning = AsyncMock()
+        handler._handle_termination = AsyncMock()
+        ws = AsyncMock()
+
+        await handler._session_timer(ws, state)
+        handler._inject_time_warning.assert_called_once_with(state)
+        handler._handle_termination.assert_called_once_with(
+            ws, state, VoiceConfigV2.REASON_TIME_LIMIT
+        )
+
+    @pytest.mark.asyncio
     async def test_timer_fires_termination_after_timeout(self, handler):
         state = _make_state(session_timeout=1, warning_seconds=0)
         handler._inject_time_warning = AsyncMock()

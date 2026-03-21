@@ -16,7 +16,9 @@ from typing import Optional, Dict, Any, AsyncGenerator, List
 
 from starlette.websockets import WebSocketDisconnect
 
+from .models import VoiceRequest
 from .voice_config_v2 import VoiceConfigV2
+from ..common.time_utils import utc_now_isoformat
 
 logger = logging.getLogger(__name__)
 
@@ -221,7 +223,7 @@ class VoiceHandlerV2:
                 "type": "session_ended",
                 "reason": reason,
                 "detail": detail,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "timestamp": utc_now_isoformat(),
             })
         except Exception:
             pass  # Socket may already be closed
@@ -247,29 +249,39 @@ class VoiceHandlerV2:
         Uses wait_for(stop_event.wait()) so it responds immediately to session end.
         """
         elapsed = (datetime.now(timezone.utc) - state.started_at).total_seconds()
-        warning_at = state.session_timeout - state.warning_seconds
+        remaining = state.session_timeout - elapsed
+
+        # Already past the deadline (e.g. reconnect to an expired session)
+        if remaining <= 0:
+            await self._handle_termination(websocket, state, VoiceConfigV2.REASON_TIME_LIMIT)
+            return
+
+        time_until_warning = max(0, remaining - state.warning_seconds)
 
         # Phase 1: wait until warning
-        try:
-            await asyncio.wait_for(
-                state.stop_event.wait(),
-                timeout=max(0, warning_at - elapsed),
-            )
-            return  # stop_event set before warning
-        except asyncio.TimeoutError:
-            pass
+        if time_until_warning > 0:
+            try:
+                await asyncio.wait_for(
+                    state.stop_event.wait(),
+                    timeout=time_until_warning,
+                )
+                return  # stop_event set before warning
+            except asyncio.TimeoutError:
+                pass
 
         await self._inject_time_warning(state)
 
-        # Phase 2: wait until termination
-        try:
-            await asyncio.wait_for(
-                state.stop_event.wait(),
-                timeout=state.warning_seconds,
-            )
-            return  # stop_event set during warning period
-        except asyncio.TimeoutError:
-            pass
+        # Phase 2: wait remaining time after warning
+        time_after_warning = remaining - time_until_warning
+        if time_after_warning > 0:
+            try:
+                await asyncio.wait_for(
+                    state.stop_event.wait(),
+                    timeout=time_after_warning,
+                )
+                return  # stop_event set during warning period
+            except asyncio.TimeoutError:
+                pass
 
         await self._handle_termination(websocket, state, VoiceConfigV2.REASON_TIME_LIMIT)
 
@@ -322,7 +334,7 @@ class VoiceHandlerV2:
             try:
                 await websocket.send_json({
                     "type": "heartbeat",
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "timestamp": utc_now_isoformat(),
                 })
             except ConnectionError:
                 await self._handle_termination(
@@ -357,7 +369,7 @@ class VoiceHandlerV2:
                         "type": "audio",
                         "data": base64.b64encode(audio_data).decode("utf-8"),
                         "mime_type": classification.data["mime_type"],
-                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                        "timestamp": utc_now_isoformat(),
                     })
 
                 elif classification.kind == "transcript":
@@ -368,7 +380,7 @@ class VoiceHandlerV2:
                         "text": classification.data,
                         "role": classification.role,
                         "is_partial": classification.is_partial,
-                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                        "timestamp": utc_now_isoformat(),
                     }
                     state.transcript_buffer.append(entry)
 
@@ -399,7 +411,7 @@ class VoiceHandlerV2:
                     await websocket.send_json({
                         "type": "turn_status",
                         **classification.data,
-                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                        "timestamp": utc_now_isoformat(),
                     })
 
                 elif classification.kind == "session_resumption":
@@ -443,32 +455,29 @@ class VoiceHandlerV2:
                 data = await websocket.receive_text()
 
                 try:
-                    request = json.loads(data)
+                    request = VoiceRequest.model_validate_json(data)
                 except (json.JSONDecodeError, ValueError) as e:
-                    logger.warning(f"Invalid JSON from client: {e}")
+                    logger.warning(f"Invalid request from client: {e}")
                     state.stats.setdefault("errors", 0)
                     state.stats["errors"] += 1
                     continue
 
-                mime_type = request.get("mime_type", "")
-                raw_data = request.get("data", "")
-                end_session = request.get("end_session", False)
-
-                if end_session:
+                if request.end_session:
                     await self._handle_termination(
                         websocket, state, VoiceConfigV2.REASON_USER_ENDED,
                     )
                     return
 
                 try:
-                    decoded = base64.b64decode(raw_data)
-                except Exception:
+                    decoded = request.decode_data()
+                except ValueError as e:
+                    logger.warning(f"Data decoding error: {e}")
                     state.stats.setdefault("errors", 0)
                     state.stats["errors"] += 1
                     continue
 
                 try:
-                    if mime_type == "audio/pcm":
+                    if request.mime_type == "audio/pcm":
                         # PCM logging in non-production
                         if not getattr(env_info, "is_production", True):
                             try:
@@ -480,13 +489,13 @@ class VoiceHandlerV2:
                             except (AttributeError, Exception) as e:
                                 logger.debug(f"PCM logging skipped: {e}")
 
-                        blob = _Blob(mime_type=mime_type, data=decoded)
+                        blob = _Blob(mime_type=request.mime_type, data=decoded)
                         state.live_request_queue.send_realtime(blob)
                         state.stats.setdefault("audio_chunks_sent", 0)
                         state.stats["audio_chunks_sent"] += 1
 
-                    elif mime_type == "text/plain":
-                        text_data = decoded.decode("utf-8")
+                    elif request.mime_type == "text/plain":
+                        text_data = decoded if isinstance(decoded, str) else decoded.decode("utf-8")
                         await state.chat_logger.log_message(
                             user_id=state.user_id,
                             session_id=state.session_id,
@@ -655,7 +664,7 @@ class VoiceHandlerV2:
             try:
                 await websocket.send_json({
                     "type": "error", "error": str(e),
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "timestamp": utc_now_isoformat(),
                 })
             except Exception:
                 pass
@@ -675,7 +684,7 @@ class VoiceHandlerV2:
             **state.stats,
             "duration_seconds": duration,
             "termination_reason": state.termination_reason,
-            "ended_at": datetime.now(timezone.utc).isoformat(),
+            "ended_at": utc_now_isoformat(),
         }
 
         logger.info(f"Session {state.session_id} final stats: {stats}")
