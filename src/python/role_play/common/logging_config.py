@@ -33,7 +33,11 @@ class StructuredFormatter(logging.Formatter):
             log_entry.update(record.extra_fields)
         
         # Add environment info
-        log_entry["environment"] = os.getenv("ENV", "unknown")
+        try:
+            from .environment import environment_name
+            log_entry["environment"] = environment_name()
+        except Exception:
+            log_entry["environment"] = os.getenv("ENV", "unknown")
         log_entry["service"] = os.getenv("SERVICE_NAME", "rps")
         log_entry["version"] = os.getenv("GIT_VERSION", "unknown")
         
@@ -63,7 +67,13 @@ def setup_logging(log_level: str = "INFO", use_structured: bool = True) -> None:
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setLevel(numeric_level)
     
-    if use_structured and os.getenv("ENV", "dev") != "dev":
+    try:
+        from .environment import resolve_environment
+        is_dev = (resolve_environment().value == "dev")
+    except Exception:
+        is_dev = (os.getenv("ENV", "dev") == "dev")
+
+    if use_structured and not is_dev:
         # Use structured JSON logging for non-dev environments
         formatter = StructuredFormatter()
     else:
@@ -83,13 +93,19 @@ def setup_logging(log_level: str = "INFO", use_structured: bool = True) -> None:
     
     # Log the configuration
     logger = logging.getLogger(__name__)
+    try:
+        from .environment import environment_name as _env_name
+        env_name_value = _env_name()
+    except Exception:
+        env_name_value = os.getenv("ENV", "dev")
+
     logger.info(
         "Logging configured",
         extra={
             "extra_fields": {
                 "log_level": log_level,
                 "use_structured": use_structured,
-                "environment": os.getenv("ENV", "dev")
+                "environment": env_name_value,
             }
         }
     )

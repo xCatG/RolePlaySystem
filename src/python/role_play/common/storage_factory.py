@@ -9,6 +9,7 @@ from .storage import (
     FileStorageConfig, GCSStorageConfig, S3StorageConfig
 )
 from .exceptions import StorageError
+from .environment import resolve_environment
 
 
 def create_storage_backend(
@@ -111,11 +112,7 @@ def create_storage_from_env(environment: Union[Environment, str] = None) -> Stor
     """
     # Auto-detect environment if not provided
     if environment is None:
-        env_str = os.getenv("ENV", "dev").lower()
-        try:
-            environment = Environment(env_str)
-        except ValueError:
-            raise StorageError(f"Invalid ENV environment variable: {env_str}")
+        environment = resolve_environment()
     
     # Get storage type
     storage_type = os.getenv("STORAGE_TYPE")

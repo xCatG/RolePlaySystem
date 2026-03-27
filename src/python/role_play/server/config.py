@@ -109,18 +109,12 @@ class ProductionConfig(ServerConfig):
 
 def get_config(environment: Optional[str] = None) -> ServerConfig:
     """
-    Get configuration based on environment.
+    Deprecated: Use role_play.server.config_loader.get_config instead.
 
-    Args:
-        environment: Environment name (development, production) or None for auto-detection
-
-    Returns:
-        ServerConfig: Configuration instance
+    This wrapper delegates to the unified config loader to avoid confusion
+    between different environment names and selection logic.
+    Accepts canonical envs (dev|beta|prod) and common synonyms.
     """
-    if environment is None:
-        environment = os.getenv("ENVIRONMENT", "development")
-
-    if environment == "production":
-        return ProductionConfig()
-    else:
-        return DevelopmentConfig()
+    # Import here to avoid circular import at module load time
+    from .config_loader import get_config as _get_config
+    return _get_config(environment)
