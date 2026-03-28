@@ -1,0 +1,82 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "role_play_system"
+version = "0.1.0"
+description = "A core backend for building and running AI-powered role-playing simulations"
+readme = {file = "README.md", content-type = "text/markdown"}
+license = {file = "LICENSE"}
+authors = [
+    {name = "CatTail Software", email = "info@cattail-sw.com"}
+]
+maintainers = [
+    {name = "CatTail Software", email = "info@cattail-sw.com"}
+]
+keywords = ["ai", "roleplay", "education", "training", "chatbot", "conversation"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Education",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Education",
+    "Topic :: Software Development :: Libraries :: Application Frameworks",
+    "Topic :: Communications :: Chat",
+]
+requires-python = ">=3.11"
+dependencies = [
+    "google-adk",
+    "openai",
+    "pydantic[email]",
+    "langchain",
+    "anthropic",
+    "mcp",
+    "python-dotenv",
+    "fastapi",
+    "uvicorn[standard]",
+    "httpx",
+    "pyjwt",
+    "passlib[bcrypt]",
+    "bcrypt",
+    "google-cloud-storage",
+    "boto3",
+    "redis",
+    "aiofiles",
+    "importlib_resources>=5.0;python_version<'3.9'",
+]
+
+[project.urls]
+Homepage = "https://github.com/xCatG/RolePlaySystem"
+Repository = "https://github.com/xCatG/RolePlaySystem"
+"Bug Reports" = "https://github.com/xCatG/RolePlaySystem/issues"
+Documentation = "https://github.com/xCatG/RolePlaySystem#readme"
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-asyncio",
+    "httpx",
+    "factory-boy",
+]
+test = [
+    "pytest",
+    "pytest-asyncio",
+    "pytest-cov",
+    "httpx",
+    "factory-boy",
+]
+
+[tool.setuptools]
+
+# Discover all Python packages under the local directory that start with
+# the top-level package name `role_play` (e.g., role_play, role_play.chat, ...)
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["role_play*"]
+
+[tool.setuptools.package-data]
+"*" = ["*.yaml", "*.yml", "*.json", "*.md"]

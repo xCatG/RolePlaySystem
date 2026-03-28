@@ -215,7 +215,9 @@ GET  /api/eval/session/{id}/all_reports    # Historical evaluations
 
 ---
 
-## Deployment Guide
+---
+
+## Deploying the Application
 
 ### **Cloud Deployment (Production)**
 
@@ -246,3 +248,97 @@ ENV=prod GCS_BUCKET=prod-bucket JWT_SECRET_KEY=secure-key python run_server.py
 ```
 
 ** See [DEPLOYMENT.md](./DEPLOYMENT.md) for detailed instructions**
+
+--- 
+
+## 📦 Publishing the Library
+
+This repository is set up to be distributed as a Python package.
+
+### Manual Build
+
+To build the package locally:
+
+```bash
+# Using Make (recommended)
+make test-package-build
+
+# Or manually
+cd src/python/role_play
+pip install --upgrade setuptools wheel build
+python -m build
+```
+
+The distributable files (`.tar.gz` and `.whl`) will be located in `src/python/role_play/dist/`.
+
+### Package Testing
+
+Comprehensive testing suite for package validation:
+
+```bash
+make test-package-all      # Run all package tests
+make test-package-build    # Test build process
+make test-package-install  # Test installation  
+make inspect-package       # Inspect package contents
+make test-gcp-upload      # Test GCP upload (interactive)
+```
+
+See [PACKAGE_TESTING.md](./PACKAGE_TESTING.md) for detailed testing documentation.
+
+### Automated Publishing to GCP Artifact Registry
+
+The package is automatically published to a private GCP Artifact Registry via a GitHub Action. To publish a new version:
+
+1.  Update the `version` in `src/python/role_play/pyproject.toml`.
+2.  Create and push a new git tag that starts with `v` (e.g., `git tag v0.1.0 && git push origin v0.1.0`).
+
+The `publish-package.yml` workflow will handle the rest.
+
+#### GCP Setup Requirements
+
+Before the automated publishing can work, you need to:
+
+**1. Create GCP Artifact Registry Repository:**
+```bash
+# Create a Python repository in Artifact Registry
+gcloud artifacts repositories create python-packages \
+    --repository-format=python \
+    --location=us-central1
+```
+
+**2. Create Service Account:**
+```bash
+# Create service account for publishing
+gcloud iam service-accounts create github-actions-publisher \
+    --display-name="GitHub Actions Publisher"
+
+# Grant Artifact Registry Writer permission
+gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
+    --member="serviceAccount:github-actions-publisher@YOUR_PROJECT_ID.iam.gserviceaccount.com" \
+    --role="roles/artifactregistry.writer"
+
+# Create and download key
+gcloud iam service-accounts keys create key.json \
+    --iam-account=github-actions-publisher@YOUR_PROJECT_ID.iam.gserviceaccount.com
+```
+
+**3. Add GitHub Repository Secrets:**
+* `GCP_PROJECT_ID`: Your GCP project ID
+* `GCP_SA_KEY`: The contents of the `key.json` file
+* `GCP_REGION`: The GCP region for your Artifact Registry (e.g., `us-central1`)
+* `GCP_ARTIFACT_REGISTRY_REPO`: The name of your repository (`python-packages`)
+
+#### Installing from GCP Artifact Registry
+
+Once published, install the package using:
+```bash
+# Configure pip to use your Artifact Registry
+pip install role-play-system --extra-index-url https://us-central1-python.pkg.dev/YOUR_PROJECT_ID/python-packages/simple/
+```
+
+Or add to requirements.txt:
+```
+--extra-index-url https://us-central1-python.pkg.dev/YOUR_PROJECT_ID/python-packages/simple/
+role-play-system==0.1.0
+```
+

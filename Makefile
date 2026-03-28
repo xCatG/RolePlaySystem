@@ -380,19 +380,48 @@ dev-setup: load-env-mk
 	@echo ""
 	@echo "Or use PyCharm to run src/python/run_server.py"
 
+# --- Package Testing ---
+.PHONY: test-package-build
+test-package-build: ## Test local package build process
+	@echo "Running package build test..."
+	@./test/python/packaging/test-build.sh
+
+.PHONY: test-package-install
+test-package-install: ## Test package installation in clean environment
+	@echo "Running package installation test..."
+	@./test/python/packaging/test-install.sh
+
+.PHONY: inspect-package
+inspect-package: ## Inspect package contents and structure
+	@echo "Inspecting package contents..."
+	@./test/python/packaging/inspect-package.sh
+
+.PHONY: test-gcp-upload
+test-gcp-upload: ## Test GCP Artifact Registry upload (interactive)
+	@echo "Running GCP upload test..."
+	@./test/python/packaging/test-gcp-upload.sh
+
+.PHONY: test-package-all
+test-package-all: test-package-build inspect-package test-package-install ## Run all package tests (except GCP)
+	@echo "All package tests completed successfully!"
+
+.PHONY: build-package
+build-package: ## Build the Python package
+	@echo "Building Python package..."
+	@cd src/python && ./build.sh
+
+.PHONY: test-package-venv
+test-package-venv: ## Activate venv and run package tests (alternative command)
+	@echo "Activating virtual environment and running package tests..."
+	@source venv/bin/activate && $(MAKE) test-package-all
+
 # --- Release Management ---
-.PHONY: tag-git-release
-tag-git-release: # Expects NEW_GIT_TAG to be set, e.g., make tag-git-release NEW_GIT_TAG=v1.0.0
-ifndef NEW_GIT_TAG
-	$(error NEW_GIT_TAG is not set. Usage: make tag-git-release NEW_GIT_TAG=vX.Y.Z)
-endif
-	@echo "Creating Git tag: $(NEW_GIT_TAG)"
-	@read -p "Enter commit message for tag $(NEW_GIT_TAG) (Press Enter for default: 'Release $(NEW_GIT_TAG)'): " msg; \
-	COMMIT_MSG=$${msg:-Release $(NEW_GIT_TAG)}; \
-	git tag -a "$(NEW_GIT_TAG)" -m "$$COMMIT_MSG"
-	@echo "Pushing Git tag $(NEW_GIT_TAG) to origin..."
-	@git push origin "$(NEW_GIT_TAG)"
-	@echo "Git tag $(NEW_GIT_TAG) created and pushed."
+.PHONY: release
+release:
+	@echo "To create a new release, create and push a new git tag."
+	@echo "Example: git tag v0.1.0 && git push origin v0.1.0"
+	@echo ""
+	@echo "Before releasing, run: make test-package-all"
 
 # --- GCP Setup ---
 .PHONY: setup-gcp-infra
